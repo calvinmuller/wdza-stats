@@ -1,4 +1,4 @@
-import { SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db";
+import { SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
 import { describe, expect, it } from "vitest";
 import { REFRESH_INTERVAL_MS } from "./live-server";
 

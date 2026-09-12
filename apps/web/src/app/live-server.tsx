@@ -1,6 +1,9 @@
 "use client";
 
-import { SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db";
+// Deep import, not the package root: the root barrel re-exports client.ts,
+// which pulls in the `postgres` driver (Node-only, uses `fs`/`tls`/etc.) -
+// that can't go in this Client Component's browser bundle.
+import { SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
 import { useEffect, useState } from "react";
 import type { LiveSnapshotView } from "@/lib/live-snapshot";
 

@@ -407,6 +407,102 @@ describe("Match-boundary detection and persistence (integration)", () => {
     expect(openMatchSnapshots).toHaveLength(1);
   });
 
+  it("accumulates PlayerCareerStat totals across multiple closed Matches, updating displayName to the latest observed name", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        // Match 1 begins
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([
+          {
+            steamId: "1",
+            name: "Alice",
+            faction: "Lonestar",
+            kills: 1,
+            deaths: 0,
+            cash: 100,
+            pingMs: 40,
+          },
+        ]),
+      },
+      {
+        // still Match 1 - no boundary
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([
+          {
+            steamId: "1",
+            name: "Alice",
+            faction: "Lonestar",
+            kills: 4,
+            deaths: 1,
+            cash: 350,
+            pingMs: 40,
+          },
+        ]),
+      },
+      {
+        // map change closes Match 1, opens Match 2 with a renamed player
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([
+          {
+            steamId: "1",
+            name: "AliceRenamed",
+            faction: "Lonestar",
+            kills: 0,
+            deaths: 0,
+            cash: 0,
+            pingMs: 40,
+          },
+        ]),
+      },
+      {
+        // still Match 2 - no boundary
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([
+          {
+            steamId: "1",
+            name: "AliceRenamed",
+            faction: "Lonestar",
+            kills: 2,
+            deaths: 0,
+            cash: 50,
+            pingMs: 40,
+          },
+        ]),
+      },
+      {
+        // map change closes Match 2
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id); // Match 1 opens
+    await pollAndPersistSnapshot(db, client, server.id); // still Match 1
+    await pollAndPersistSnapshot(db, client, server.id); // closes Match 1, opens Match 2
+    await pollAndPersistSnapshot(db, client, server.id); // still Match 2
+    await pollAndPersistSnapshot(db, client, server.id); // closes Match 2
+
+    const closed = await closedMatchesFor(server.id);
+    expect(closed).toHaveLength(2);
+
+    const career = await db
+      .select()
+      .from(playerCareerStats)
+      .where(eq(playerCareerStats.steamId, "1"));
+    expect(career).toEqual([
+      {
+        serverId: server.id,
+        steamId: "1",
+        displayName: "AliceRenamed",
+        kills: 5,
+        deaths: 1,
+        cash: 300,
+        matchesPlayed: 2,
+      },
+    ]);
+  });
+
   it("closes the Match on a map/rotation change and opens a new one", async () => {
     const server = await seedServer();
     const client = scriptedRconClient([

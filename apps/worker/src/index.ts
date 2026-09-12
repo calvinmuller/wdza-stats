@@ -1,7 +1,9 @@
-import { createDb, requireEnv, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db";
+import { createDb, loadRootEnv, requireEnv, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db";
 import { runHeartbeat } from "./heartbeat";
 import { createRconClient } from "./rcon-client";
 import { startSnapshotPolling } from "./snapshot-poller";
+
+loadRootEnv();
 
 const db = createDb(requireEnv("DATABASE_URL"));
 const baseUrl = requireEnv("RCON_BASE_URL");

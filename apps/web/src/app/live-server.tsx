@@ -3,7 +3,7 @@
 // Deep import, not the package root: the root barrel re-exports client.ts,
 // which pulls in the `postgres` driver (Node-only, uses `fs`/`tls`/etc.) -
 // that can't go in this Client Component's browser bundle.
-import { SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
+import { getRotationPreview, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
 import { useEffect, useState } from "react";
 import type { LiveSnapshotView } from "@/lib/live-snapshot";
 
@@ -52,6 +52,7 @@ export function LiveServerView({
   }
 
   const { serverName, capturedAt, snapshot } = data;
+  const rotation = getRotationPreview(snapshot.rotation);
 
   return (
     <>
@@ -60,6 +61,12 @@ export function LiveServerView({
         Map: {snapshot.map} &middot; Updated{" "}
         <time dateTime={capturedAt}>{formatCapturedAt(capturedAt)}</time>
       </p>
+
+      {rotation.current !== null && (
+        <p>
+          Rotation: {rotation.current} (current) &rarr; {rotation.next} (next)
+        </p>
+      )}
 
       <h2>Factions</h2>
       <ul className="factions">

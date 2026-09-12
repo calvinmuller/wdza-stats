@@ -63,6 +63,30 @@ describe("HomePage", () => {
     expect(html).toContain("38");
   });
 
+  it("renders the current and next map from the Server's rotation state", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+    await db.insert(latestSnapshots).values({
+      serverId: server.id,
+      capturedAt: new Date("2026-01-01T00:00:00.000Z"),
+      payload: snapshotFixture({
+        map: "Deadcity",
+        rotation: {
+          nowIndex: 1,
+          entries: [{ map: "Sandstorm" }, { map: "Deadcity" }, { map: "Frontier" }],
+        },
+      }),
+    });
+
+    const element = await HomePage();
+    const html = renderToStaticMarkup(element);
+
+    expect(html).toContain("Rotation: Deadcity (current)");
+    expect(html).toContain("Frontier (next)");
+  });
+
   it("renders a waiting message when no live Snapshot exists yet", async () => {
     const element = await HomePage();
     const html = renderToStaticMarkup(element);

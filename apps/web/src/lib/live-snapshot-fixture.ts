@@ -8,7 +8,7 @@ export function snapshotFixture(overrides: Partial<Snapshot> = {}): Snapshot {
     lighting: "Day",
     alternator: "None",
     experiences: ["TeamDeathmatch"],
-    rotation: { nowIndex: 0 },
+    rotation: { nowIndex: 0, entries: [{ map: "Sandstorm" }, { map: "Deadcity" }] },
     factions: [{ name: "Lonestar", color: "#ff0000", score: 10 }],
     players: [
       {

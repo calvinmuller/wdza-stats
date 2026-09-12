@@ -9,7 +9,7 @@ export interface RawStatusResponse {
   map: string;
   lighting: string;
   alternator: string;
-  rotation: { nowIndex: number };
+  rotation: { nowIndex: number; entries: Array<{ map: string }> };
   experiences: string[];
   factionScores: Array<{ name: string; colorHex: string; score: number }>;
 }

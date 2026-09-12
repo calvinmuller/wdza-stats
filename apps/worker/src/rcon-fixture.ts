@@ -11,7 +11,7 @@ export function statusFixture(
     map: "Sandstorm",
     lighting: "Day",
     alternator: "None",
-    rotation: { nowIndex: 0 },
+    rotation: { nowIndex: 0, entries: [{ map: "Sandstorm" }, { map: "Deadcity" }] },
     experiences: ["TeamDeathmatch"],
     factionScores: [
       { name: "Lonestar", colorHex: "#ff0000", score: 10 },

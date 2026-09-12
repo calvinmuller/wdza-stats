@@ -64,7 +64,10 @@ describe("pollAndPersistSnapshot", () => {
         ]),
       },
       {
-        status: statusFixture({ map: "Deadcity" }),
+        status: statusFixture({
+          map: "Deadcity",
+          rotation: { nowIndex: 1, entries: [{ map: "Sandstorm" }, { map: "Deadcity" }] },
+        }),
         players: playersFixture([
           {
             steamId: "1",
@@ -90,6 +93,7 @@ describe("pollAndPersistSnapshot", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].payload).toMatchObject({
       map: "Deadcity",
+      rotation: { nowIndex: 1, entries: [{ map: "Sandstorm" }, { map: "Deadcity" }] },
       players: [
         {
           steamId: "1",

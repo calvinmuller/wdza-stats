@@ -35,7 +35,7 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
     lighting: "Day",
     alternator: "None",
     experiences: ["TeamDeathmatch"],
-    rotation: { nowIndex: 0 },
+    rotation: { nowIndex: 0, entries: [{ map: "Sandstorm" }] },
     factions: [],
     players: [],
     ...overrides,
@@ -58,8 +58,8 @@ describe("detectMatchBoundary", () => {
   });
 
   it("is true when rotation.nowIndex changes", () => {
-    const previous = snapshot({ rotation: { nowIndex: 0 } });
-    const next = snapshot({ rotation: { nowIndex: 1 } });
+    const previous = snapshot({ rotation: { nowIndex: 0, entries: [] } });
+    const next = snapshot({ rotation: { nowIndex: 1, entries: [] } });
 
     expect(detectMatchBoundary(previous, next)).toBe(true);
   });
@@ -507,11 +507,17 @@ describe("Match-boundary detection and persistence (integration)", () => {
     const server = await seedServer();
     const client = scriptedRconClient([
       {
-        status: statusFixture({ map: "Sandstorm", rotation: { nowIndex: 0 } }),
+        status: statusFixture({
+          map: "Sandstorm",
+          rotation: { nowIndex: 0, entries: [{ map: "Sandstorm" }, { map: "Deadcity" }] },
+        }),
         players: playersFixture([]),
       },
       {
-        status: statusFixture({ map: "Sandstorm", rotation: { nowIndex: 1 } }),
+        status: statusFixture({
+          map: "Sandstorm",
+          rotation: { nowIndex: 1, entries: [{ map: "Sandstorm" }, { map: "Deadcity" }] },
+        }),
         players: playersFixture([]),
       },
     ]);

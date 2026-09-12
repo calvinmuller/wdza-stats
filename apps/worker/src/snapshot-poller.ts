@@ -15,7 +15,10 @@ function mergeSnapshot(
     lighting: status.lighting,
     alternator: status.alternator,
     experiences: status.experiences,
-    rotation: { nowIndex: status.rotation.nowIndex },
+    rotation: {
+      nowIndex: status.rotation.nowIndex,
+      entries: status.rotation.entries.map((entry) => ({ map: entry.map })),
+    },
     factions: status.factionScores.map((faction) => ({
       name: faction.name,
       color: faction.colorHex,

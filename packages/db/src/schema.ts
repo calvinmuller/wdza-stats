@@ -1,18 +1,30 @@
 import {
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   serial,
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
+import type { Snapshot } from "./snapshot";
 
-// Domain terms (Server, Match, PlayerMatchStat, PlayerCareerStat) are defined in CONTEXT.md.
+// Domain terms (Server, Match, PlayerMatchStat, PlayerCareerStat, Snapshot) are defined in CONTEXT.md.
 
 export const servers = pgTable("servers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   baseUrl: text("base_url").notNull().unique(),
+});
+
+// The most recent Snapshot per Server, overwritten in place on every poll.
+// Current-state data, not history - closed Matches are the historical record.
+export const latestSnapshots = pgTable("latest_snapshots", {
+  serverId: integer("server_id")
+    .primaryKey()
+    .references(() => servers.id),
+  capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+  payload: jsonb("payload").notNull().$type<Snapshot>(),
 });
 
 // endedAt is null while the Match is still open.

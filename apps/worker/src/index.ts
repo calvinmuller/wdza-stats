@@ -1,17 +1,19 @@
 import { createDb, requireEnv } from "@wdza-stats/db";
 import { runHeartbeat } from "./heartbeat";
+import { createRconClient } from "./rcon-client";
+import { startSnapshotPolling } from "./snapshot-poller";
 
-const HEARTBEAT_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 15_000;
 
 const db = createDb(requireEnv("DATABASE_URL"));
 const baseUrl = requireEnv("RCON_BASE_URL");
+const token = requireEnv("RCON_TOKEN");
 
-async function tick() {
-  const server = await runHeartbeat(db, baseUrl);
-  console.log(`[worker] connected to Postgres, tracking "${server.name}"`);
-}
+const server = await runHeartbeat(db, baseUrl);
+console.log(`[worker] connected to Postgres, tracking "${server.name}"`);
 
-await tick();
-setInterval(() => {
-  tick().catch((error) => console.error("[worker] heartbeat failed:", error));
-}, HEARTBEAT_INTERVAL_MS);
+const rconClient = createRconClient(baseUrl, token);
+startSnapshotPolling(db, rconClient, server.id, POLL_INTERVAL_MS);
+console.log(
+  `[worker] polling RCON every ${POLL_INTERVAL_MS / 1000}s for "${server.name}"`,
+);

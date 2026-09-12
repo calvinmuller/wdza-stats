@@ -5,9 +5,8 @@ export type TrackedServer = typeof serversTable.$inferSelect;
 
 /**
  * Confirms the Worker can reach Postgres and that the configured Server
- * has been seeded, returning the tracked Server row. Ticket 02 replaces
- * the calling loop with real RCON polling; this stays as the connectivity
- * check on every tick.
+ * has been seeded, returning the tracked Server row. Run once on startup
+ * before the snapshot-polling loop begins.
  */
 export async function runHeartbeat(
   db: Database,

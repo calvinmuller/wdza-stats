@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { FactionSwatch } from "@/components/faction-swatch";
 import { db } from "@/lib/db";
 import {
   LEADERBOARD_SORTS,
@@ -77,7 +76,6 @@ export default async function LeaderboardPage({
                       href={`/players/${row.steamId}`}
                       className="flex items-center font-medium text-zinc-100 hover:text-brand-gold-500"
                     >
-                      {row.factionColor && <FactionSwatch color={row.factionColor} />}
                       {row.displayName}
                     </Link>
                   </td>

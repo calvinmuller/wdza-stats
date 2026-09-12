@@ -1,0 +1,13 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "npm install && npm run build --workspace=@wdza-stats/web"
+  },
+  "deploy": {
+    "startCommand": "npm run start --workspace=@wdza-stats/web -- -p $PORT",
+    "healthcheckPath": "/api/health",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}

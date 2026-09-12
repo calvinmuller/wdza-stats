@@ -1,0 +1,273 @@
+{
+  "id": "16590f96-c73c-4f68-a528-8b0294d17f49",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.matches": {
+      "name": "matches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "server_id": {
+          "name": "server_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "map": {
+          "name": "map",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "experiences": {
+          "name": "experiences",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "matches_server_id_servers_id_fk": {
+          "name": "matches_server_id_servers_id_fk",
+          "tableFrom": "matches",
+          "tableTo": "servers",
+          "columnsFrom": [
+            "server_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.player_career_stats": {
+      "name": "player_career_stats",
+      "schema": "",
+      "columns": {
+        "server_id": {
+          "name": "server_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "steam_id": {
+          "name": "steam_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kills": {
+          "name": "kills",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "deaths": {
+          "name": "deaths",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cash": {
+          "name": "cash",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "matches_played": {
+          "name": "matches_played",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "player_career_stats_server_id_servers_id_fk": {
+          "name": "player_career_stats_server_id_servers_id_fk",
+          "tableFrom": "player_career_stats",
+          "tableTo": "servers",
+          "columnsFrom": [
+            "server_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "player_career_stats_server_id_steam_id_pk": {
+          "name": "player_career_stats_server_id_steam_id_pk",
+          "columns": [
+            "server_id",
+            "steam_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.player_match_stats": {
+      "name": "player_match_stats",
+      "schema": "",
+      "columns": {
+        "match_id": {
+          "name": "match_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "steam_id": {
+          "name": "steam_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "faction": {
+          "name": "faction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kills": {
+          "name": "kills",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deaths": {
+          "name": "deaths",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cash": {
+          "name": "cash",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "player_match_stats_match_id_matches_id_fk": {
+          "name": "player_match_stats_match_id_matches_id_fk",
+          "tableFrom": "player_match_stats",
+          "tableTo": "matches",
+          "columnsFrom": [
+            "match_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "player_match_stats_match_id_steam_id_pk": {
+          "name": "player_match_stats_match_id_steam_id_pk",
+          "columns": [
+            "match_id",
+            "steam_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.servers": {
+      "name": "servers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_url": {
+          "name": "base_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "servers_base_url_unique": {
+          "name": "servers_base_url_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "base_url"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

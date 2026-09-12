@@ -1,0 +1,3 @@
+# Infer Match boundaries from Snapshot deltas, not a match clock
+
+The RCON docs describe `matchSeconds` and `scoreCap` fields on `/v1/status` that would let us detect a Match ending directly, but the live WDZA server doesn't send either field (confirmed by inspecting the raw response). We decided to never depend on an explicit match-end signal at all: a new Match is always inferred from comparing consecutive Snapshots — a changed `map`, a changed `rotation.nowIndex`, or any player's cumulative kill/death/cash counter dropping below its prior value. This keeps ingestion working identically regardless of which optional fields a given server happens to expose, at the cost of Match boundaries being detected only as precisely as the 15s poll interval allows.

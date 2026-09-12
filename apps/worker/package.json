@@ -1,0 +1,19 @@
+{
+  "name": "@wdza-stats/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@wdza-stats/db": "*",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
+}

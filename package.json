@@ -1,0 +1,23 @@
+{
+  "name": "wdza-stats",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "db:generate": "npm run db:generate --workspace=@wdza-stats/db",
+    "db:migrate": "npm run db:migrate --workspace=@wdza-stats/db",
+    "db:migrate:test": "tsx packages/db/src/migrate-test.ts",
+    "db:seed": "npm run db:seed --workspace=@wdza-stats/db",
+    "pretest": "npm run db:migrate:test",
+    "test": "vitest run",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.0"
+  }
+}

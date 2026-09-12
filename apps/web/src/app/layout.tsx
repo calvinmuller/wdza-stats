@@ -1,3 +1,5 @@
+import "./globals.css";
+
 export const metadata = {
   title: "WDZA Stats",
   description: "Live status and leaderboards for the WDZA Wardogs server.",

@@ -9,7 +9,27 @@ function mergeSnapshot(
   status: RawStatusResponse,
   players: RawPlayersResponse,
 ): Snapshot {
-  return { ...status, players: players.players };
+  return {
+    map: status.map,
+    lighting: status.lighting,
+    alternator: status.alternator,
+    experiences: status.experiences,
+    rotation: { nowIndex: status.rotation.nowIndex },
+    factions: status.factionScores.map((faction) => ({
+      name: faction.name,
+      color: faction.colorHex,
+      score: faction.score,
+    })),
+    players: players.players.map((player) => ({
+      steamId: player.steamId,
+      displayName: player.name,
+      faction: player.faction,
+      kills: player.kills,
+      deaths: player.deaths,
+      cash: player.cash,
+      ping: player.pingMs,
+    })),
+  };
 }
 
 /**

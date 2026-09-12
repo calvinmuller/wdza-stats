@@ -1,5 +1,9 @@
-// Raw shapes of the RCON API's two read endpoints. Only these two endpoints
-// are ever called - see CONTEXT.md and spec.md for why no write endpoint is used.
+// Raw shapes of the RCON API's two read endpoints, confirmed against the
+// live server. Only these two endpoints are ever called - see CONTEXT.md and
+// spec.md for why no write endpoint is used. Field names here are the RCON
+// API's own wire format, which differs from our domain Snapshot type (e.g.
+// "name"/"pingMs" here map onto "displayName"/"ping" - see mergeSnapshot in
+// snapshot-poller.ts).
 
 export interface RawStatusResponse {
   map: string;
@@ -7,18 +11,18 @@ export interface RawStatusResponse {
   alternator: string;
   rotation: { nowIndex: number };
   experiences: string[];
-  factions: Array<{ name: string; color: string; score: number }>;
+  factionScores: Array<{ name: string; colorHex: string; score: number }>;
 }
 
 export interface RawPlayersResponse {
   players: Array<{
     steamId: string;
-    displayName: string;
+    name: string;
     faction: string;
     kills: number;
     deaths: number;
     cash: number;
-    ping: number;
+    pingMs: number;
   }>;
 }
 

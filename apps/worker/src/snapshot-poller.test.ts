@@ -19,9 +19,9 @@ function statusFixture(
     alternator: "None",
     rotation: { nowIndex: 0 },
     experiences: ["TeamDeathmatch"],
-    factions: [
-      { name: "Lonestar", color: "#ff0000", score: 10 },
-      { name: "Valkyra", color: "#0000ff", score: 8 },
+    factionScores: [
+      { name: "Lonestar", colorHex: "#ff0000", score: 10 },
+      { name: "Valkyra", colorHex: "#0000ff", score: 8 },
     ],
     ...overrides,
   };
@@ -81,12 +81,12 @@ describe("pollAndPersistSnapshot", () => {
         players: playersFixture([
           {
             steamId: "1",
-            displayName: "Alice",
+            name: "Alice",
             faction: "Lonestar",
             kills: 3,
             deaths: 1,
             cash: 500,
-            ping: 40,
+            pingMs: 40,
           },
         ]),
       },
@@ -95,12 +95,12 @@ describe("pollAndPersistSnapshot", () => {
         players: playersFixture([
           {
             steamId: "1",
-            displayName: "Alice",
+            name: "Alice",
             faction: "Valkyra",
             kills: 5,
             deaths: 2,
             cash: 700,
-            ping: 35,
+            pingMs: 35,
           },
         ]),
       },

@@ -6,6 +6,7 @@
 import { getRotationPreview, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
 import type { SnapshotPlayer } from "@wdza-stats/db/snapshot";
 import { useEffect, useMemo, useState } from "react";
+import { FactionSwatch } from "@/components/faction-swatch";
 import type { LiveSnapshotView } from "@/lib/live-snapshot";
 
 type PlayerSortColumn = "displayName" | "faction" | "kills" | "deaths" | "cash" | "ping";
@@ -91,6 +92,11 @@ export function LiveServerView({
   const sortedPlayers = useMemo(
     () => (data ? sortPlayers(data.snapshot.players, sort.column, sort.direction) : []),
     [data, sort],
+  );
+
+  const factionColorByName = useMemo(
+    () => new Map(data?.snapshot.factions.map((faction) => [faction.name, faction.color]) ?? []),
+    [data],
   );
 
   if (!data) {
@@ -179,7 +185,14 @@ export function LiveServerView({
                   <td className="px-4 py-2.5 font-medium text-zinc-100">
                     {player.displayName}
                   </td>
-                  <td className="px-4 py-2.5 text-zinc-400">{player.faction}</td>
+                  <td className="px-4 py-2.5 text-zinc-400">
+                    <span className="flex items-center">
+                      {factionColorByName.get(player.faction) && (
+                        <FactionSwatch color={factionColorByName.get(player.faction)!} />
+                      )}
+                      {player.faction}
+                    </span>
+                  </td>
                   <td className="px-4 py-2.5 text-zinc-300">{player.kills}</td>
                   <td className="px-4 py-2.5 text-zinc-300">{player.deaths}</td>
                   <td className="px-4 py-2.5 text-zinc-300">{player.cash}</td>

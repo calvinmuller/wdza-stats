@@ -1,4 +1,5 @@
-import { latestSnapshots, type Database, type Snapshot } from "@wdza-stats/db";
+import type { Database, Snapshot } from "@wdza-stats/db";
+import { ingestSnapshot } from "./match-tracker";
 import type {
   RawPlayersResponse,
   RawStatusResponse,
@@ -33,8 +34,10 @@ function mergeSnapshot(
 }
 
 /**
- * Polls both RCON endpoints once and overwrites the Server's latest-Snapshot
- * row. Throws on failure so callers can decide how to handle it.
+ * Polls both RCON endpoints once and ingests the merged Snapshot: overwrites
+ * the Server's latest-Snapshot row and runs match-boundary detection (see
+ * match-tracker.ts). Throws on failure so callers can decide how to handle
+ * it.
  */
 export async function pollAndPersistSnapshot(
   db: Database,
@@ -46,13 +49,7 @@ export async function pollAndPersistSnapshot(
   const snapshot = mergeSnapshot(status, players);
   const capturedAt = new Date();
 
-  await db
-    .insert(latestSnapshots)
-    .values({ serverId, capturedAt, payload: snapshot })
-    .onConflictDoUpdate({
-      target: latestSnapshots.serverId,
-      set: { capturedAt, payload: snapshot },
-    });
+  await ingestSnapshot(db, serverId, snapshot, capturedAt);
 }
 
 /** Polls and persists once, logging and swallowing failures instead of crashing the Worker. */

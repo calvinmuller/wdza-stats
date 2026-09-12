@@ -1,55 +1,24 @@
-import { createDb, latestSnapshots, servers, type Database } from "@wdza-stats/db";
+import {
+  createDb,
+  latestSnapshots,
+  matchSnapshots,
+  matches,
+  playerCareerStats,
+  playerMatchStats,
+  servers,
+  type Database,
+} from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  RawPlayersResponse,
-  RawStatusResponse,
-  RconClient,
-} from "./rcon-client";
+import type { RawStatusResponse, RconClient } from "./rcon-client";
+import {
+  playersFixture,
+  scriptedRconClient,
+  statusFixture,
+} from "./rcon-fixture";
 import { pollAndPersistSnapshot, pollOnce } from "./snapshot-poller";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
-
-function statusFixture(
-  overrides: Partial<RawStatusResponse> = {},
-): RawStatusResponse {
-  return {
-    map: "Sandstorm",
-    lighting: "Day",
-    alternator: "None",
-    rotation: { nowIndex: 0 },
-    experiences: ["TeamDeathmatch"],
-    factionScores: [
-      { name: "Lonestar", colorHex: "#ff0000", score: 10 },
-      { name: "Valkyra", colorHex: "#0000ff", score: 8 },
-    ],
-    ...overrides,
-  };
-}
-
-function playersFixture(
-  players: RawPlayersResponse["players"] = [],
-): RawPlayersResponse {
-  return { players };
-}
-
-// Test-only seam: a fake RCON client fed a scripted sequence of raw
-// responses, so ingestion runs for real without hitting the network.
-function scriptedRconClient(
-  script: Array<{ status: RawStatusResponse; players: RawPlayersResponse }>,
-): RconClient {
-  let index = 0;
-  return {
-    async fetchStatus() {
-      return script[index].status;
-    },
-    async fetchPlayers() {
-      const entry = script[index];
-      index = Math.min(index + 1, script.length - 1);
-      return entry.players;
-    },
-  };
-}
 
 async function seedServer() {
   const [server] = await db
@@ -64,6 +33,10 @@ async function seedServer() {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  await db.delete(playerMatchStats);
+  await db.delete(playerCareerStats);
+  await db.delete(matchSnapshots);
+  await db.delete(matches);
   await db.delete(latestSnapshots);
   await db.delete(servers);
 });

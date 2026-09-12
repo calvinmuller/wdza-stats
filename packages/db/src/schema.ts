@@ -39,6 +39,18 @@ export const matches = pgTable("matches", {
   endedAt: timestamp("ended_at", { withTimezone: true }),
 });
 
+// Raw Snapshots belonging to the currently-open Match, kept only long enough
+// to compute that Match's PlayerMatchStat deltas on close, then deleted -
+// history lives on in matches/playerMatchStats/playerCareerStats, not here.
+export const matchSnapshots = pgTable("match_snapshots", {
+  id: serial("id").primaryKey(),
+  matchId: integer("match_id")
+    .notNull()
+    .references(() => matches.id),
+  capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+  payload: jsonb("payload").notNull().$type<Snapshot>(),
+});
+
 export const playerMatchStats = pgTable(
   "player_match_stats",
   {

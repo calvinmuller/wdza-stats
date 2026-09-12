@@ -41,3 +41,38 @@ export async function getLiveSnapshot(
     snapshot: row.payload,
   };
 }
+
+/**
+ * Maps each currently-online player's steamId to their Faction's color,
+ * read from the Server's latest Snapshot. PlayerCareerStat has no Faction
+ * column of its own (Faction is per-Match and can change match to match),
+ * so this is the only signal available for coloring a career-stats row -
+ * players who aren't currently online get none.
+ */
+export async function getOnlineFactionColors(
+  db: Database,
+  serverId: number,
+): Promise<Map<string, string>> {
+  const [row] = await db
+    .select({ payload: latestSnapshots.payload })
+    .from(latestSnapshots)
+    .where(eq(latestSnapshots.serverId, serverId))
+    .limit(1);
+
+  if (!row) {
+    return new Map();
+  }
+
+  const colorByFaction = new Map(
+    row.payload.factions.map((faction) => [faction.name, faction.color]),
+  );
+
+  const colorBySteamId = new Map<string, string>();
+  for (const player of row.payload.players) {
+    const color = colorByFaction.get(player.faction);
+    if (color) {
+      colorBySteamId.set(player.steamId, color);
+    }
+  }
+  return colorBySteamId;
+}

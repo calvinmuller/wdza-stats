@@ -83,8 +83,10 @@ describe("HomePage", () => {
     const element = await HomePage();
     const html = renderToStaticMarkup(element);
 
-    expect(html).toContain("Rotation: Deadcity (current)");
-    expect(html).toContain("Frontier (next)");
+    expect(html).toContain("Rotation:");
+    expect(html).toContain(">Deadcity</span> (current)");
+    expect(html).toContain(">Frontier</span>");
+    expect(html).toContain("(next)");
   });
 
   it("renders a waiting message when no live Snapshot exists yet", async () => {

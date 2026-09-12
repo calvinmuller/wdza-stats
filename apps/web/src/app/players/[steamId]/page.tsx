@@ -17,31 +17,36 @@ export default async function PlayerPage({
   const player = await getPlayerCareerStat(db, CONFIGURED_SERVER_BASE_URL, steamId);
 
   if (!player) {
-    return (
-      <main>
-        <p>No player found with that Steam ID.</p>
-      </main>
-    );
+    return <p className="text-zinc-400">No player found with that Steam ID.</p>;
   }
 
+  const stats = [
+    { label: "Kills", value: player.kills },
+    { label: "Deaths", value: player.deaths },
+    { label: "K/D", value: player.kd.toFixed(2) },
+    { label: "Cash", value: player.cash },
+    { label: "Matches played", value: player.matchesPlayed },
+  ];
+
   return (
-    <main>
-      <h1>
+    <div className="flex flex-col gap-6">
+      <h1 className="flex items-center text-3xl">
         {player.factionColor && <FactionSwatch color={player.factionColor} />}
         {player.displayName}
       </h1>
-      <dl className="player-stats">
-        <dt>Kills</dt>
-        <dd>{player.kills}</dd>
-        <dt>Deaths</dt>
-        <dd>{player.deaths}</dd>
-        <dt>K/D</dt>
-        <dd>{player.kd.toFixed(2)}</dd>
-        <dt>Cash</dt>
-        <dd>{player.cash}</dd>
-        <dt>Matches played</dt>
-        <dd>{player.matchesPlayed}</dd>
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3"
+          >
+            <dt className="text-xs uppercase tracking-wide text-zinc-500">
+              {stat.label}
+            </dt>
+            <dd className="font-display text-2xl text-zinc-50">{stat.value}</dd>
+          </div>
+        ))}
       </dl>
-    </main>
+    </div>
   );
 }

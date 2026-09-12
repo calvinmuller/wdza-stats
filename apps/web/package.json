@@ -9,11 +9,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "@wdza-stats/db": "*",
     "drizzle-orm": "^0.45.2",
     "next": "^16.3.5",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",

@@ -35,15 +35,16 @@ export default async function LeaderboardPage({
   const rows = await getLeaderboard(db, CONFIGURED_SERVER_BASE_URL, sort);
 
   return (
-    <main>
-      <h1>Leaderboard</h1>
-      <nav className="sort-links">
-        Sort by:{" "}
+    <div className="flex flex-col gap-6">
+      <h1 className="text-3xl">Leaderboard</h1>
+      <nav className="flex flex-wrap items-center gap-x-1 gap-y-2 text-sm">
+        <span className="mr-2 text-zinc-500">Sort by</span>
         {LEADERBOARD_SORTS.map((option) => (
           <Link
             key={option}
             href={`/leaderboard?sort=${option}`}
             aria-current={option === sort ? "page" : undefined}
+            className="rounded-full px-3 py-1 font-medium text-zinc-400 transition-colors hover:text-zinc-100 aria-[current=page]:bg-brand-green-700/40 aria-[current=page]:text-brand-gold-500"
           >
             {SORT_LABELS[option]}
           </Link>
@@ -51,40 +52,45 @@ export default async function LeaderboardPage({
       </nav>
 
       {rows.length === 0 ? (
-        <p>No players have any recorded stats yet.</p>
+        <p className="text-zinc-400">No players have any recorded stats yet.</p>
       ) : (
-        <div className="players-table-wrap">
-          <table>
+        <div className="overflow-x-auto rounded-xl border border-white/10">
+          <table className="w-full min-w-[480px] border-collapse text-sm">
             <thead>
-              <tr>
-                <th>#</th>
-                <th>Player</th>
-                <th>Kills</th>
-                <th>Deaths</th>
-                <th>K/D</th>
-                <th>Cash</th>
+              <tr className="border-b border-white/10 bg-zinc-900/60 text-left text-xs uppercase tracking-wide text-zinc-500">
+                <th className="px-4 py-3 font-medium">#</th>
+                <th className="px-4 py-3 font-medium">Player</th>
+                <th className="px-4 py-3 font-medium">Kills</th>
+                <th className="px-4 py-3 font-medium">Deaths</th>
+                <th className="px-4 py-3 font-medium">K/D</th>
+                <th className="px-4 py-3 font-medium">Cash</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-white/5">
               {rows.map((row, index) => (
-                <tr key={row.steamId}>
-                  <td>{index + 1}</td>
-                  <td>
-                    <Link href={`/players/${row.steamId}`} className="player-link">
+                <tr key={row.steamId} className="hover:bg-white/5">
+                  <td className="px-4 py-2.5 font-display text-base text-zinc-500">
+                    {index + 1}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <Link
+                      href={`/players/${row.steamId}`}
+                      className="flex items-center font-medium text-zinc-100 hover:text-brand-gold-500"
+                    >
                       {row.factionColor && <FactionSwatch color={row.factionColor} />}
                       {row.displayName}
                     </Link>
                   </td>
-                  <td>{row.kills}</td>
-                  <td>{row.deaths}</td>
-                  <td>{row.kd.toFixed(2)}</td>
-                  <td>{row.cash}</td>
+                  <td className="px-4 py-2.5 text-zinc-300">{row.kills}</td>
+                  <td className="px-4 py-2.5 text-zinc-300">{row.deaths}</td>
+                  <td className="px-4 py-2.5 text-zinc-300">{row.kd.toFixed(2)}</td>
+                  <td className="px-4 py-2.5 text-zinc-300">{row.cash}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-    </main>
+    </div>
   );
 }

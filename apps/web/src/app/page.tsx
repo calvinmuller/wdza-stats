@@ -11,9 +11,5 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const initial = await getLiveSnapshot(db, CONFIGURED_SERVER_BASE_URL);
 
-  return (
-    <main>
-      <LiveServerView initial={initial} />
-    </main>
-  );
+  return <LiveServerView initial={initial} />;
 }

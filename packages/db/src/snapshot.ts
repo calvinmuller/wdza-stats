@@ -48,10 +48,13 @@ export type RotationPreview =
 /**
  * Reads the current and next map from a Snapshot's rotation state, wrapping
  * around to the start of the rotation after the last entry. Returns nulls
- * when the rotation has no entries (e.g. not yet captured).
+ * when the rotation has no entries - either not yet captured, or (since
+ * Snapshot payloads are stored as untyped jsonb) a row persisted by a Worker
+ * build that predates `entries` being added to this shape.
  */
 export function getRotationPreview(rotation: SnapshotRotation): RotationPreview {
-  const { entries, nowIndex } = rotation;
+  const { nowIndex } = rotation;
+  const entries = rotation.entries ?? [];
   if (entries.length === 0) {
     return { current: null, next: null };
   }

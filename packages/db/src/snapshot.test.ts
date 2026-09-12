@@ -34,4 +34,18 @@ describe("getRotationPreview", () => {
 
     expect(result).toEqual({ current: null, next: null });
   });
+
+  it("returns nulls for a stored payload that predates the entries field", () => {
+    // Snapshot payloads are stored as untyped jsonb, so a row persisted by
+    // an older Worker build can lack `entries` even though the type now
+    // requires it - this must not throw.
+    const legacyRotation = { nowIndex: 0 } as unknown as {
+      nowIndex: number;
+      entries: { map: string }[];
+    };
+
+    const result = getRotationPreview(legacyRotation);
+
+    expect(result).toEqual({ current: null, next: null });
+  });
 });

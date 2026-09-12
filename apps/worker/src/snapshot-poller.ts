@@ -17,7 +17,7 @@ function mergeSnapshot(
     experiences: status.experiences,
     rotation: {
       nowIndex: status.rotation.nowIndex,
-      entries: status.rotation.entries.map((entry) => ({ map: entry.map })),
+      entries: (status.rotation.entries ?? []).map((entry) => ({ map: entry.map })),
     },
     factions: status.factionScores.map((faction) => ({
       name: faction.name,

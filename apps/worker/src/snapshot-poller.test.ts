@@ -107,6 +107,26 @@ describe("pollAndPersistSnapshot", () => {
       ],
     });
   });
+
+  it("persists an empty rotation entries list when the RCON server omits it", async () => {
+    const server = await seedServer();
+    const rawStatus = statusFixture({ map: "Sandstorm" });
+    delete (rawStatus.rotation as { entries?: unknown }).entries;
+    const client = scriptedRconClient([
+      { status: rawStatus, players: playersFixture([]) },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const rows = await db
+      .select()
+      .from(latestSnapshots)
+      .where(eq(latestSnapshots.serverId, server.id));
+
+    expect(rows[0].payload).toMatchObject({
+      rotation: { nowIndex: 0, entries: [] },
+    });
+  });
 });
 
 describe("pollOnce", () => {

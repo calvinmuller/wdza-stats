@@ -9,7 +9,11 @@ export interface RawStatusResponse {
   map: string;
   lighting: string;
   alternator: string;
-  rotation: { nowIndex: number; entries: Array<{ map: string }> };
+  // `entries` is documented by the RCON API but the live WDZA server doesn't
+  // actually send it (same category of gap as the missing matchSeconds/
+  // scoreCap fields in docs/adr/0001) - optional here, defaulted in
+  // mergeSnapshot (snapshot-poller.ts) rather than assumed present.
+  rotation: { nowIndex: number; entries?: Array<{ map: string }> };
   experiences: string[];
   factionScores: Array<{ name: string; colorHex: string; score: number }>;
 }

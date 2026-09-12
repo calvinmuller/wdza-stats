@@ -1,7 +1,6 @@
-import { fileURLToPath } from "node:url";
 import { createDb, type Database } from "./client";
 import { servers } from "./schema";
-import { requireEnv } from "./env";
+import { requireEnv, runIfMain } from "./env";
 
 export async function seedServer(
   db: Database,
@@ -18,8 +17,7 @@ export async function seedServer(
   return server;
 }
 
-const isMain = process.argv[1] === fileURLToPath(import.meta.url);
-if (isMain) {
+runIfMain(import.meta.url, async () => {
   const db = createDb(requireEnv("DATABASE_URL"));
   const server = await seedServer(db, {
     name: requireEnv("SERVER_NAME"),
@@ -27,4 +25,4 @@ if (isMain) {
   });
   console.log("Seeded server:", server);
   await db.$client.end();
-}
+});

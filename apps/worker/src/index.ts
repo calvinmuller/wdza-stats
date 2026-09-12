@@ -1,15 +1,7 @@
-import { createDb } from "@wdza-stats/db";
+import { createDb, requireEnv } from "@wdza-stats/db";
 import { runHeartbeat } from "./heartbeat";
 
 const HEARTBEAT_INTERVAL_MS = 60_000;
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
 
 const db = createDb(requireEnv("DATABASE_URL"));
 const baseUrl = requireEnv("RCON_BASE_URL");

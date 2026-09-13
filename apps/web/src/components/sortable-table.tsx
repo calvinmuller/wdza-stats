@@ -25,12 +25,14 @@ export function SortableTable<Row>({
   rowKey,
   defaultSort,
   minWidthClassName = "min-w-[480px]",
+  emptyMessage = "No data yet.",
 }: {
   columns: SortableColumn<Row>[];
   rows: Row[];
   rowKey: (row: Row) => string | number;
   defaultSort: SortState;
   minWidthClassName?: string;
+  emptyMessage?: string;
 }) {
   const [sort, setSort] = useState<SortState>(defaultSort);
 
@@ -84,6 +86,16 @@ export function SortableTable<Row>({
           </tr>
         </thead>
         <tbody className="divide-y divide-white/5">
+          {sortedRows.length === 0 && (
+            <tr>
+              <td
+                colSpan={columns.length}
+                className="px-4 py-6 text-center text-zinc-500"
+              >
+                {emptyMessage}
+              </td>
+            </tr>
+          )}
           {sortedRows.map((row) => (
             <tr key={rowKey(row)} className="hover:bg-white/5">
               {columns.map((column) => (

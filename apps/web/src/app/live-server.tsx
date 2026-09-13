@@ -151,6 +151,7 @@ export function LiveServerView({
           rows={snapshot.players}
           rowKey={(player) => player.steamId}
           defaultSort={{ column: "kills", direction: "desc" }}
+          emptyMessage="No players online right now."
         />
       </section>
     </div>

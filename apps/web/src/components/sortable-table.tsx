@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 export interface SortableColumn<Row> {
   key: string;
@@ -62,6 +62,46 @@ export function SortableTable<Row>({
     return sort.direction === "asc" ? sorted : sorted.reverse();
   }, [rows, columns, sort]);
 
+  // FLIP animation: when a row's on-screen position moves (new poll data
+  // reorders the leaderboard, or the reader changes the sort column), slide
+  // it from its old spot to its new one instead of popping there instantly.
+  const rowRefs = useRef(new Map<string | number, HTMLTableRowElement>());
+  const rowTopsRef = useRef(new Map<string | number, number>());
+
+  useLayoutEffect(() => {
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const nextTops = new Map<string | number, number>();
+    rowRefs.current.forEach((el, key) => {
+      nextTops.set(key, el.getBoundingClientRect().top);
+    });
+
+    if (!prefersReducedMotion) {
+      rowRefs.current.forEach((el, key) => {
+        const prevTop = rowTopsRef.current.get(key);
+        const nextTop = nextTops.get(key);
+        if (prevTop === undefined || nextTop === undefined || prevTop === nextTop) {
+          return;
+        }
+
+        const delta = prevTop - nextTop;
+        el.style.transition = "none";
+        el.style.transform = `translateY(${delta}px)`;
+
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            el.style.transition = "transform 300ms ease";
+            el.style.transform = "";
+          });
+        });
+      });
+    }
+
+    rowTopsRef.current = nextTops;
+  }, [sortedRows]);
+
   return (
     <div className="overflow-x-auto rounded-xl border border-white/10">
       <table className={`w-full ${minWidthClassName} border-collapse text-sm`}>
@@ -97,7 +137,18 @@ export function SortableTable<Row>({
             </tr>
           )}
           {sortedRows.map((row) => (
-            <tr key={rowKey(row)} className="hover:bg-white/5">
+            <tr
+              key={rowKey(row)}
+              ref={(el) => {
+                const key = rowKey(row);
+                if (el) {
+                  rowRefs.current.set(key, el);
+                } else {
+                  rowRefs.current.delete(key);
+                }
+              }}
+              className="relative hover:bg-white/5"
+            >
               {columns.map((column) => (
                 <td
                   key={column.key}

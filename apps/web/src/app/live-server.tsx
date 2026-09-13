@@ -98,11 +98,18 @@ export function LiveServerView({
 
   const { serverName, capturedAt, snapshot } = data;
   const rotation = getRotationPreview(snapshot.rotation);
+  const playerCount = snapshot.players.length;
 
   return (
     <div className="flex flex-col gap-8">
       <section className="rounded-xl border border-white/10 bg-zinc-900/60 p-6">
-        <h1 className="text-3xl">{serverName}</h1>
+        <div className="flex items-start justify-between gap-4">
+          <h1 className="text-3xl">{serverName}</h1>
+          <p className="whitespace-nowrap text-sm text-zinc-400">
+            <span className="font-display text-lg text-zinc-50">{playerCount}</span>{" "}
+            {playerCount === 1 ? "player" : "players"} online
+          </p>
+        </div>
         <p className="mt-1 text-sm text-zinc-400">
           Map: <span className="text-zinc-200">{snapshot.map}</span>
           <span className="mx-2 text-zinc-600">&middot;</span>
@@ -145,7 +152,10 @@ export function LiveServerView({
       </section>
 
       <section>
-        <h2 className="mb-3 text-xl">Online players</h2>
+        <h2 className="mb-3 text-xl">
+          Online players{" "}
+          <span className="text-sm font-normal text-zinc-500">({playerCount})</span>
+        </h2>
         <SortableTable
           columns={playerColumns}
           rows={snapshot.players}

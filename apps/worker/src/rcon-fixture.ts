@@ -17,6 +17,7 @@ export function statusFixture(
       { name: "Lonestar", colorHex: "#ff0000", score: 10 },
       { name: "Valkyra", colorHex: "#0000ff", score: 8 },
     ],
+    players: { current: 0, max: 100 },
     ...overrides,
   };
 }

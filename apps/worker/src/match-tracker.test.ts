@@ -42,6 +42,7 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
     rotation: { nowIndex: 0, entries: [{ map: "Sandstorm" }] },
     factions: [],
     players: [],
+    playerSlots: { current: 0, max: 100 },
     ...overrides,
   };
 }

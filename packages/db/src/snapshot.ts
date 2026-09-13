@@ -31,6 +31,11 @@ export interface SnapshotRotation {
   entries: RotationEntry[];
 }
 
+export interface PlayerSlots {
+  current: number;
+  max: number;
+}
+
 export interface Snapshot {
   map: string;
   lighting: string;
@@ -39,6 +44,7 @@ export interface Snapshot {
   rotation: SnapshotRotation;
   factions: SnapshotFaction[];
   players: SnapshotPlayer[];
+  playerSlots: PlayerSlots;
 }
 
 export type RotationPreview =

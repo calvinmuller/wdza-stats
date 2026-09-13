@@ -16,6 +16,7 @@ export interface RawStatusResponse {
   rotation: { nowIndex: number; entries?: Array<{ map: string }> };
   experiences: string[];
   factionScores: Array<{ name: string; colorHex: string; score: number }>;
+  players: { current: number; max: number };
 }
 
 export interface RawPlayersResponse {

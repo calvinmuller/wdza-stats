@@ -33,6 +33,7 @@ function mergeSnapshot(
       cash: player.cash,
       ping: player.pingMs,
     })),
+    playerSlots: { current: status.players.current, max: status.players.max },
   };
 }
 

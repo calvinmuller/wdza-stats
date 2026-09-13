@@ -21,6 +21,7 @@ export function snapshotFixture(overrides: Partial<Snapshot> = {}): Snapshot {
         ping: 40,
       },
     ],
+    playerSlots: { current: 0, max: 100 },
     ...overrides,
   };
 }

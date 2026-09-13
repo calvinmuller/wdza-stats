@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Barlow_Condensed } from "next/font/google";
+import { NavLinks } from "@/components/nav-links";
 import "./globals.css";
 
 const heading = Barlow_Condensed({
@@ -13,14 +14,6 @@ export const metadata = {
   title: "WDZA Stats",
   description: "Live status and leaderboards for the WDZA Wardogs server.",
 };
-
-const NAV_LINKS = [
-  { href: "/", label: "Live" },
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/players", label: "Players" },
-  { href: "/matches", label: "Matches" },
-  { href: "/stats", label: "Stats" },
-];
 
 export default function RootLayout({
   children,
@@ -45,17 +38,7 @@ export default function RootLayout({
                 WDZA <span className="text-brand-gold-500">Stats</span>
               </span>
             </Link>
-            <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="text-zinc-400 transition-colors hover:text-brand-gold-500"
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
+            <NavLinks />
           </div>
         </header>
 

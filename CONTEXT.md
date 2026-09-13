@@ -18,6 +18,7 @@ _Avoid_: Round, Session, Game
 
 **Faction**:
 One of a Server's competing sides in a Match (e.g. Lonestar, Valkyra, Manticore), with its own running score. Faction names and colors are defined per-Server, not fixed across all Wardogs servers.
+A round/game is one by the first faction to reach 100
 _Avoid_: Team
 
 **PlayerMatchStat**:

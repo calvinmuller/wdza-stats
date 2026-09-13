@@ -89,12 +89,69 @@ describe("getLeaderboard", () => {
     ]);
 
     const byKd = await getLeaderboard(db, BASE_URL, "kd");
-    // Carol: 5/0 -> 5, Bob: 20/2 -> 10, Alice: 50/10 -> 5
+    // Raw K/D: Carol 5/0 -> 5, Bob 20/2 -> 10, Alice 50/10 -> 5, all shrunk
+    // toward the server average (weighted by matches played), so Carol's
+    // one game pulls further toward average than Alice's three.
+    // avgKd = 75/12 = 6.25
+    // Alice: (3*5 + 10*6.25) / 13 ~= 5.96
+    // Bob: (1*10 + 10*6.25) / 11 ~= 6.59
+    // Carol: (2*5 + 10*6.25) / 12 ~= 6.04
     expect(byKd.map((row) => row.displayName)).toEqual([
       "Bob",
-      "Alice",
       "Carol",
+      "Alice",
     ]);
+  });
+
+  it("shrinks a small-sample K/D toward the server average more than a well-established one", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    await db.insert(playerCareerStats).values([
+      // A handful of typical players establishing a stable server-average
+      // K/D of around 3, so the shrinkage below has a real baseline to
+      // pull toward instead of being dominated by the two outliers.
+      ...["Dave", "Erin", "Frank"].map((displayName, index) => ({
+        serverId: server.id,
+        steamId: `avg-${index}`,
+        displayName,
+        kills: 30,
+        deaths: 10,
+        cash: 0,
+        matchesPlayed: 10,
+      })),
+      {
+        // One game, perfect record - raw K/D of 9 shouldn't outrank a
+        // long, consistently strong record.
+        serverId: server.id,
+        steamId: "1",
+        displayName: "OneHitWonder",
+        kills: 9,
+        deaths: 0,
+        cash: 0,
+        matchesPlayed: 1,
+      },
+      {
+        // Twenty games at K/D 7 - a proven, reliable record.
+        serverId: server.id,
+        steamId: "2",
+        displayName: "Veteran",
+        kills: 140,
+        deaths: 20,
+        cash: 0,
+        matchesPlayed: 20,
+      },
+    ]);
+
+    const byKd = await getLeaderboard(db, BASE_URL, "kd");
+
+    expect(
+      byKd
+        .map((row) => row.displayName)
+        .filter((name) => name === "Veteran" || name === "OneHitWonder"),
+    ).toEqual(["Veteran", "OneHitWonder"]);
   });
 
   it("includes cash, deaths, K/D and matches played in each row", async () => {
@@ -121,6 +178,7 @@ describe("getLeaderboard", () => {
       kills: 10,
       deaths: 4,
       kd: 2.5,
+      adjustedKd: 2.5,
       cash: 1500,
       matchesPlayed: 3,
       factionColor: null,

@@ -16,14 +16,35 @@ export const LEADERBOARD_SORTS: LeaderboardSort[] = [
   "cash",
 ];
 
-export type LeaderboardRow = PlayerCareerView;
+export type LeaderboardRow = PlayerCareerView & { adjustedKd: number };
 
 const SORT_VALUE: Record<LeaderboardSort, (row: LeaderboardRow) => number> = {
   kills: (row) => row.kills,
   deaths: (row) => row.deaths,
-  kd: (row) => row.kd,
+  kd: (row) => row.adjustedKd,
   cash: (row) => row.cash,
 };
+
+// A player's raw K/D is unreliable over a handful of matches - one lucky
+// game with zero deaths outranks a veteran with a great long-run record.
+// Shrink each player's K/D toward the server average, weighted by matches
+// played against this many "prior" matches of average performance, so a
+// K/D only pulls rank once it's backed by enough games to trust it.
+const KD_SHRINKAGE_PRIOR_MATCHES = 10;
+
+function withAdjustedKd(rows: PlayerCareerView[]): LeaderboardRow[] {
+  const totalKills = rows.reduce((sum, row) => sum + row.kills, 0);
+  const totalDeaths = rows.reduce((sum, row) => sum + row.deaths, 0);
+  const serverAverageKd = totalDeaths === 0 ? totalKills : totalKills / totalDeaths;
+
+  return rows.map((row) => ({
+    ...row,
+    adjustedKd:
+      (row.matchesPlayed * row.kd +
+        KD_SHRINKAGE_PRIOR_MATCHES * serverAverageKd) /
+      (row.matchesPlayed + KD_SHRINKAGE_PRIOR_MATCHES),
+  }));
+}
 
 /**
  * Ranks every player with a PlayerCareerStat on the given Server, highest
@@ -49,7 +70,9 @@ export async function getLeaderboard(
     getOnlineFactionColors(db, server.id),
   ]);
 
-  const rows = statRows.map((row) => toPlayerCareerView(row, factionColors));
+  const rows = withAdjustedKd(
+    statRows.map((row) => toPlayerCareerView(row, factionColors)),
+  );
 
   const value = SORT_VALUE[sort];
   return rows.sort((a, b) => value(b) - value(a));

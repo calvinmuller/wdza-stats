@@ -48,6 +48,7 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
                 <th className="px-4 py-3 font-medium">Kills</th>
                 <th className="px-4 py-3 font-medium">Deaths</th>
                 <th className="px-4 py-3 font-medium">K/D</th>
+                <th className="px-4 py-3 font-medium">Adj. K/D</th>
                 <th className="px-4 py-3 font-medium">Cash</th>
               </tr>
             </thead>
@@ -68,6 +69,9 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
                   <td className="px-4 py-2.5 text-zinc-300">{row.kills}</td>
                   <td className="px-4 py-2.5 text-zinc-300">{row.deaths}</td>
                   <td className="px-4 py-2.5 text-zinc-300">{row.kd.toFixed(2)}</td>
+                  <td className="px-4 py-2.5 text-zinc-300">
+                    {row.adjustedKd.toFixed(2)}
+                  </td>
                   <td className="px-4 py-2.5 text-zinc-300">{row.cash}</td>
                 </tr>
               ))}

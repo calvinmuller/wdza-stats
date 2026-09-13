@@ -13,6 +13,10 @@ import type { LiveSnapshotView } from "@/lib/live-snapshot";
 // No point refreshing faster than new Snapshots can actually arrive.
 export const REFRESH_INTERVAL_MS = SNAPSHOT_POLL_INTERVAL_MS;
 
+// The Server's player slot capacity. Not exposed by the RCON API, so this is
+// hardcoded rather than read from a Snapshot.
+const MAX_PLAYERS = 100;
+
 // A fixed UTC hh:mm:ss, pinned to a locale/timeZone so the server (whatever
 // it runs under) and the client always render identical text - avoids the
 // hydration mismatch `Date.prototype.toLocaleTimeString()` would produce.
@@ -106,8 +110,10 @@ export function LiveServerView({
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-3xl">{serverName}</h1>
           <p className="whitespace-nowrap text-sm text-zinc-400">
-            <span className="font-display text-lg text-zinc-50">{playerCount}</span>{" "}
-            {playerCount === 1 ? "player" : "players"} online
+            <span className="font-display text-lg text-zinc-50">
+              {playerCount}/{MAX_PLAYERS}
+            </span>{" "}
+            players online
           </p>
         </div>
         <p className="mt-1 text-sm text-zinc-400">
@@ -154,7 +160,9 @@ export function LiveServerView({
       <section>
         <h2 className="mb-3 text-xl">
           Online players{" "}
-          <span className="text-sm font-normal text-zinc-500">({playerCount})</span>
+          <span className="text-sm font-normal text-zinc-500">
+            ({playerCount}/{MAX_PLAYERS})
+          </span>
         </h2>
         <SortableTable
           columns={playerColumns}

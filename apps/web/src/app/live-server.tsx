@@ -7,6 +7,7 @@ import { getRotationPreview, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/sn
 import type { SnapshotPlayer } from "@wdza-stats/db/snapshot";
 import { useEffect, useMemo, useState } from "react";
 import { FactionSwatch } from "@/components/faction-swatch";
+import { LightingBadge } from "@/components/lighting-badge";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
 import type { LiveSnapshotView } from "@/lib/live-snapshot";
 
@@ -115,6 +116,8 @@ export function LiveServerView({
         </div>
         <p className="mt-1 text-sm text-zinc-400">
           Map: <span className="text-zinc-200">{snapshot.map}</span>
+          <span className="mx-2 text-zinc-600">&middot;</span>
+          <LightingBadge lighting={snapshot.lighting} />
           <span className="mx-2 text-zinc-600">&middot;</span>
           Updated{" "}
           <time dateTime={capturedAt} className="text-zinc-200">

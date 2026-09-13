@@ -19,6 +19,84 @@ html {
   color-scheme: dark;
 }
 
+/*
+ * Light mode works by inverting the zinc scale (and `white`, used for
+ * subtle borders/overlays) rather than rewriting every `zinc-*`/`white/N`
+ * utility class across the app: every component already expresses its look
+ * purely in terms of these tokens, so redefining what they point to here
+ * repaints the whole site without touching component markup.
+ */
+.light {
+  color-scheme: light;
+  --color-white: #09090b;
+  --color-zinc-950: #fafafa;
+  --color-zinc-900: #f4f4f5;
+  --color-zinc-800: #e4e4e7;
+  --color-zinc-700: #d4d4d8;
+  --color-zinc-600: #a1a1aa;
+  --color-zinc-500: #71717a;
+  --color-zinc-400: #52525b;
+  --color-zinc-300: #3f3f46;
+  --color-zinc-200: #27272a;
+  --color-zinc-100: #18181b;
+  --color-zinc-50: #09090b;
+  /* The bright brand gold is tuned for a near-black background - on a
+     light background it's too close in lightness to read, so it's
+     darkened here rather than swapped for an unrelated hue. */
+  --color-brand-gold-400: #a3730a;
+  --color-brand-gold-500: #7a5308;
+  --color-brand-gold-600: #5c3f06;
+}
+
+/*
+ * Warm, dimmer scheme for the DayLate* lightings - deliberately not a
+ * bright inversion like `.light` (afternoon light in-game reads flatter
+ * and more amber, not "less dark"), so the scale tops out at a dim tan
+ * rather than near-white.
+ */
+.dusk {
+  color-scheme: light;
+  --color-white: #1c140a;
+  --color-zinc-950: #e8d9b8;
+  --color-zinc-900: #ddc99e;
+  --color-zinc-800: #c9ad7c;
+  --color-zinc-700: #ad8f5c;
+  --color-zinc-600: #8a7047;
+  --color-zinc-500: #6b5738;
+  --color-zinc-400: #4f3f29;
+  --color-zinc-300: #3a2f1f;
+  --color-zinc-200: #2a2115;
+  --color-zinc-100: #1c160e;
+  --color-zinc-50: #120e09;
+  /* Same reasoning as `.light` - darkened further since the dusk
+     background itself already sits in the tan/gold hue family, so a
+     lighter gold would blend into it instead of standing out. */
+  --color-brand-gold-400: #74490a;
+  --color-brand-gold-500: #5c3a00;
+  --color-brand-gold-600: #442b00;
+}
+
+/*
+ * A flat gray tint shown whenever the live weather is foggy - independent
+ * of the light/dusk/dark color scheme, since fog can occur in any of
+ * them. No blur: an earlier version used `backdrop-filter: blur`, which
+ * blurred the page text along with the "fog" and made it unreadable.
+ * This is a plain low-opacity color wash instead, so text stays sharp.
+ */
+.fog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0;
+  background: rgb(140 140 140 / 12%);
+  transition: opacity 1.2s ease;
+}
+
+.foggy .fog-overlay {
+  opacity: 1;
+}
+
 body {
   @apply bg-zinc-950 text-zinc-200 antialiased;
 }

@@ -7,35 +7,8 @@ import { getRotationPreview, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/sn
 import type { SnapshotPlayer } from "@wdza-stats/db/snapshot";
 import { useEffect, useMemo, useState } from "react";
 import { FactionSwatch } from "@/components/faction-swatch";
+import { SortableTable, type SortableColumn } from "@/components/sortable-table";
 import type { LiveSnapshotView } from "@/lib/live-snapshot";
-
-type PlayerSortColumn = "displayName" | "faction" | "kills" | "deaths" | "cash" | "ping";
-
-const PLAYER_COLUMNS: { key: PlayerSortColumn; label: string }[] = [
-  { key: "displayName", label: "Player" },
-  { key: "faction", label: "Faction" },
-  { key: "kills", label: "Kills" },
-  { key: "deaths", label: "Deaths" },
-  { key: "cash", label: "Cash" },
-  { key: "ping", label: "Ping" },
-];
-
-const TEXT_COLUMNS = new Set<PlayerSortColumn>(["displayName", "faction"]);
-
-function sortPlayers(
-  players: SnapshotPlayer[],
-  column: PlayerSortColumn,
-  direction: "asc" | "desc",
-): SnapshotPlayer[] {
-  const sorted = [...players].sort((a, b) => {
-    const [left, right] = [a[column], b[column]];
-    if (typeof left === "string" || typeof right === "string") {
-      return String(left).localeCompare(String(right));
-    }
-    return left - right;
-  });
-  return direction === "asc" ? sorted : sorted.reverse();
-}
 
 // No point refreshing faster than new Snapshots can actually arrive.
 export const REFRESH_INTERVAL_MS = SNAPSHOT_POLL_INTERVAL_MS;
@@ -61,18 +34,6 @@ export function LiveServerView({
   initial: LiveSnapshotView | null;
 }) {
   const [data, setData] = useState(initial);
-  const [sort, setSort] = useState<{ column: PlayerSortColumn; direction: "asc" | "desc" }>({
-    column: "kills",
-    direction: "desc",
-  });
-
-  function toggleSort(column: PlayerSortColumn) {
-    setSort((prev) =>
-      prev.column === column
-        ? { column, direction: prev.direction === "asc" ? "desc" : "asc" }
-        : { column, direction: TEXT_COLUMNS.has(column) ? "asc" : "desc" },
-    );
-  }
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -89,15 +50,43 @@ export function LiveServerView({
     return () => clearInterval(interval);
   }, []);
 
-  const sortedPlayers = useMemo(
-    () => (data ? sortPlayers(data.snapshot.players, sort.column, sort.direction) : []),
-    [data, sort],
-  );
-
   const factionColorByName = useMemo(
     () => new Map(data?.snapshot.factions.map((faction) => [faction.name, faction.color]) ?? []),
     [data],
   );
+
+  const playerColumns: SortableColumn<SnapshotPlayer>[] = [
+    {
+      key: "displayName",
+      label: "Player",
+      value: (player) => player.displayName,
+      cellClassName: "font-medium text-zinc-100",
+    },
+    {
+      key: "faction",
+      label: "Faction",
+      value: (player) => player.faction,
+      cellClassName: "text-zinc-400",
+      render: (player) => (
+        <span className="flex items-center">
+          {factionColorByName.get(player.faction) && (
+            <FactionSwatch color={factionColorByName.get(player.faction)!} />
+          )}
+          {player.faction}
+        </span>
+      ),
+    },
+    { key: "kills", label: "Kills", value: (player) => player.kills, numeric: true },
+    { key: "deaths", label: "Deaths", value: (player) => player.deaths, numeric: true },
+    { key: "cash", label: "Cash", value: (player) => player.cash, numeric: true },
+    {
+      key: "ping",
+      label: "Ping",
+      value: (player) => player.ping,
+      numeric: true,
+      cellClassName: "text-zinc-500",
+    },
+  ];
 
   if (!data) {
     return (
@@ -157,51 +146,12 @@ export function LiveServerView({
 
       <section>
         <h2 className="mb-3 text-xl">Online players</h2>
-        <div className="overflow-x-auto rounded-xl border border-white/10">
-          <table className="w-full min-w-[480px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-white/10 bg-zinc-900/60 text-left text-xs uppercase tracking-wide text-zinc-500">
-                {PLAYER_COLUMNS.map((column) => (
-                  <th key={column.key} className="px-4 py-3 font-medium">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort(column.key)}
-                      className="flex items-center gap-1 uppercase tracking-wide text-zinc-500 hover:text-zinc-200"
-                    >
-                      {column.label}
-                      {sort.column === column.key && (
-                        <span className="text-brand-gold-500">
-                          {sort.direction === "asc" ? "↑" : "↓"}
-                        </span>
-                      )}
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {sortedPlayers.map((player) => (
-                <tr key={player.steamId} className="hover:bg-white/5">
-                  <td className="px-4 py-2.5 font-medium text-zinc-100">
-                    {player.displayName}
-                  </td>
-                  <td className="px-4 py-2.5 text-zinc-400">
-                    <span className="flex items-center">
-                      {factionColorByName.get(player.faction) && (
-                        <FactionSwatch color={factionColorByName.get(player.faction)!} />
-                      )}
-                      {player.faction}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-zinc-300">{player.kills}</td>
-                  <td className="px-4 py-2.5 text-zinc-300">{player.deaths}</td>
-                  <td className="px-4 py-2.5 text-zinc-300">{player.cash}</td>
-                  <td className="px-4 py-2.5 text-zinc-500">{player.ping}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SortableTable
+          columns={playerColumns}
+          rows={snapshot.players}
+          rowKey={(player) => player.steamId}
+          defaultSort={{ column: "kills", direction: "desc" }}
+        />
       </section>
     </div>
   );

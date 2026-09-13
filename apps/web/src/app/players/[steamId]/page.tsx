@@ -1,4 +1,5 @@
 import { FactionSwatch } from "@/components/faction-swatch";
+import { PlayerMatchHistoryTable } from "@/components/player-match-history-table";
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { getPlayerMatchHistory } from "@/lib/match-history";
@@ -60,48 +61,7 @@ export default async function PlayerPage({
         {matchHistory.length === 0 ? (
           <p className="text-zinc-400">No completed matches yet.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-white/10">
-            <table className="w-full min-w-[520px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-white/10 bg-zinc-900/60 text-left text-xs uppercase tracking-wide text-zinc-500">
-                  <th className="px-4 py-3 font-medium">Map</th>
-                  <th className="px-4 py-3 font-medium">Faction</th>
-                  <th className="px-4 py-3 font-medium">Kills</th>
-                  <th className="px-4 py-3 font-medium">Deaths</th>
-                  <th className="px-4 py-3 font-medium">K/D</th>
-                  <th className="px-4 py-3 font-medium">Cash</th>
-                  <th className="px-4 py-3 font-medium">Ended</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {matchHistory.map((match) => (
-                  <tr key={match.matchId} className="hover:bg-white/5">
-                    <td className="px-4 py-2.5 font-medium text-zinc-100">
-                      {match.map}
-                    </td>
-                    <td className="px-4 py-2.5 text-zinc-300">
-                      {match.faction}
-                    </td>
-                    <td className="px-4 py-2.5 text-zinc-300">
-                      {match.kills}
-                    </td>
-                    <td className="px-4 py-2.5 text-zinc-300">
-                      {match.deaths}
-                    </td>
-                    <td className="px-4 py-2.5 text-zinc-300">
-                      {match.kd.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-2.5 text-zinc-300">
-                      {match.cash}
-                    </td>
-                    <td className="px-4 py-2.5 text-zinc-300">
-                      {new Date(match.endedAt).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <PlayerMatchHistoryTable matches={matchHistory} />
         )}
       </div>
     </div>

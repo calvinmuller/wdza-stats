@@ -1,12 +1,17 @@
 import {
   createDb,
   matches,
+  playerCareerStats,
   playerMatchStats,
   servers,
   type Database,
 } from "@wdza-stats/db";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { getPlayerMatchHistory, getRecentMatches } from "./match-history";
+import {
+  getMatchDetail,
+  getPlayerMatchHistory,
+  getRecentMatches,
+} from "./match-history";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
@@ -14,6 +19,7 @@ const BASE_URL = "http://match-history.test:9006";
 
 afterEach(async () => {
   await db.delete(playerMatchStats);
+  await db.delete(playerCareerStats);
   await db.delete(matches);
   await db.delete(servers);
 });
@@ -252,5 +258,159 @@ describe("getPlayerMatchHistory", () => {
         cash: 100,
       },
     ]);
+  });
+});
+
+describe("getMatchDetail", () => {
+  it("returns null when the Server isn't seeded", async () => {
+    const result = await getMatchDetail(db, BASE_URL, 1);
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the Match is still open", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    const [open] = await db
+      .insert(matches)
+      .values({
+        serverId: server.id,
+        map: "Foundry",
+        experiences: ["Frontline"],
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+      })
+      .returning();
+
+    const result = await getMatchDetail(db, BASE_URL, open.id);
+
+    expect(result).toBeNull();
+  });
+
+  it("returns the winning Faction, totals, and per-player stats, most kills first", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    const [match] = await db
+      .insert(matches)
+      .values({
+        serverId: server.id,
+        map: "Foundry",
+        experiences: ["Frontline"],
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        endedAt: new Date("2026-01-01T00:30:00.000Z"),
+        winningFaction: "Lonestar",
+      })
+      .returning();
+
+    await db.insert(playerCareerStats).values([
+      {
+        serverId: server.id,
+        steamId: "1",
+        displayName: "Alice",
+        kills: 5,
+        deaths: 2,
+        cash: 100,
+        matchesPlayed: 1,
+      },
+      {
+        serverId: server.id,
+        steamId: "2",
+        displayName: "Bob",
+        kills: 3,
+        deaths: 4,
+        cash: 50,
+        matchesPlayed: 1,
+      },
+    ]);
+
+    await db.insert(playerMatchStats).values([
+      {
+        matchId: match.id,
+        steamId: "1",
+        faction: "Lonestar",
+        kills: 5,
+        deaths: 2,
+        cash: 100,
+      },
+      {
+        matchId: match.id,
+        steamId: "2",
+        faction: "Valkyra",
+        kills: 3,
+        deaths: 4,
+        cash: 50,
+      },
+    ]);
+
+    const result = await getMatchDetail(db, BASE_URL, match.id);
+
+    expect(result).toEqual({
+      id: match.id,
+      map: "Foundry",
+      experiences: ["Frontline"],
+      startedAt: "2026-01-01T00:00:00.000Z",
+      endedAt: "2026-01-01T00:30:00.000Z",
+      winningFaction: "Lonestar",
+      totalKills: 8,
+      totalDeaths: 6,
+      totalCash: 150,
+      players: [
+        {
+          steamId: "1",
+          displayName: "Alice",
+          faction: "Lonestar",
+          kills: 5,
+          deaths: 2,
+          kd: 2.5,
+          cash: 100,
+        },
+        {
+          steamId: "2",
+          displayName: "Bob",
+          faction: "Valkyra",
+          kills: 3,
+          deaths: 4,
+          kd: 0.75,
+          cash: 50,
+        },
+      ],
+    });
+  });
+
+  it("falls back to the steamId when no displayName is known", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    const [match] = await db
+      .insert(matches)
+      .values({
+        serverId: server.id,
+        map: "Foundry",
+        experiences: ["Frontline"],
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        endedAt: new Date("2026-01-01T00:30:00.000Z"),
+      })
+      .returning();
+
+    await db.insert(playerMatchStats).values({
+      matchId: match.id,
+      steamId: "99",
+      faction: "Lonestar",
+      kills: 1,
+      deaths: 1,
+      cash: 5,
+    });
+
+    const result = await getMatchDetail(db, BASE_URL, match.id);
+
+    expect(result?.players[0].displayName).toBe("99");
+    expect(result?.winningFaction).toBeNull();
   });
 });

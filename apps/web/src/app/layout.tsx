@@ -19,6 +19,7 @@ const NAV_LINKS = [
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/players", label: "Players" },
   { href: "/matches", label: "Matches" },
+  { href: "/stats", label: "Stats" },
 ];
 
 export default function RootLayout({

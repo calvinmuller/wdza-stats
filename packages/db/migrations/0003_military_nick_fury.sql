@@ -1,0 +1,1 @@
+ALTER TABLE "matches" ADD COLUMN "winning_faction" text;

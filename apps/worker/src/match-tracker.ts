@@ -87,10 +87,24 @@ export function computePlayerDeltas(snapshots: Snapshot[]): PlayerDelta[] {
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /**
+ * The Faction with the highest score in a Match's final Snapshot - "first to
+ * 100" is enforced server-side, so whoever leads when the Match ends is the
+ * winner. Returns null when the final Snapshot recorded no Factions.
+ */
+export function winningFaction(finalSnapshot: Snapshot): string | null {
+  if (finalSnapshot.factions.length === 0) {
+    return null;
+  }
+  return finalSnapshot.factions.reduce((leader, faction) =>
+    faction.score > leader.score ? faction : leader,
+  ).name;
+}
+
+/**
  * Closes an open Match: computes each observed player's delta from its
  * retained matchSnapshots, writes PlayerMatchStat rows, rolls those deltas
- * into PlayerCareerStat, stamps endedAt, and drops the now-redundant raw
- * Snapshots for that Match.
+ * into PlayerCareerStat, stamps endedAt and the winning Faction, and drops
+ * the now-redundant raw Snapshots for that Match.
  */
 async function closeMatch(
   tx: Tx,
@@ -104,6 +118,7 @@ async function closeMatch(
     .orderBy(matchSnapshots.capturedAt);
 
   const deltas = computePlayerDeltas(rows.map((row) => row.payload));
+  const winner = winningFaction(rows[rows.length - 1].payload);
 
   for (const delta of deltas) {
     await tx.insert(playerMatchStats).values({
@@ -138,7 +153,10 @@ async function closeMatch(
       });
   }
 
-  await tx.update(matches).set({ endedAt }).where(eq(matches.id, match.id));
+  await tx
+    .update(matches)
+    .set({ endedAt, winningFaction: winner })
+    .where(eq(matches.id, match.id));
   await tx.delete(matchSnapshots).where(eq(matchSnapshots.matchId, match.id));
 }
 

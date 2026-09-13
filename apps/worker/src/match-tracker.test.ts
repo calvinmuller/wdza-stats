@@ -12,7 +12,11 @@ import {
 } from "@wdza-stats/db";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { computePlayerDeltas, detectMatchBoundary } from "./match-tracker";
+import {
+  computePlayerDeltas,
+  detectMatchBoundary,
+  winningFaction,
+} from "./match-tracker";
 import { playersFixture, scriptedRconClient, statusFixture } from "./rcon-fixture";
 import { pollAndPersistSnapshot } from "./snapshot-poller";
 
@@ -104,6 +108,23 @@ describe("detectMatchBoundary", () => {
     const next = snapshot({ players: [player({ steamId: "2", kills: 3 })] });
 
     expect(detectMatchBoundary(previous, next)).toBe(false);
+  });
+});
+
+describe("winningFaction", () => {
+  it("is the Faction with the highest score", () => {
+    const finalSnapshot = snapshot({
+      factions: [
+        { name: "Lonestar", color: "#ff0000", score: 100 },
+        { name: "Valkyra", color: "#0000ff", score: 82 },
+      ],
+    });
+
+    expect(winningFaction(finalSnapshot)).toBe("Lonestar");
+  });
+
+  it("is null when the final Snapshot recorded no Factions", () => {
+    expect(winningFaction(snapshot({ factions: [] }))).toBeNull();
   });
 });
 
@@ -290,6 +311,8 @@ describe("Match-boundary detection and persistence (integration)", () => {
 
     const [closed] = await closedMatchesFor(server.id);
     expect(closed).toBeDefined();
+    // statusFixture()'s default factionScores lead with Lonestar 10 - Valkyra 8.
+    expect(closed.winningFaction).toBe("Lonestar");
 
     const stats = await db
       .select()

@@ -27,7 +27,10 @@ export const latestSnapshots = pgTable("latest_snapshots", {
   payload: jsonb("payload").notNull().$type<Snapshot>(),
 });
 
-// endedAt is null while the Match is still open.
+// endedAt is null while the Match is still open. winningFaction is set only
+// when the Match closes (the Faction with the highest score in its final
+// Snapshot) - null for a still-open Match, and for any Match closed before
+// this column existed.
 export const matches = pgTable("matches", {
   id: serial("id").primaryKey(),
   serverId: integer("server_id")
@@ -37,6 +40,7 @@ export const matches = pgTable("matches", {
   experiences: text("experiences").array().notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   endedAt: timestamp("ended_at", { withTimezone: true }),
+  winningFaction: text("winning_faction"),
 });
 
 // Raw Snapshots belonging to the currently-open Match, kept only long enough

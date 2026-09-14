@@ -6,24 +6,29 @@ import {
   type PlayerCareerView,
 } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
-import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
+import { getAvatarUrlsBySteamId, getPlaytimeMinutesBySteamId } from "./steam-profile-lookup";
 
-export type LeaderboardSort = "kills" | "deaths" | "kd" | "cash";
+export type LeaderboardSort = "kills" | "deaths" | "kd" | "cash" | "playtime";
 
 export const LEADERBOARD_SORTS: LeaderboardSort[] = [
   "kills",
   "deaths",
   "kd",
   "cash",
+  "playtime",
 ];
 
 export type LeaderboardRow = PlayerCareerView & { adjustedKd: number };
 
+// A player with no cached playtime (never fetched, or private game
+// details) sorts below every player with a known value, including a
+// genuine 0 - "unknown" shouldn't outrank "confirmed none".
 const SORT_VALUE: Record<LeaderboardSort, (row: LeaderboardRow) => number> = {
   kills: (row) => row.kills,
   deaths: (row) => row.deaths,
   kd: (row) => row.adjustedKd,
   cash: (row) => row.cash,
+  playtime: (row) => row.playtimeMinutes ?? -1,
 };
 
 // A player's raw K/D is unreliable over a handful of matches - one lucky
@@ -68,13 +73,16 @@ export async function getLeaderboard(
     .from(playerCareerStats)
     .where(eq(playerCareerStats.serverId, server.id));
 
-  const [factionColors, avatarUrls] = await Promise.all([
+  const [factionColors, avatarUrls, playtimeMinutes] = await Promise.all([
     getOnlineFactionColors(db, server.id),
     getAvatarUrlsBySteamId(db, statRows.map((row) => row.steamId)),
+    getPlaytimeMinutesBySteamId(db, statRows.map((row) => row.steamId)),
   ]);
 
   const rows = withAdjustedKd(
-    statRows.map((row) => toPlayerCareerView(row, factionColors, avatarUrls)),
+    statRows.map((row) =>
+      toPlayerCareerView(row, factionColors, avatarUrls, playtimeMinutes),
+    ),
   );
 
   const value = SORT_VALUE[sort];

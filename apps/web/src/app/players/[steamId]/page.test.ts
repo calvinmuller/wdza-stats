@@ -110,6 +110,40 @@ describe("PlayerPage Steam enrichment", () => {
     expect(html).toContain("https://example.com/icon.jpg");
   });
 
+  it("renders a Playtime stat when the SteamProfile has a cached playtime", async () => {
+    await seedPlayer("1", "Alice");
+    await db.insert(steamProfiles).values({
+      steamId: "1",
+      personaName: "CoolGuy123",
+      avatarUrl: "https://example.com/avatar.jpg",
+      achievements: [],
+      playtimeMinutes: 1500,
+      status: "ok",
+      fetchedAt: new Date(),
+    });
+
+    const html = await renderPage("1");
+
+    expect(html).toContain("Playtime");
+    expect(html).toContain("25h");
+  });
+
+  it("renders no Playtime stat when the SteamProfile has no cached playtime", async () => {
+    await seedPlayer("1", "Alice");
+    await db.insert(steamProfiles).values({
+      steamId: "1",
+      personaName: "CoolGuy123",
+      avatarUrl: "https://example.com/avatar.jpg",
+      achievements: [],
+      status: "private",
+      fetchedAt: new Date(),
+    });
+
+    const html = await renderPage("1");
+
+    expect(html).not.toContain("Playtime");
+  });
+
   it("renders identically to before this feature when no SteamProfile is cached", async () => {
     await seedPlayer("1", "Alice");
 

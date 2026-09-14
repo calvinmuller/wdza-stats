@@ -47,6 +47,13 @@ export interface SteamClient {
     appId: number,
   ): Promise<PlayerAchievementsResult>;
   fetchGameSchema(appId: number): Promise<SteamAchievementSchemaEntry[]>;
+  /**
+   * Minutes of lifetime playtime in `appId`, or null if unavailable - Steam
+   * answers a private "game details" profile with a 200 and an empty
+   * `response` object (unlike GetPlayerAchievements' non-2xx), so there's no
+   * error to catch; null just means "don't know", not "zero".
+   */
+  fetchPlayerPlaytimeMinutes(steamId: string, appId: number): Promise<number | null>;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -76,6 +83,11 @@ interface RawPlayerAchievement {
   apiname: string;
   achieved: number;
   unlocktime: number;
+}
+
+interface RawOwnedGame {
+  appid: number;
+  playtime_forever: number;
 }
 
 interface RawSchemaAchievement {
@@ -186,6 +198,16 @@ export function createSteamClient(apiKey: string): SteamClient {
         }));
 
       return { available: true, achievements };
+    },
+
+    async fetchPlayerPlaytimeMinutes(steamId, appId) {
+      const data = await get<{ response?: { games?: RawOwnedGame[] } }>(
+        "/IPlayerService/GetOwnedGames/v1/",
+        { steamid: steamId, "appids_filter[0]": String(appId), include_played_free_games: "1" },
+      );
+
+      const game = data.response?.games?.find((entry) => entry.appid === appId);
+      return game ? game.playtime_forever : null;
     },
 
     async fetchGameSchema(appId) {

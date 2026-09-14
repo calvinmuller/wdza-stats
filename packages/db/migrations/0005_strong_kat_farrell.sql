@@ -1,0 +1,1 @@
+ALTER TABLE "steam_profiles" ADD COLUMN "playtime_minutes" integer;

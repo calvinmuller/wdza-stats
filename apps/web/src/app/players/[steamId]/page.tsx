@@ -3,6 +3,7 @@ import { FactionSwatch } from "@/components/faction-swatch";
 import { PlayerMatchHistoryTable } from "@/components/player-match-history-table";
 import { SteamAvatar } from "@/components/steam-avatar";
 import { db } from "@/lib/db";
+import { formatPlaytimeHours } from "@/lib/format-playtime";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { getPlayerMatchHistory } from "@/lib/match-history";
 import { getPlayerCareerStat } from "@/lib/player-lookup";
@@ -36,6 +37,9 @@ export default async function PlayerPage({
     { label: "K/D", value: player.kd.toFixed(2) },
     { label: "Cash", value: player.cash },
     { label: "Matches played", value: player.matchesPlayed },
+    ...(steamProfile?.playtimeMinutes != null
+      ? [{ label: "Playtime", value: formatPlaytimeHours(steamProfile.playtimeMinutes) }]
+      : []),
   ];
 
   return (

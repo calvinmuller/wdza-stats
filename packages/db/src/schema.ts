@@ -100,6 +100,11 @@ export const steamProfiles = pgTable("steam_profiles", {
   achievements: jsonb("achievements")
     .notNull()
     .$type<SteamAchievementUnlock[]>(),
+  // Lifetime WARDOGS playtime in minutes (GetOwnedGames' playtime_forever).
+  // Null means "not fetched yet" or "private game details", not "zero" -
+  // same private/unknown ambiguity as achievements, but tracked separately
+  // since the two fetches can succeed or fail independently.
+  playtimeMinutes: integer("playtime_minutes"),
   status: text("status").notNull().$type<SteamProfileStatus>(),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
 });

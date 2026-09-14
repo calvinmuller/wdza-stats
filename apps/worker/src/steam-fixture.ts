@@ -12,15 +12,23 @@ export function scriptedSteamClient(options: {
   summaries?: Record<string, SteamPlayerSummary>;
   achievements?: Record<string, PlayerAchievementsResult>;
   schema?: SteamAchievementSchemaEntry[];
+  playtimeMinutes?: Record<string, number>;
   failSummaries?: (steamIds: string[]) => Error | null;
   failAchievements?: (steamId: string) => Error | null;
-}): SteamClient & { summariesCalls: string[][]; achievementsCalls: string[] } {
+  failPlaytime?: (steamId: string) => Error | null;
+}): SteamClient & {
+  summariesCalls: string[][];
+  achievementsCalls: string[];
+  playtimeCalls: string[];
+} {
   const summariesCalls: string[][] = [];
   const achievementsCalls: string[] = [];
+  const playtimeCalls: string[] = [];
 
   return {
     summariesCalls,
     achievementsCalls,
+    playtimeCalls,
     async fetchPlayerSummaries(steamIds) {
       summariesCalls.push(steamIds);
       const failure = options.failSummaries?.(steamIds);
@@ -41,6 +49,14 @@ export function scriptedSteamClient(options: {
     },
     async fetchGameSchema() {
       return options.schema ?? [];
+    },
+    async fetchPlayerPlaytimeMinutes(steamId) {
+      playtimeCalls.push(steamId);
+      const failure = options.failPlaytime?.(steamId);
+      if (failure) {
+        throw failure;
+      }
+      return options.playtimeMinutes?.[steamId] ?? null;
     },
   };
 }

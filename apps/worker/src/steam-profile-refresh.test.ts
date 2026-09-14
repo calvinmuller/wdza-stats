@@ -43,6 +43,45 @@ describe("refreshUnseenSteamProfiles", () => {
     });
   });
 
+  it("caches playtime alongside achievements", async () => {
+    const client = scriptedSteamClient({
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      achievements: { "1": { available: true, achievements: [] } },
+      playtimeMinutes: { "1": 4321 },
+    });
+
+    await refreshUnseenSteamProfiles(db, client, APP_ID, ["1"]);
+
+    const row = await readProfile("1");
+    expect(row).toMatchObject({ playtimeMinutes: 4321 });
+  });
+
+  it("caches a null playtime without affecting the achievements-derived status", async () => {
+    const client = scriptedSteamClient({
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      achievements: { "1": { available: true, achievements: [] } },
+    });
+
+    await refreshUnseenSteamProfiles(db, client, APP_ID, ["1"]);
+
+    const row = await readProfile("1");
+    expect(row).toMatchObject({ status: "ok", playtimeMinutes: null });
+  });
+
+  it("caches a null playtime, without throwing, when the playtime fetch fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = scriptedSteamClient({
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      achievements: { "1": { available: true, achievements: [] } },
+      failPlaytime: () => new Error("network error"),
+    });
+
+    await expect(refreshUnseenSteamProfiles(db, client, APP_ID, ["1"])).resolves.toBeUndefined();
+
+    const row = await readProfile("1");
+    expect(row).toMatchObject({ status: "ok", playtimeMinutes: null });
+  });
+
   it("caches persona name/avatar with status private when achievements are unavailable", async () => {
     const client = scriptedSteamClient({
       summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },

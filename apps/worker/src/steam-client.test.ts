@@ -157,6 +157,66 @@ describe("fetchPlayerAchievements", () => {
   });
 });
 
+describe("fetchPlayerPlaytimeMinutes", () => {
+  it("returns playtime_forever for the requested appId", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          response: {
+            game_count: 1,
+            games: [{ appid: 1867240, playtime_forever: 1234 }],
+          },
+        }),
+      ),
+    );
+
+    const client = createSteamClient("key");
+    const result = await client.fetchPlayerPlaytimeMinutes("1", 1867240);
+
+    expect(result).toBe(1234);
+  });
+
+  it("returns null when a private profile answers with an empty response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ response: {} })));
+
+    const client = createSteamClient("key");
+    const result = await client.fetchPlayerPlaytimeMinutes("1", 1867240);
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the player owns other games but not the requested appId", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          response: { game_count: 1, games: [{ appid: 999, playtime_forever: 50 }] },
+        }),
+      ),
+    );
+
+    const client = createSteamClient("key");
+    const result = await client.fetchPlayerPlaytimeMinutes("1", 1867240);
+
+    expect(result).toBeNull();
+  });
+
+  it("throws SteamApiError on a 429", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({}, { status: 429, headers: { "Retry-After": "30" } })),
+    );
+
+    const client = createSteamClient("key");
+
+    await expect(client.fetchPlayerPlaytimeMinutes("1", 1867240)).rejects.toMatchObject({
+      status: 429,
+      retryAfterSeconds: 30,
+    });
+  });
+});
+
 describe("fetchGameSchema", () => {
   it("parses the achievement schema into apiName/displayName/description/iconUrl", async () => {
     vi.stubGlobal(

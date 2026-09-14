@@ -3,6 +3,7 @@ import {
   latestSnapshots,
   playerCareerStats,
   servers,
+  steamProfiles,
   type Database,
 } from "@wdza-stats/db";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -17,6 +18,7 @@ afterEach(async () => {
   await db.delete(playerCareerStats);
   await db.delete(latestSnapshots);
   await db.delete(servers);
+  await db.delete(steamProfiles);
 });
 
 afterAll(async () => {
@@ -183,7 +185,47 @@ describe("getLeaderboard", () => {
       matchesPlayed: 3,
       factionColor: null,
       avatarUrl: null,
+      playtimeMinutes: null,
     });
+  });
+
+  it("ranks by playtime, with unknown playtime sorting below a confirmed zero", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    await db.insert(playerCareerStats).values([
+      { serverId: server.id, steamId: "1", displayName: "Alice", kills: 0, deaths: 0, cash: 0, matchesPlayed: 1 },
+      { serverId: server.id, steamId: "2", displayName: "Bob", kills: 0, deaths: 0, cash: 0, matchesPlayed: 1 },
+      { serverId: server.id, steamId: "3", displayName: "Carol", kills: 0, deaths: 0, cash: 0, matchesPlayed: 1 },
+    ]);
+    await db.insert(steamProfiles).values([
+      {
+        steamId: "1",
+        personaName: null,
+        avatarUrl: null,
+        achievements: [],
+        playtimeMinutes: 500,
+        status: "ok",
+        fetchedAt: new Date(),
+      },
+      {
+        steamId: "2",
+        personaName: null,
+        avatarUrl: null,
+        achievements: [],
+        playtimeMinutes: 0,
+        status: "ok",
+        fetchedAt: new Date(),
+      },
+      // Carol has no SteamProfile row at all - unknown, not zero.
+    ]);
+
+    const byPlaytime = await getLeaderboard(db, BASE_URL, "playtime");
+
+    expect(byPlaytime.map((row) => row.displayName)).toEqual(["Alice", "Bob", "Carol"]);
+    expect(byPlaytime.map((row) => row.playtimeMinutes)).toEqual([500, 0, null]);
   });
 
   it("scopes the leaderboard to the requested Server only", async () => {

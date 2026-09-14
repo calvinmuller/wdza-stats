@@ -36,6 +36,13 @@
       "when": 1789372037665,
       "tag": "0004_blushing_malice",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789375210846,
+      "tag": "0005_strong_kat_farrell",
+      "breakpoints": true
     }
   ]
 }

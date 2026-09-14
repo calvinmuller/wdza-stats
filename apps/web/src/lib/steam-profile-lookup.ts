@@ -19,6 +19,7 @@ export interface SteamProfileView {
   personaName: string | null;
   avatarUrl: string | null;
   achievements: SteamAchievementView[];
+  playtimeMinutes: number | null;
 }
 
 /**
@@ -53,6 +54,7 @@ export async function getSteamProfile(
       personaName: row.personaName,
       avatarUrl: row.avatarUrl,
       achievements: [],
+      playtimeMinutes: row.playtimeMinutes,
     };
   }
 
@@ -85,6 +87,7 @@ export async function getSteamProfile(
     personaName: row.personaName,
     avatarUrl: row.avatarUrl,
     achievements,
+    playtimeMinutes: row.playtimeMinutes,
   };
 }
 
@@ -115,4 +118,33 @@ export async function getAvatarUrlsBySteamId(
     }
   }
   return avatarUrls;
+}
+
+/**
+ * Batched WARDOGS playtime lookup for a list of players, mirroring
+ * getAvatarUrlsBySteamId above. Omits any steamId with no cached
+ * SteamProfile or a null playtimeMinutes (never fetched, or the player's
+ * game details are private) - callers treat a missing map entry as
+ * "unknown", not "zero".
+ */
+export async function getPlaytimeMinutesBySteamId(
+  db: Database,
+  steamIds: string[],
+): Promise<Map<string, number>> {
+  if (steamIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await db
+    .select({ steamId: steamProfiles.steamId, playtimeMinutes: steamProfiles.playtimeMinutes })
+    .from(steamProfiles)
+    .where(inArray(steamProfiles.steamId, Array.from(new Set(steamIds))));
+
+  const playtimeMinutes = new Map<string, number>();
+  for (const row of rows) {
+    if (row.playtimeMinutes !== null) {
+      playtimeMinutes.set(row.steamId, row.playtimeMinutes);
+    }
+  }
+  return playtimeMinutes;
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PlayerAvatar } from "@/components/player-avatar";
+import { formatPlaytimeHours } from "@/lib/format-playtime";
 import type { LeaderboardRow } from "@/lib/leaderboard";
 
 export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
@@ -51,6 +52,7 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
                 <th className="px-4 py-3 font-medium">K/D</th>
                 <th className="px-4 py-3 font-medium">Adj. K/D</th>
                 <th className="px-4 py-3 font-medium">Cash</th>
+                <th className="px-4 py-3 font-medium">Playtime</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
@@ -75,6 +77,11 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
                     {row.adjustedKd.toFixed(2)}
                   </td>
                   <td className="px-4 py-2.5 text-zinc-300">{row.cash}</td>
+                  <td className="px-4 py-2.5 text-zinc-300">
+                    {row.playtimeMinutes !== null
+                      ? formatPlaytimeHours(row.playtimeMinutes)
+                      : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>

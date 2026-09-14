@@ -48,6 +48,7 @@ async function upsertSteamProfile(
     personaName: string | null;
     avatarUrl: string | null;
     achievements: SteamAchievementUnlock[];
+    playtimeMinutes: number | null;
     status: SteamProfileStatus;
     fetchedAt: Date;
   },
@@ -61,6 +62,7 @@ async function upsertSteamProfile(
         personaName: row.personaName,
         avatarUrl: row.avatarUrl,
         achievements: row.achievements,
+        playtimeMinutes: row.playtimeMinutes,
         status: row.status,
         fetchedAt: row.fetchedAt,
       },
@@ -69,7 +71,8 @@ async function upsertSteamProfile(
 
 /**
  * Fetches and caches Steam profile data (persona name, avatar, WARDOGS
- * achievement unlocks) for any steamId in `steamIds` that has no cached
+ * achievement unlocks, WARDOGS playtime) for any steamId in `steamIds`
+ * that has no cached
  * SteamProfile row yet, or whose last attempt errored more than
  * ERROR_RETRY_COOLDOWN_MS ago. A "private" row (Steam reports achievements
  * as private) is terminal and skipped on every future call.
@@ -156,6 +159,7 @@ export async function refreshUnseenSteamProfiles(
         personaName: null,
         avatarUrl: null,
         achievements: [],
+        playtimeMinutes: null,
         status: "error",
         fetchedAt: new Date(),
       });
@@ -168,6 +172,17 @@ export async function refreshUnseenSteamProfiles(
       achievementsResult = await steamClient.fetchPlayerAchievements(steamId, appId);
     } catch (error) {
       console.error(`[worker] Steam achievements fetch failed for ${steamId}:`, error);
+    }
+
+    // Playtime is gated by the same "game details" privacy setting as
+    // achievements, but fetched and failed independently: it's a separate
+    // API call, and there's no reason a transient failure here should
+    // affect the achievements-derived status below.
+    let playtimeMinutes: number | null = null;
+    try {
+      playtimeMinutes = await steamClient.fetchPlayerPlaytimeMinutes(steamId, appId);
+    } catch (error) {
+      console.error(`[worker] Steam playtime fetch failed for ${steamId}:`, error);
     }
 
     const status: SteamProfileStatus =
@@ -184,6 +199,7 @@ export async function refreshUnseenSteamProfiles(
       personaName: summary.personaName,
       avatarUrl: summary.avatarUrl,
       achievements,
+      playtimeMinutes,
       status,
       fetchedAt: new Date(),
     });

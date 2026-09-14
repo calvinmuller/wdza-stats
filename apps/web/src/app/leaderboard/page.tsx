@@ -18,6 +18,7 @@ const SORT_LABELS: Record<LeaderboardSort, string> = {
   deaths: "Deaths",
   kd: "K/D",
   cash: "Cash",
+  playtime: "Playtime",
 };
 
 function isLeaderboardSort(value: string | undefined): value is LeaderboardSort {

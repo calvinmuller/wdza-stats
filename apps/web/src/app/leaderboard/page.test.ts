@@ -2,6 +2,7 @@ import {
   createDb,
   playerCareerStats,
   servers,
+  steamProfiles,
   type Database,
 } from "@wdza-stats/db";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -15,6 +16,7 @@ const BASE_URL = process.env.RCON_BASE_URL!;
 afterEach(async () => {
   await db.delete(playerCareerStats);
   await db.delete(servers);
+  await db.delete(steamProfiles);
 });
 
 afterAll(async () => {
@@ -99,5 +101,43 @@ describe("LeaderboardPage", () => {
     const html = await renderPage({ sort: "cash" });
 
     expect(html.indexOf("Alice")).toBeLessThan(html.indexOf("Bob"));
+  });
+
+  it("ranks players by playtime and formats it as whole hours", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    await db.insert(playerCareerStats).values([
+      { serverId: server.id, steamId: "1", displayName: "Alice", kills: 1, deaths: 1, cash: 0, matchesPlayed: 1 },
+      { serverId: server.id, steamId: "2", displayName: "Bob", kills: 1, deaths: 1, cash: 0, matchesPlayed: 1 },
+    ]);
+    await db.insert(steamProfiles).values([
+      {
+        steamId: "1",
+        personaName: null,
+        avatarUrl: null,
+        achievements: [],
+        playtimeMinutes: 120,
+        status: "ok",
+        fetchedAt: new Date(),
+      },
+      {
+        steamId: "2",
+        personaName: null,
+        avatarUrl: null,
+        achievements: [],
+        playtimeMinutes: 6000,
+        status: "ok",
+        fetchedAt: new Date(),
+      },
+    ]);
+
+    const html = await renderPage({ sort: "playtime" });
+
+    expect(html.indexOf("Bob")).toBeLessThan(html.indexOf("Alice"));
+    expect(html).toContain("100h");
+    expect(html).toContain("2h");
   });
 });

@@ -16,6 +16,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
   diffFactionScoreGameEvents,
   diffKillDeathGameEvents,
+  diffKillStreakGameEvents,
   diffRosterGameEvents,
   matchLifecycleEvent,
   type RosterDiffContext,
@@ -311,6 +312,182 @@ describe("diffFactionScoreGameEvents", () => {
     )[0];
 
     expect(first.idempotencyKey).toBe(second.idempotencyKey);
+  });
+});
+
+describe("diffKillStreakGameEvents", () => {
+  it("fires PlayerKillStreakStarted on the first kill of a streak", () => {
+    const previous = [player({ steamId: "1", kills: 0 })];
+    const current = [player({ steamId: "1", kills: 1 })];
+
+    const { events, updates } = diffKillStreakGameEvents(previous, current, new Map(), context());
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: "PlayerKillStreakStarted", steamId: "1", metadata: { streak: 1 } }),
+    ]);
+    expect(updates).toEqual([
+      expect.objectContaining({ steamId: "1", currentKillStreak: 1, highestKillStreak: 1 }),
+    ]);
+  });
+
+  it("fires PlayerKillStreakIncreased for each kill after the first, in one diff", () => {
+    const previous = [player({ steamId: "1", kills: 0 })];
+    const current = [player({ steamId: "1", kills: 3 })];
+
+    const { events, updates } = diffKillStreakGameEvents(previous, current, new Map(), context());
+
+    expect(events.map((event) => event.type)).toEqual([
+      "PlayerKillStreakStarted",
+      "PlayerKillStreakIncreased",
+      "PlayerKillStreakIncreased",
+    ]);
+    expect(updates).toEqual([
+      expect.objectContaining({ currentKillStreak: 3, highestKillStreak: 3 }),
+    ]);
+  });
+
+  it("continues an in-progress streak using currentStreaks rather than starting from 0", () => {
+    const previous = [player({ steamId: "1", kills: 5 })];
+    const current = [player({ steamId: "1", kills: 6 })];
+
+    const { events, updates } = diffKillStreakGameEvents(
+      previous,
+      current,
+      new Map([["1", 4]]),
+      context(),
+    );
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: "PlayerKillStreakIncreased", metadata: { streak: 5 } }),
+    ]);
+    expect(updates).toEqual([
+      expect.objectContaining({ currentKillStreak: 5, highestKillStreak: 5 }),
+    ]);
+  });
+
+  it("fires PlayerKillStreakBroken on a death that ends a streak of at least 1", () => {
+    const previous = [player({ steamId: "1", deaths: 0 })];
+    const current = [player({ steamId: "1", deaths: 1 })];
+
+    const { events, updates } = diffKillStreakGameEvents(
+      previous,
+      current,
+      new Map([["1", 3]]),
+      context(),
+    );
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: "PlayerKillStreakBroken", steamId: "1", metadata: { streak: 3 } }),
+    ]);
+    expect(updates).toEqual([
+      expect.objectContaining({ currentKillStreak: 0, highestKillStreak: 3 }),
+    ]);
+  });
+
+  it("fires nothing for a death when the streak is already 0", () => {
+    const previous = [player({ steamId: "1", deaths: 0 })];
+    const current = [player({ steamId: "1", deaths: 1 })];
+
+    const { events, updates } = diffKillStreakGameEvents(previous, current, new Map(), context());
+
+    expect(events).toEqual([]);
+    expect(updates).toEqual([
+      expect.objectContaining({ currentKillStreak: 0, highestKillStreak: 0 }),
+    ]);
+  });
+
+  it("treats every kill in a diff as happening before every death, breaking the streak once at the end", () => {
+    const previous = [player({ steamId: "1", kills: 0, deaths: 0 })];
+    const current = [player({ steamId: "1", kills: 2, deaths: 1 })];
+
+    const { events, updates } = diffKillStreakGameEvents(previous, current, new Map(), context());
+
+    expect(events.map((event) => event.type)).toEqual([
+      "PlayerKillStreakStarted",
+      "PlayerKillStreakIncreased",
+      "PlayerKillStreakBroken",
+    ]);
+    expect(updates).toEqual([
+      expect.objectContaining({ currentKillStreak: 0, highestKillStreak: 2 }),
+    ]);
+  });
+
+  it("skips a player absent from previousPlayers instead of diffing against a 0 baseline", () => {
+    const previous: ReturnType<typeof player>[] = [];
+    const current = [player({ steamId: "1", kills: 1 })];
+
+    const { events, updates } = diffKillStreakGameEvents(previous, current, new Map(), context());
+
+    expect(events).toEqual([]);
+    expect(updates).toEqual([]);
+  });
+
+  it("emits nothing for a player whose kill/death counters are unchanged", () => {
+    const roster = [player({ steamId: "1", kills: 3, deaths: 1 })];
+
+    const { events, updates } = diffKillStreakGameEvents(roster, roster, new Map([["1", 2]]), context());
+
+    expect(events).toEqual([]);
+    expect(updates).toEqual([]);
+  });
+
+  it("derives a stable idempotencyKey from the resulting kills counter, not the timestamp", () => {
+    const previous = [player({ steamId: "1", kills: 0 })];
+    const current = [player({ steamId: "1", kills: 1 })];
+
+    const first = diffKillStreakGameEvents(
+      previous,
+      current,
+      new Map(),
+      context({ timestamp: new Date("2026-01-01T00:00:00.000Z") }),
+    ).events[0];
+    const second = diffKillStreakGameEvents(
+      previous,
+      current,
+      new Map(),
+      context({ timestamp: new Date("2026-01-01T00:05:00.000Z") }),
+    ).events[0];
+
+    expect(first.idempotencyKey).toBe(second.idempotencyKey);
+  });
+
+  it("gives the same kill a matching idempotencyKey even when it resolves to a different type", () => {
+    // The same kill (kills 0 -> 1) computed against two different starting
+    // streaks resolves to different types (Started vs Increased) because
+    // `currentStreaks` is mutable external state, not part of the Snapshot
+    // pair itself - unlike every other event in this file, where `type` is
+    // fully determined by the two Snapshots alone. If each type produced
+    // its own idempotencyKey, a re-computation racing a already-committed
+    // one would dodge the unique constraint and insert a genuine duplicate
+    // row. Both must key identically so onConflictDoNothing still catches it.
+    const previous = [player({ steamId: "1", kills: 0 })];
+    const current = [player({ steamId: "1", kills: 1 })];
+
+    const started = diffKillStreakGameEvents(previous, current, new Map(), context()).events[0];
+    const increased = diffKillStreakGameEvents(previous, current, new Map([["1", 4]]), context()).events[0];
+
+    expect(started.type).toBe("PlayerKillStreakStarted");
+    expect(increased.type).toBe("PlayerKillStreakIncreased");
+    expect(started.idempotencyKey).toBe(increased.idempotencyKey);
+  });
+
+  it("gives repeat visits to the same streak value distinct idempotencyKeys", () => {
+    // Streak reaches 1, breaks, then reaches 1 again later in the same
+    // Match - keying on the streak value alone would collide.
+    const firstStreak = diffKillStreakGameEvents(
+      [player({ steamId: "1", kills: 0 })],
+      [player({ steamId: "1", kills: 1 })],
+      new Map(),
+      context(),
+    ).events[0];
+    const secondStreak = diffKillStreakGameEvents(
+      [player({ steamId: "1", kills: 1 })],
+      [player({ steamId: "1", kills: 2 })],
+      new Map([["1", 0]]),
+      context(),
+    ).events[0];
+
+    expect(firstStreak.idempotencyKey).not.toBe(secondStreak.idempotencyKey);
   });
 });
 
@@ -711,5 +888,171 @@ describe("GameEvent recording (integration)", () => {
 
     const rows = await db.select().from(gameEvents).where(eq(gameEvents.serverId, server.id));
     expect(rows).toHaveLength(1);
+  });
+
+  it("builds a currentKillStreak durably in playerCareerStats, firing Started then Increased", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 3, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id); // Alice joins, opens the Match
+    await pollAndPersistSnapshot(db, client, server.id); // kill 1: streak 0 -> 1
+    await pollAndPersistSnapshot(db, client, server.id); // kills 2, 3: streak 1 -> 2 -> 3
+
+    const rows = await db.select().from(gameEvents).where(eq(gameEvents.serverId, server.id));
+    expect(rows.filter((row) => row.type === "PlayerKillStreakStarted")).toHaveLength(1);
+    expect(rows.filter((row) => row.type === "PlayerKillStreakIncreased")).toHaveLength(2);
+
+    const [career] = await db.select().from(playerCareerStats).where(eq(playerCareerStats.steamId, "1"));
+    expect(career).toMatchObject({ currentKillStreak: 3, highestKillStreak: 3 });
+  });
+
+  it("breaks the streak on a death, persisting currentKillStreak to 0 while keeping highestKillStreak", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 2, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 2, deaths: 1, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id); // streak -> 2
+    await pollAndPersistSnapshot(db, client, server.id); // death breaks it
+
+    const rows = await db.select().from(gameEvents).where(eq(gameEvents.serverId, server.id));
+    expect(rows.filter((row) => row.type === "PlayerKillStreakBroken")).toEqual([
+      expect.objectContaining({ type: "PlayerKillStreakBroken", steamId: "1", metadata: { streak: 2 } }),
+    ]);
+
+    const [career] = await db.select().from(playerCareerStats).where(eq(playerCareerStats.steamId, "1"));
+    expect(career).toMatchObject({ currentKillStreak: 0, highestKillStreak: 2 });
+  });
+
+  it("resets currentKillStreak to 0 for every player when a new Match starts, even mid-streak", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 2, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // map change closes the Match while Alice is still mid-streak -
+        // never having died, so only a Match boundary resets her streak.
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 2, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id); // streak -> 2
+
+    const [beforeBoundary] = await db.select().from(playerCareerStats).where(eq(playerCareerStats.steamId, "1"));
+    expect(beforeBoundary.currentKillStreak).toBe(2);
+
+    await pollAndPersistSnapshot(db, client, server.id); // boundary: closes the Match, opens a new one
+
+    const [afterBoundary] = await db.select().from(playerCareerStats).where(eq(playerCareerStats.steamId, "1"));
+    expect(afterBoundary.currentKillStreak).toBe(0);
+    expect(afterBoundary.highestKillStreak).toBe(2);
+  });
+
+  it("preserves an in-progress streak across a simulated worker restart (a fresh Database connection)", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 2, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id); // streak -> 2, persisted to playerCareerStats
+
+    // A fresh Database connection with no in-memory state of its own,
+    // standing in for the worker process restarting - ingestSnapshot must
+    // read the in-progress streak back from the database rather than
+    // rebuild it from scratch.
+    const restartedDb: Database = createDb(process.env.DATABASE_URL!);
+    try {
+      const restartedClient = scriptedRconClient([
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 2, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 3, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+      ]);
+
+      await pollAndPersistSnapshot(restartedDb, restartedClient, server.id); // resumes, unchanged roster
+      await pollAndPersistSnapshot(restartedDb, restartedClient, server.id); // streak -> 3
+
+      const [career] = await restartedDb
+        .select()
+        .from(playerCareerStats)
+        .where(eq(playerCareerStats.steamId, "1"));
+      expect(career).toMatchObject({ currentKillStreak: 3, highestKillStreak: 3 });
+
+      const rows = await restartedDb.select().from(gameEvents).where(eq(gameEvents.serverId, server.id));
+      expect(rows.filter((row) => row.type === "PlayerKillStreakIncreased")).toHaveLength(2);
+    } finally {
+      await restartedDb.$client.end();
+    }
   });
 });

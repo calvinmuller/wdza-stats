@@ -30,9 +30,17 @@ export interface GameEventDraft {
  * Persisting two drafts with the same key is a no-op (see ingestSnapshot's
  * onConflictDoNothing), which is what makes re-running the same Snapshot
  * comparison safe.
+ *
+ * `keyType` is usually just the draft's own `type`, but doesn't have to be:
+ * see diffKillStreakGameEvents, whose PlayerKillStreakStarted/Increased
+ * choice depends on mutable streak state read earlier in the same
+ * transaction rather than on the Snapshot pair alone, so two computations
+ * of the *same* kill could otherwise disagree on `type` and dodge the
+ * unique constraint entirely - keying both under one shared label closes
+ * that gap.
  */
-function buildIdempotencyKey(context: RosterDiffContext, type: GameEventType, ...parts: string[]): string {
-  return [context.serverId, context.matchId, type, ...parts].join(":");
+function buildIdempotencyKey(context: RosterDiffContext, keyType: string, ...parts: string[]): string {
+  return [context.serverId, context.matchId, keyType, ...parts].join(":");
 }
 
 function joinLeaveEvent(
@@ -237,6 +245,131 @@ export function soleLeader(factions: SnapshotFaction[]): SnapshotFaction | null 
     return null;
   }
   return first;
+}
+
+export interface KillStreakUpdate {
+  steamId: string;
+  displayName: string;
+  currentKillStreak: number;
+  highestKillStreak: number;
+}
+
+export interface KillStreakDiff {
+  events: GameEventDraft[];
+  updates: KillStreakUpdate[];
+}
+
+// A shared idempotency-key label for PlayerKillStreakStarted/Increased -
+// deliberately not either real `type`. Which of the two fires for a given
+// kill depends on `streak` (mutable state read earlier in the same
+// transaction), unlike every other event in this file where `type` is fully
+// determined by the Snapshot pair alone. Keying both under one label means
+// two computations of the *same* kill (e.g. one seeing streak 0->1, another
+// - reading a different `currentStreaks` - seeing 1->2) collide on the same
+// idempotencyKey and dedupe correctly, instead of each picking a different
+// `type` and slipping past the unique constraint as two "different" rows.
+const KILL_STREAK_PROGRESS_KEY_TYPE = "PlayerKillStreakProgress";
+
+function killStreakEvent(
+  type: "PlayerKillStreakStarted" | "PlayerKillStreakIncreased" | "PlayerKillStreakBroken",
+  idempotencyKeyType: string,
+  counterValue: number,
+  streak: number,
+  player: SnapshotPlayer,
+  context: RosterDiffContext,
+): GameEventDraft {
+  return {
+    serverId: context.serverId,
+    matchId: context.matchId,
+    type,
+    timestamp: context.timestamp,
+    steamId: player.steamId,
+    targetSteamId: null,
+    faction: player.faction,
+    metadata: { streak },
+    sourceSnapshotId: context.sourceSnapshotId,
+    idempotencyKey: buildIdempotencyKey(context, idempotencyKeyType, player.steamId, String(counterValue)),
+  };
+}
+
+/**
+ * `PlayerKillStreakStarted`/`Increased`/`Broken`, plus each affected
+ * player's resulting currentKillStreak/highestKillStreak to persist (the
+ * latter is this diff's own high point, for the caller to fold into the
+ * persisted column via GREATEST rather than overwrite - see
+ * match-tracker.ts's applyKillStreakUpdates). Unlike every other diff in
+ * this file, a kill streak is stateful across polls (and Matches, until
+ * MatchStarted resets it - see match-tracker.ts), so it can't be derived
+ * from two consecutive Snapshots alone: `currentStreaks` carries each
+ * player's streak as last persisted to playerCareerStats (0 for a player
+ * with no row/entry yet), mirroring how diffFactionScoreGameEvents takes
+ * `previousLeader` as its own piece of external state.
+ *
+ * A player absent from `previousPlayers` is skipped, matching
+ * diffKillDeathGameEvents - there's no prior counter to diff against, so no
+ * streak change to infer.
+ *
+ * Within one player's diff, every kill this poll is treated as happening
+ * before every death this poll (the same order diffKillDeathGameEvents
+ * already imposes via counterDeltaEvents' call order) - a 15s poll window
+ * has no finer-grained ordering to work from. `PlayerKillStreakStarted`
+ * fires when a kill brings the streak from 0 to 1, `PlayerKillStreakIncreased`
+ * for every kill after that, and `PlayerKillStreakBroken` fires once, on the
+ * first death encountered while the streak is at least 1 - a further death
+ * in the same batch has nothing left to break.
+ *
+ * Streak events key on the resulting kills/deaths counter value (the same
+ * monotonic-within-a-Match counter diffKillDeathGameEvents itself keys on),
+ * not the resulting streak value - unlike a kill/death counter, a streak can
+ * revisit the same value more than once in a Match (reach 3, break, reach 3
+ * again), so only the underlying counter is a safe, non-repeating identity.
+ * See KILL_STREAK_PROGRESS_KEY_TYPE for why Started/Increased additionally
+ * share one key label instead of keying on their own `type`.
+ */
+export function diffKillStreakGameEvents(
+  previousPlayers: SnapshotPlayer[],
+  currentPlayers: SnapshotPlayer[],
+  currentStreaks: Map<string, number>,
+  context: RosterDiffContext,
+): KillStreakDiff {
+  const previousBySteamId = new Map(previousPlayers.map((player) => [player.steamId, player]));
+  const events: GameEventDraft[] = [];
+  const updates: KillStreakUpdate[] = [];
+
+  for (const player of currentPlayers) {
+    const previous = previousBySteamId.get(player.steamId);
+    if (!previous || (previous.kills === player.kills && previous.deaths === player.deaths)) {
+      continue;
+    }
+
+    let streak = currentStreaks.get(player.steamId) ?? 0;
+    let highestReached = streak;
+
+    for (let kills = previous.kills + 1; kills <= player.kills; kills++) {
+      streak += 1;
+      highestReached = Math.max(highestReached, streak);
+      const type = streak === 1 ? "PlayerKillStreakStarted" : "PlayerKillStreakIncreased";
+      events.push(killStreakEvent(type, KILL_STREAK_PROGRESS_KEY_TYPE, kills, streak, player, context));
+    }
+
+    for (let deaths = previous.deaths + 1; deaths <= player.deaths; deaths++) {
+      if (streak >= 1) {
+        events.push(
+          killStreakEvent("PlayerKillStreakBroken", "PlayerKillStreakBroken", deaths, streak, player, context),
+        );
+        streak = 0;
+      }
+    }
+
+    updates.push({
+      steamId: player.steamId,
+      displayName: player.displayName,
+      currentKillStreak: streak,
+      highestKillStreak: highestReached,
+    });
+  }
+
+  return { events, updates };
 }
 
 /**

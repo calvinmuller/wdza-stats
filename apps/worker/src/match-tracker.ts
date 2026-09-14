@@ -10,13 +10,15 @@ import {
   type Snapshot,
   type SnapshotPlayer,
 } from "@wdza-stats/db";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   diffFactionScoreGameEvents,
   diffKillDeathGameEvents,
+  diffKillStreakGameEvents,
   diffRosterGameEvents,
   matchLifecycleEvent,
   soleLeader,
+  type KillStreakUpdate,
 } from "./game-events";
 
 /**
@@ -173,6 +175,41 @@ async function closeMatch(
 }
 
 /**
+ * Persists each affected player's resulting kill-streak state to
+ * playerCareerStats - an upsert (rather than a plain update) since a
+ * player's very first Match hasn't closed yet by the time their first kill
+ * happens, so no playerCareerStats row may exist for them at all (see
+ * ticket 01/closeMatch). highestKillStreak is raised via GREATEST rather
+ * than overwritten, so it never regresses below a value persisted by an
+ * earlier Match.
+ */
+async function applyKillStreakUpdates(
+  tx: Tx,
+  serverId: number,
+  updates: KillStreakUpdate[],
+): Promise<void> {
+  for (const update of updates) {
+    await tx
+      .insert(playerCareerStats)
+      .values({
+        serverId,
+        steamId: update.steamId,
+        displayName: update.displayName,
+        currentKillStreak: update.currentKillStreak,
+        highestKillStreak: update.highestKillStreak,
+      })
+      .onConflictDoUpdate({
+        target: [playerCareerStats.serverId, playerCareerStats.steamId],
+        set: {
+          displayName: update.displayName,
+          currentKillStreak: update.currentKillStreak,
+          highestKillStreak: sql`GREATEST(${playerCareerStats.highestKillStreak}, ${update.highestKillStreak})`,
+        },
+      });
+  }
+}
+
+/**
  * Ingests one freshly-polled Snapshot for a Server: detects whether it
  * starts a new Match (comparing it to the Server's last-persisted
  * Snapshot), closing and rolling up the previous Match if so, then
@@ -199,6 +236,13 @@ async function closeMatch(
  * Faction this Match's most recent FactionTookLead event named as leader
  * (a fresh query, not just the previous Snapshot's scores - see
  * diffFactionScoreGameEvents for why a tie must not reset that state).
+ * PlayerKillStreakStarted/Increased/Broken are emitted under the same guard,
+ * diffing kill/death counters against each player's currentKillStreak as
+ * last persisted to playerCareerStats (durable, not worker memory, so a
+ * worker restart mid-Match never loses an in-progress streak) - see
+ * diffKillStreakGameEvents. Whenever this Snapshot opens a new Match, every
+ * player's currentKillStreak on this Server is reset to 0 first, regardless
+ * of how their previous Match ended (see spec.md's Domain Decisions).
  * Duplicate drafts (e.g. from a retried write of the same transition) are
  * silently dropped via their idempotencyKey unique constraint rather than
  * erroring.
@@ -254,6 +298,15 @@ export async function ingestSnapshot(
         .returning();
       currentMatchId = newMatch.id;
       openedMatch = { id: newMatch.id, map: newMatch.map };
+
+      // Kill streaks are Match-scoped: every player on this Server resets to
+      // 0 the moment a new Match opens, regardless of how their previous
+      // Match ended (see spec.md's Domain Decisions and CONTEXT.md's
+      // KillStreak entry).
+      await tx
+        .update(playerCareerStats)
+        .set({ currentKillStreak: 0 })
+        .where(eq(playerCareerStats.serverId, serverId));
     } else {
       currentMatchId = openMatch!.id;
     }
@@ -326,6 +379,25 @@ export async function ingestSnapshot(
           sourceSnapshotId: insertedSnapshot.id,
         }),
       );
+
+      const steamIds = snapshot.players.map((player) => player.steamId);
+      const streakRows =
+        steamIds.length > 0
+          ? await tx
+              .select({ steamId: playerCareerStats.steamId, currentKillStreak: playerCareerStats.currentKillStreak })
+              .from(playerCareerStats)
+              .where(and(eq(playerCareerStats.serverId, serverId), inArray(playerCareerStats.steamId, steamIds)))
+          : [];
+      const currentStreaks = new Map(streakRows.map((row) => [row.steamId, row.currentKillStreak]));
+
+      const killStreakDiff = diffKillStreakGameEvents(previousRow.payload.players, snapshot.players, currentStreaks, {
+        serverId,
+        matchId: currentMatchId,
+        timestamp: capturedAt,
+        sourceSnapshotId: insertedSnapshot.id,
+      });
+      eventDrafts.push(...killStreakDiff.events);
+      await applyKillStreakUpdates(tx, serverId, killStreakDiff.updates);
     }
 
     if (eventDrafts.length > 0) {

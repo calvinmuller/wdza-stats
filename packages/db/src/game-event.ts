@@ -2,8 +2,8 @@
 // Snapshots for one player or Match. See CONTEXT.md.
 
 // Ticket 01 emits PlayerJoined/PlayerLeft; ticket 02 adds Match start/end and
-// kill/death; ticket 03 adds Faction score/lead changes. Later tickets
-// extend this union further (streak changes) as each is built.
+// kill/death; ticket 03 adds Faction score/lead changes; ticket 04 adds kill
+// streak changes. Later tickets extend this union further as each is built.
 export type GameEventType =
   | "PlayerJoined"
   | "PlayerLeft"
@@ -12,4 +12,7 @@ export type GameEventType =
   | "PlayerKilled"
   | "PlayerDeath"
   | "FactionScoreChanged"
-  | "FactionTookLead";
+  | "FactionTookLead"
+  | "PlayerKillStreakStarted"
+  | "PlayerKillStreakIncreased"
+  | "PlayerKillStreakBroken";

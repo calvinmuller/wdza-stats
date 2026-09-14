@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FactionSwatch } from "@/components/faction-swatch";
+import { PlayerAvatar } from "@/components/player-avatar";
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { searchPlayersByName } from "@/lib/player-lookup";
@@ -55,9 +56,10 @@ export default async function PlayerSearchPage({
             >
               <Link
                 href={`/players/${player.steamId}`}
-                className="flex items-center font-medium text-zinc-100 hover:text-brand-gold-500"
+                className="flex items-center gap-2 font-medium text-zinc-100 hover:text-brand-gold-500"
               >
                 {player.factionColor && <FactionSwatch color={player.factionColor} />}
+                <PlayerAvatar avatarUrl={player.avatarUrl} size={24} />
                 {player.displayName}
               </Link>
             </li>

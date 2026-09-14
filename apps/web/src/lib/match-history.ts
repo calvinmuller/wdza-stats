@@ -7,6 +7,7 @@ import {
 import { and, desc, eq, isNotNull, inArray } from "drizzle-orm";
 import { kdRatio } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
+import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
 
 export interface MatchHistoryView {
   id: number;
@@ -25,6 +26,7 @@ export interface MatchPlayerStatView {
   deaths: number;
   kd: number;
   cash: number;
+  avatarUrl: string | null;
 }
 
 export interface MatchDetailView {
@@ -218,6 +220,8 @@ export async function getMatchDetail(
     .where(eq(playerMatchStats.matchId, matchId))
     .orderBy(desc(playerMatchStats.kills));
 
+  const avatarUrls = await getAvatarUrlsBySteamId(db, rows.map((row) => row.steamId));
+
   const players: MatchPlayerStatView[] = rows.map((row) => ({
     steamId: row.steamId,
     displayName: row.displayName ?? row.steamId,
@@ -226,6 +230,7 @@ export async function getMatchDetail(
     deaths: row.deaths,
     kd: kdRatio(row.kills, row.deaths),
     cash: row.cash,
+    avatarUrl: avatarUrls.get(row.steamId) ?? null,
   }));
 
   return {

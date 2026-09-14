@@ -6,6 +6,7 @@ import {
   type PlayerCareerView,
 } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
+import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
 
 export type LeaderboardSort = "kills" | "deaths" | "kd" | "cash";
 
@@ -62,16 +63,18 @@ export async function getLeaderboard(
     return [];
   }
 
-  const [statRows, factionColors] = await Promise.all([
-    db
-      .select()
-      .from(playerCareerStats)
-      .where(eq(playerCareerStats.serverId, server.id)),
+  const statRows = await db
+    .select()
+    .from(playerCareerStats)
+    .where(eq(playerCareerStats.serverId, server.id));
+
+  const [factionColors, avatarUrls] = await Promise.all([
     getOnlineFactionColors(db, server.id),
+    getAvatarUrlsBySteamId(db, statRows.map((row) => row.steamId)),
   ]);
 
   const rows = withAdjustedKd(
-    statRows.map((row) => toPlayerCareerView(row, factionColors)),
+    statRows.map((row) => toPlayerCareerView(row, factionColors, avatarUrls)),
   );
 
   const value = SORT_VALUE[sort];

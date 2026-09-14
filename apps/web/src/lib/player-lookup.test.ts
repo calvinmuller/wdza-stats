@@ -117,6 +117,7 @@ describe("getPlayerCareerStat", () => {
       cash: 2500,
       matchesPlayed: 4,
       factionColor: null,
+      avatarUrl: null,
     });
   });
 

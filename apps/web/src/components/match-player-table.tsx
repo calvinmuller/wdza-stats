@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PlayerAvatar } from "@/components/player-avatar";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
 import type { MatchPlayerStatView } from "@/lib/match-history";
 
@@ -11,7 +12,11 @@ const COLUMNS: SortableColumn<MatchPlayerStatView>[] = [
     value: (player) => player.displayName,
     cellClassName: "font-medium text-zinc-100",
     render: (player) => (
-      <Link href={`/players/${player.steamId}`} className="hover:underline">
+      <Link
+        href={`/players/${player.steamId}`}
+        className="flex items-center gap-2 hover:underline"
+      >
+        <PlayerAvatar avatarUrl={player.avatarUrl} size={24} />
         {player.displayName}
       </Link>
     ),

@@ -368,6 +368,7 @@ describe("getMatchDetail", () => {
           deaths: 2,
           kd: 2.5,
           cash: 100,
+          avatarUrl: null,
         },
         {
           steamId: "2",
@@ -377,6 +378,7 @@ describe("getMatchDetail", () => {
           deaths: 4,
           kd: 0.75,
           cash: 50,
+          avatarUrl: null,
         },
       ],
     });

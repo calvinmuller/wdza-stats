@@ -7,6 +7,7 @@ export interface PlayerCareerView {
   cash: number;
   matchesPlayed: number;
   factionColor: string | null;
+  avatarUrl: string | null;
 }
 
 interface PlayerCareerStatRow {
@@ -28,6 +29,7 @@ export function kdRatio(kills: number, deaths: number): number {
 export function toPlayerCareerView(
   row: PlayerCareerStatRow,
   factionColors: Map<string, string>,
+  avatarUrls: Map<string, string>,
 ): PlayerCareerView {
   return {
     steamId: row.steamId,
@@ -38,5 +40,6 @@ export function toPlayerCareerView(
     cash: row.cash,
     matchesPlayed: row.matchesPlayed,
     factionColor: factionColors.get(row.steamId) ?? null,
+    avatarUrl: avatarUrls.get(row.steamId) ?? null,
   };
 }

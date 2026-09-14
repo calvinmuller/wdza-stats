@@ -4,7 +4,7 @@ import {
   WARDOGS_STEAM_APP_ID,
   type Database,
 } from "@wdza-stats/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 export interface SteamAchievementView {
   apiName: string;
@@ -86,4 +86,33 @@ export async function getSteamProfile(
     avatarUrl: row.avatarUrl,
     achievements,
   };
+}
+
+/**
+ * Batched avatar lookup for a list of players (a leaderboard, a match
+ * roster, a search result page) - one query for the whole list rather than
+ * one per row, mirroring live-snapshot.ts's getOnlineFactionColors. Omits
+ * any steamId with no cached SteamProfile or a null avatarUrl, so callers
+ * treat a missing map entry the same as "no avatar yet".
+ */
+export async function getAvatarUrlsBySteamId(
+  db: Database,
+  steamIds: string[],
+): Promise<Map<string, string>> {
+  if (steamIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await db
+    .select({ steamId: steamProfiles.steamId, avatarUrl: steamProfiles.avatarUrl })
+    .from(steamProfiles)
+    .where(inArray(steamProfiles.steamId, Array.from(new Set(steamIds))));
+
+  const avatarUrls = new Map<string, string>();
+  for (const row of rows) {
+    if (row.avatarUrl) {
+      avatarUrls.set(row.steamId, row.avatarUrl);
+    }
+  }
+  return avatarUrls;
 }

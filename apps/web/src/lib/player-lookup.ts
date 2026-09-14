@@ -6,6 +6,7 @@ import {
   type PlayerCareerView,
 } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
+import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
 
 export type { PlayerCareerView } from "./player-career-stats";
 
@@ -25,21 +26,23 @@ export async function searchPlayersByName(
     return [];
   }
 
-  const [rows, factionColors] = await Promise.all([
-    db
-      .select()
-      .from(playerCareerStats)
-      .where(
-        and(
-          eq(playerCareerStats.serverId, server.id),
-          ilike(playerCareerStats.displayName, `%${query}%`),
-        ),
+  const rows = await db
+    .select()
+    .from(playerCareerStats)
+    .where(
+      and(
+        eq(playerCareerStats.serverId, server.id),
+        ilike(playerCareerStats.displayName, `%${query}%`),
       ),
+    );
+
+  const [factionColors, avatarUrls] = await Promise.all([
     getOnlineFactionColors(db, server.id),
+    getAvatarUrlsBySteamId(db, rows.map((row) => row.steamId)),
   ]);
 
   return rows
-    .map((row) => toPlayerCareerView(row, factionColors))
+    .map((row) => toPlayerCareerView(row, factionColors, avatarUrls))
     .sort((a, b) => b.kills - a.kills);
 }
 
@@ -74,6 +77,9 @@ export async function getPlayerCareerStat(
     return null;
   }
 
-  const factionColors = await getOnlineFactionColors(db, server.id);
-  return toPlayerCareerView(row, factionColors);
+  const [factionColors, avatarUrls] = await Promise.all([
+    getOnlineFactionColors(db, server.id),
+    getAvatarUrlsBySteamId(db, [steamId]),
+  ]);
+  return toPlayerCareerView(row, factionColors, avatarUrls);
 }

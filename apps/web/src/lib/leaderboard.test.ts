@@ -182,6 +182,7 @@ describe("getLeaderboard", () => {
       cash: 1500,
       matchesPlayed: 3,
       factionColor: null,
+      avatarUrl: null,
     });
   });
 

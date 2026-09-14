@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { PlayerAvatar } from "@/components/player-avatar";
 import type { LeaderboardRow } from "@/lib/leaderboard";
 
 export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
@@ -61,8 +62,9 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
                   <td className="px-4 py-2.5">
                     <Link
                       href={`/players/${row.steamId}`}
-                      className="flex items-center font-medium text-zinc-100 hover:text-brand-gold-500"
+                      className="flex items-center gap-2 font-medium text-zinc-100 hover:text-brand-gold-500"
                     >
+                      <PlayerAvatar avatarUrl={row.avatarUrl} size={24} />
                       {row.displayName}
                     </Link>
                   </td>

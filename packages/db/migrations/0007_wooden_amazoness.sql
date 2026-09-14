@@ -1,0 +1,1 @@
+ALTER TABLE "game_events" ALTER COLUMN "steam_id" DROP NOT NULL;

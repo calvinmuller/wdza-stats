@@ -4,10 +4,14 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] A `game_events` table exists with fields sufficient to process an event later (id, serverId, matchId, type, timestamp, steamId, targetSteamId, faction, metadata, sourceSnapshotId) and a deterministic idempotency key
-- [ ] `playerCareerStats` has the new columns; existing rows get sane defaults (0 / null as appropriate) via the migration
-- [ ] The worker emits `PlayerJoined` for a steamId present in the current roster but absent from the previous one, and `PlayerLeft` for the reverse — no debounce, every roster diff is taken literally
-- [ ] Re-running the same snapshot comparison (e.g. after a worker retry) never creates duplicate events for the same transition
-- [ ] Tests cover: a normal join, a normal leave, and a retried/duplicate poll producing no extra rows — following the existing `scriptedRconClient`/fixture pattern used in `apps/worker/src/match-tracker.test.ts`
+- [x] A `game_events` table exists with fields sufficient to process an event later (id, serverId, matchId, type, timestamp, steamId, targetSteamId, faction, metadata, sourceSnapshotId) and a deterministic idempotency key
+- [x] `playerCareerStats` has the new columns; existing rows get sane defaults (0 / null as appropriate) via the migration
+- [x] The worker emits `PlayerJoined` for a steamId present in the current roster but absent from the previous one, and `PlayerLeft` for the reverse — no debounce, every roster diff is taken literally
+- [x] Re-running the same snapshot comparison (e.g. after a worker retry) never creates duplicate events for the same transition
+- [x] Tests cover: a normal join, a normal leave, and a retried/duplicate poll producing no extra rows — following the existing `scriptedRconClient`/fixture pattern used in `apps/worker/src/match-tracker.test.ts`
+
+## Comments
+
+Closed: implemented in commit `0c0a09b` ("Add GameEvent log with PlayerJoined/PlayerLeft tracking (ticket 01)"). `game_events` table + `playerCareerStats` columns added via `packages/db/migrations/0006_shocking_dreadnoughts.sql`; roster diff logic in `apps/worker/src/game-events.ts` (`diffRosterGameEvents`); wired into `ingestSnapshot` in `apps/worker/src/match-tracker.ts`. All checklist items verified against the code and covered by tests in `apps/worker/src/game-events.test.ts` (unit + integration, including the idempotent-retry case). Full test suite passes.

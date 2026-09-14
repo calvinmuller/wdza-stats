@@ -11,7 +11,7 @@ import {
   type SnapshotPlayer,
 } from "@wdza-stats/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { diffRosterGameEvents } from "./game-events";
+import { diffKillDeathGameEvents, diffRosterGameEvents, matchLifecycleEvent } from "./game-events";
 
 /**
  * True when comparing `previous` to `next` indicates a new Match has begun:
@@ -182,9 +182,14 @@ async function closeMatch(
  * Also diffs the previous roster against this Snapshot's to emit
  * PlayerJoined/PlayerLeft GameEvents (see game-events.ts), attributed to
  * whichever Match is open by the time the diff runs - the newly-opened one,
- * if this same Snapshot also happened to start one. Duplicate drafts (e.g.
- * from a retried write of the same transition) are silently dropped via
- * their idempotencyKey unique constraint rather than erroring.
+ * if this same Snapshot also happened to start one. A MatchEnded/MatchStarted
+ * pair is emitted whenever this Snapshot closes and/or opens a Match, each
+ * carrying its own Match's id. PlayerKilled/PlayerDeath are emitted from
+ * kill/death counter deltas, but only when this Snapshot did *not* cross a
+ * Match boundary - a boundary's counter reset must never be misread as a
+ * batch of deaths (see diffKillDeathGameEvents). Duplicate drafts (e.g. from
+ * a retried write of the same transition) are silently dropped via their
+ * idempotencyKey unique constraint rather than erroring.
  *
  * Logs a line for each Match opened and/or closed, and each GameEvent
  * actually inserted - the things a poll can meaningfully change from an
@@ -199,9 +204,9 @@ export async function ingestSnapshot(
   snapshot: Snapshot,
   capturedAt: Date,
 ): Promise<void> {
-  let closedMatch: { id: number; winner: string | null; playerCount: number } | undefined;
+  let closedMatch: { id: number; winner: string | null; playerCount: number; endedAt: Date } | undefined;
   let openedMatch: { id: number; map: string } | undefined;
-  let recordedEvents: Array<{ id: number; type: GameEventType; steamId: string; matchId: number }> = [];
+  let recordedEvents: Array<{ id: number; type: GameEventType; steamId: string | null; matchId: number }> = [];
 
   await db.transaction(async (tx) => {
     const [previousRow] = await tx
@@ -224,7 +229,7 @@ export async function ingestSnapshot(
     if (isBoundary) {
       if (openMatch && previousRow) {
         const summary = await closeMatch(tx, openMatch, previousRow.capturedAt);
-        closedMatch = { id: openMatch.id, ...summary };
+        closedMatch = { id: openMatch.id, endedAt: previousRow.capturedAt, ...summary };
       }
       const [newMatch] = await tx
         .insert(matches)
@@ -257,6 +262,37 @@ export async function ingestSnapshot(
       sourceSnapshotId: insertedSnapshot.id,
     });
 
+    if (closedMatch) {
+      eventDrafts.push(
+        matchLifecycleEvent("MatchEnded", {
+          serverId,
+          matchId: closedMatch.id,
+          timestamp: closedMatch.endedAt,
+          sourceSnapshotId: insertedSnapshot.id,
+        }),
+      );
+    }
+    if (openedMatch) {
+      eventDrafts.push(
+        matchLifecycleEvent("MatchStarted", {
+          serverId,
+          matchId: openedMatch.id,
+          timestamp: capturedAt,
+          sourceSnapshotId: insertedSnapshot.id,
+        }),
+      );
+    }
+    if (!isBoundary && previousRow) {
+      eventDrafts.push(
+        ...diffKillDeathGameEvents(previousRow.payload.players, snapshot.players, {
+          serverId,
+          matchId: currentMatchId,
+          timestamp: capturedAt,
+          sourceSnapshotId: insertedSnapshot.id,
+        }),
+      );
+    }
+
     if (eventDrafts.length > 0) {
       recordedEvents = await tx
         .insert(gameEvents)
@@ -288,8 +324,9 @@ export async function ingestSnapshot(
     console.log(`[worker] match started: matchId=${openedMatch.id}, map=${openedMatch.map}`);
   }
   for (const event of recordedEvents) {
+    const steamIdPart = event.steamId ? `, steamId=${event.steamId}` : "";
     console.log(
-      `[worker] game event: type=${event.type}, serverId=${serverId}, matchId=${event.matchId}, steamId=${event.steamId}, eventId=${event.id}`,
+      `[worker] game event: type=${event.type}, serverId=${serverId}, matchId=${event.matchId}${steamIdPart}, eventId=${event.id}`,
     );
   }
 }

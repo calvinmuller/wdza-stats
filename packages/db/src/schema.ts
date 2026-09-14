@@ -158,7 +158,8 @@ export const gameEvents = pgTable("game_events", {
     .references(() => matches.id),
   type: text("type").notNull().$type<GameEventType>(),
   timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
-  steamId: text("steam_id").notNull(),
+  // Nullable: MatchStarted/MatchEnded are Match-scoped, not player-scoped.
+  steamId: text("steam_id"),
   targetSteamId: text("target_steam_id"),
   faction: text("faction"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),

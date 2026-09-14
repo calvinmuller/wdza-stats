@@ -4,11 +4,15 @@
 
 **Blocked by:** 01: Event log foundation + player join/leave detection
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] `MatchStarted` fires exactly once when a new Match is opened; `MatchEnded` fires exactly once when the previous Match closes, carrying its matchId
-- [ ] `PlayerKilled` fires once per unit increase in a player's kill counter between consecutive Snapshots within the same Match; `PlayerDeath` fires the same way for the death counter
-- [ ] A counter drop that triggers a new-Match boundary produces `MatchEnded` + `MatchStarted` but zero spurious `PlayerKilled`/`PlayerDeath` events for the reset
-- [ ] `targetSteamId` is never populated on `PlayerKilled`/`PlayerDeath` in this ticket
-- [ ] Idempotent: retrying the same snapshot comparison never duplicates any of these events
-- [ ] Tests cover: normal kill/death increments, a same-map restart (counter reset), and a map/rotation change — reusing the existing fixture sequences already exercised in `match-tracker.test.ts`
+- [x] `MatchStarted` fires exactly once when a new Match is opened; `MatchEnded` fires exactly once when the previous Match closes, carrying its matchId
+- [x] `PlayerKilled` fires once per unit increase in a player's kill counter between consecutive Snapshots within the same Match; `PlayerDeath` fires the same way for the death counter
+- [x] A counter drop that triggers a new-Match boundary produces `MatchEnded` + `MatchStarted` but zero spurious `PlayerKilled`/`PlayerDeath` events for the reset
+- [x] `targetSteamId` is never populated on `PlayerKilled`/`PlayerDeath` in this ticket
+- [x] Idempotent: retrying the same snapshot comparison never duplicates any of these events
+- [x] Tests cover: normal kill/death increments, a same-map restart (counter reset), and a map/rotation change — reusing the existing fixture sequences already exercised in `match-tracker.test.ts`
+
+## Comments
+
+Closed: implemented on top of ticket 01. `MatchStarted`/`MatchEnded`/`PlayerKilled`/`PlayerDeath` added to `GameEventType` (`packages/db/src/game-event.ts`); `game_events.steam_id` widened to nullable via `packages/db/migrations/0007_wooden_amazoness.sql` since Match-scoped events have no player. New pure builders `matchLifecycleEvent`/`diffKillDeathGameEvents` in `apps/worker/src/game-events.ts`, wired into `ingestSnapshot` in `apps/worker/src/match-tracker.ts` — kill/death diffing is gated on `!isBoundary` so a Match-boundary counter reset never misreads as deaths, matching `docs/adr/0001`. `detectMatchBoundary` itself is untouched, per the ticket. Reviewed via `/code-review` against both spec.md/this ticket and the repo's standards/smell baseline: Spec axis found zero gaps; Standards axis flagged two minor judgement calls (idempotency-key building duplicated across event types, redundant parallel Match-close state), both fixed. Full test suite (160 tests) and typecheck pass.

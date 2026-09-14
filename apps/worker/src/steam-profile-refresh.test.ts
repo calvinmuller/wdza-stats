@@ -43,6 +43,23 @@ describe("refreshUnseenSteamProfiles", () => {
     });
   });
 
+  it("logs each newly-cached profile with its status and playtime", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const client = scriptedSteamClient({
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      achievements: { "1": { available: true, achievements: [] } },
+      playtimeMinutes: { "1": 90 },
+    });
+
+    await refreshUnseenSteamProfiles(db, client, APP_ID, ["1"]);
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[worker] cached Steam profile for 1: status=ok"),
+    );
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("playtime=90 min"));
+    logSpy.mockRestore();
+  });
+
   it("caches playtime alongside achievements", async () => {
     const client = scriptedSteamClient({
       summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },

@@ -11,7 +11,7 @@ import {
   type SnapshotPlayer,
 } from "@wdza-stats/db";
 import { and, eq, isNotNull } from "drizzle-orm";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   computePlayerDeltas,
   detectMatchBoundary,
@@ -429,6 +429,42 @@ describe("Match-boundary detection and persistence (integration)", () => {
       .from(matchSnapshots)
       .where(eq(matchSnapshots.matchId, openMatch.id));
     expect(openMatchSnapshots).toHaveLength(1);
+  });
+
+  it("logs when a Match starts, and again when it closes", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 5, deaths: 1, cash: 400, pingMs: 40 },
+        ]),
+      },
+      {
+        // same map, counters reset - closes the first Match, opens a second
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    const [firstMatch] = await db.select().from(matches).where(eq(matches.serverId, server.id));
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`[worker] match started: matchId=${firstMatch.id}, map=Sandstorm`),
+    );
+
+    logSpy.mockClear();
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`[worker] match closed: matchId=${firstMatch.id}, winner=`),
+    );
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("[worker] match started:"));
+
+    logSpy.mockRestore();
   });
 
   it("accumulates PlayerCareerStat totals across multiple closed Matches, updating displayName to the latest observed name", async () => {

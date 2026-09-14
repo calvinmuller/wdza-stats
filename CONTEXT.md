@@ -28,3 +28,7 @@ _Avoid_: Round stats, player match record
 **PlayerCareerStat**:
 A player's totals aggregated across every closed Match on one Server, keyed by steamId + Server. Derived/rollup data — PlayerMatchStat rows are the source of truth. Scoped per-Server by design: the same steamId can have separate career totals on different Servers, since rules and communities differ between them.
 _Avoid_: Lifetime stats, player profile
+
+**SteamProfile**:
+A player's persona name, avatar, and unlocked WARDOGS achievements as reported by the Steam Web API, keyed by steamId alone. Unlike PlayerCareerStat, this is a property of the Steam account itself, not of any one Server, so it is never scoped or duplicated per-Server. Refreshed when the player appears in a newly-closed Match; cached as unavailable rather than retried when Steam reports the underlying data as private.
+_Avoid_: Player profile, Steam stats

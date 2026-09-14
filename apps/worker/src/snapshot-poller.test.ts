@@ -6,6 +6,7 @@ import {
   playerCareerStats,
   playerMatchStats,
   servers,
+  steamProfiles,
   type Database,
 } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
@@ -17,6 +18,9 @@ import {
   statusFixture,
 } from "./rcon-fixture";
 import { pollAndPersistSnapshot, pollOnce } from "./snapshot-poller";
+import { scriptedSteamClient } from "./steam-fixture";
+
+const STEAM_APP_ID = 1867240;
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
@@ -39,6 +43,7 @@ afterEach(async () => {
   await db.delete(matches);
   await db.delete(latestSnapshots);
   await db.delete(servers);
+  await db.delete(steamProfiles);
 });
 
 afterAll(async () => {
@@ -172,5 +177,83 @@ describe("pollOnce", () => {
       .where(eq(latestSnapshots.serverId, server.id));
     expect(rows).toHaveLength(1);
     expect(rows[0].payload).toMatchObject({ map: "Deadcity" });
+  });
+});
+
+describe("pollAndPersistSnapshot with Steam enrichment", () => {
+  it("triggers exactly one batched summaries call for a poll's new roster member", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([
+          {
+            steamId: "76561198000000001",
+            name: "Alice",
+            faction: "Lonestar",
+            kills: 0,
+            deaths: 0,
+            cash: 0,
+            pingMs: 40,
+          },
+        ]),
+      },
+    ]);
+    const steamClient = scriptedSteamClient({
+      summaries: {
+        "76561198000000001": {
+          steamId: "76561198000000001",
+          personaName: "Alice",
+          avatarUrl: "https://example.com/a.jpg",
+        },
+      },
+      achievements: { "76561198000000001": { available: true, achievements: [] } },
+    });
+
+    await pollAndPersistSnapshot(db, client, server.id, {
+      client: steamClient,
+      appId: STEAM_APP_ID,
+    });
+
+    expect(steamClient.summariesCalls).toEqual([["76561198000000001"]]);
+    const [profile] = await db
+      .select()
+      .from(steamProfiles)
+      .where(eq(steamProfiles.steamId, "76561198000000001"));
+    expect(profile).toMatchObject({ personaName: "Alice", status: "ok" });
+  });
+
+  it("does not throw and still persists the Snapshot when the Steam client fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([
+          {
+            steamId: "1",
+            name: "Alice",
+            faction: "Lonestar",
+            kills: 0,
+            deaths: 0,
+            cash: 0,
+            pingMs: 40,
+          },
+        ]),
+      },
+    ]);
+    const steamClient = scriptedSteamClient({
+      failSummaries: () => new Error("network error"),
+    });
+
+    await expect(
+      pollAndPersistSnapshot(db, client, server.id, { client: steamClient, appId: STEAM_APP_ID }),
+    ).resolves.toBeUndefined();
+
+    const rows = await db
+      .select()
+      .from(latestSnapshots)
+      .where(eq(latestSnapshots.serverId, server.id));
+    expect(rows).toHaveLength(1);
   });
 });

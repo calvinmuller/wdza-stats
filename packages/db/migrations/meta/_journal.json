@@ -29,6 +29,13 @@
       "when": 1789276448343,
       "tag": "0003_military_nick_fury",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789372037665,
+      "tag": "0004_blushing_malice",
+      "breakpoints": true
     }
   ]
 }

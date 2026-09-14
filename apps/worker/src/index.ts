@@ -1,7 +1,14 @@
-import { createDb, loadRootEnv, requireEnv, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db";
+import {
+  createDb,
+  loadRootEnv,
+  requireEnv,
+  SNAPSHOT_POLL_INTERVAL_MS,
+  WARDOGS_STEAM_APP_ID,
+} from "@wdza-stats/db";
 import { runHeartbeat } from "./heartbeat";
 import { createRconClient } from "./rcon-client";
-import { startSnapshotPolling } from "./snapshot-poller";
+import { startSnapshotPolling, type SteamRefreshConfig } from "./snapshot-poller";
+import { createSteamClient } from "./steam-client";
 
 loadRootEnv();
 
@@ -12,8 +19,20 @@ const token = requireEnv("RCON_TOKEN");
 const server = await runHeartbeat(db, baseUrl);
 console.log(`[worker] connected to Postgres, tracking "${server.name}"`);
 
+// STEAM_API_KEY is optional - unlike RCON, Steam enrichment is a nice-to-have
+// on top of core snapshot polling, so a deployment without a key yet
+// shouldn't fail to boot.
+const steamApiKey = process.env.STEAM_API_KEY;
+const steamConfig: SteamRefreshConfig | undefined = steamApiKey
+  ? { client: createSteamClient(steamApiKey), appId: WARDOGS_STEAM_APP_ID }
+  : undefined;
+
+if (!steamConfig) {
+  console.log("[worker] STEAM_API_KEY not set - Steam profile enrichment disabled");
+}
+
 const rconClient = createRconClient(baseUrl, token);
-startSnapshotPolling(db, rconClient, server.id, SNAPSHOT_POLL_INTERVAL_MS);
+startSnapshotPolling(db, rconClient, server.id, SNAPSHOT_POLL_INTERVAL_MS, steamConfig);
 console.log(
   `[worker] polling RCON every ${SNAPSHOT_POLL_INTERVAL_MS / 1000}s for "${server.name}"`,
 );

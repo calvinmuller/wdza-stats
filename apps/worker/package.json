@@ -6,6 +6,7 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
+    "backfill:steam": "tsx src/backfill-steam-profiles.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

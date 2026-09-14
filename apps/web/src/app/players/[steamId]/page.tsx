@@ -1,9 +1,12 @@
+import { AchievementBadges } from "@/components/achievement-badges";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { PlayerMatchHistoryTable } from "@/components/player-match-history-table";
+import { SteamAvatar } from "@/components/steam-avatar";
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { getPlayerMatchHistory } from "@/lib/match-history";
 import { getPlayerCareerStat } from "@/lib/player-lookup";
+import { getSteamProfile } from "@/lib/steam-profile-lookup";
 
 // A DB read via drizzle isn't a Request-time API, so Next won't otherwise
 // know this route needs fresh data on every request - force it dynamic so
@@ -22,11 +25,10 @@ export default async function PlayerPage({
     return <p className="text-zinc-400">No player found with that Steam ID.</p>;
   }
 
-  const matchHistory = await getPlayerMatchHistory(
-    db,
-    CONFIGURED_SERVER_BASE_URL,
-    steamId,
-  );
+  const [matchHistory, steamProfile] = await Promise.all([
+    getPlayerMatchHistory(db, CONFIGURED_SERVER_BASE_URL, steamId),
+    getSteamProfile(db, steamId),
+  ]);
 
   const stats = [
     { label: "Kills", value: player.kills },
@@ -38,9 +40,15 @@ export default async function PlayerPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="flex items-center text-3xl">
-        {player.factionColor && <FactionSwatch color={player.factionColor} />}
-        {player.displayName}
+      <h1 className="flex flex-wrap items-center gap-x-4 gap-y-1 text-3xl">
+        <span className="flex items-center">
+          {player.factionColor && <FactionSwatch color={player.factionColor} />}
+          {player.displayName}
+        </span>
+        <SteamAvatar
+          avatarUrl={steamProfile?.avatarUrl ?? null}
+          personaName={steamProfile?.personaName ?? null}
+        />
       </h1>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {stats.map((stat) => (
@@ -55,6 +63,8 @@ export default async function PlayerPage({
           </div>
         ))}
       </dl>
+
+      <AchievementBadges achievements={steamProfile?.achievements ?? []} />
 
       <div className="flex flex-col gap-3">
         <h2 className="text-xl text-zinc-100">Match history</h2>

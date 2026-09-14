@@ -8,6 +8,7 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import type { Snapshot } from "./snapshot";
+import type { SteamAchievementUnlock, SteamProfileStatus } from "./steam-profile";
 
 // Domain terms (Server, Match, PlayerMatchStat, PlayerCareerStat, Snapshot) are defined in CONTEXT.md.
 
@@ -85,4 +86,35 @@ export const playerCareerStats = pgTable(
     matchesPlayed: integer("matches_played").notNull().default(0),
   },
   (table) => [primaryKey({ columns: [table.serverId, table.steamId] })],
+);
+
+// A player's Steam Web API identity/achievement data, keyed by steamId
+// alone - not scoped per-Server, since it's a property of the Steam
+// account, not of any one Server (docs/adr/0002). personaName/avatarUrl are
+// nullable since the summaries fetch can fail independently of the
+// achievements fetch (see SteamProfileStatus).
+export const steamProfiles = pgTable("steam_profiles", {
+  steamId: text("steam_id").primaryKey(),
+  personaName: text("persona_name"),
+  avatarUrl: text("avatar_url"),
+  achievements: jsonb("achievements")
+    .notNull()
+    .$type<SteamAchievementUnlock[]>(),
+  status: text("status").notNull().$type<SteamProfileStatus>(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+});
+
+// The WARDOGS achievement schema (name/description/icon per achievement) -
+// global, developer-defined metadata, not per-player. Fetched once and
+// refreshed rarely, independent of any player's SteamProfile.
+export const steamAchievementSchema = pgTable(
+  "steam_achievement_schema",
+  {
+    appId: integer("app_id").notNull(),
+    apiName: text("api_name").notNull(),
+    displayName: text("display_name").notNull(),
+    description: text("description"),
+    iconUrl: text("icon_url").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.appId, table.apiName] })],
 );

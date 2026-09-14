@@ -22,6 +22,17 @@ npm run db:seed             # seed the one configured Server row
 Run the worker: `npm run dev --workspace=@wdza-stats/worker`
 Run the web app: `npm run dev --workspace=@wdza-stats/web`
 
+Steam profile enrichment (avatars, persona names, achievements) needs
+`STEAM_API_KEY` set; the running worker fetches it automatically as new
+players are seen online, but for players already known before you set the
+key up (or before this feature shipped), backfill them once with:
+
+```sh
+npm run backfill:steam --workspace=@wdza-stats/worker
+```
+
+Safe to re-run - already-cached players are skipped.
+
 ## Testing
 
 ```sh

@@ -1,7 +1,7 @@
 import { createDb, steamAchievementSchema, steamProfiles, type Database } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { refreshUnseenSteamProfiles } from "./steam-profile-refresh";
+import { refreshPlaytimeOnJoin, refreshUnseenSteamProfiles } from "./steam-profile-refresh";
 import { scriptedSteamClient } from "./steam-fixture";
 
 const APP_ID = 1867240;
@@ -251,5 +251,98 @@ describe("refreshUnseenSteamProfiles", () => {
       [1, 2],
       [2, 2],
     ]);
+  });
+});
+
+describe("refreshPlaytimeOnJoin", () => {
+  it("re-fetches playtime for an already-cached ok player", async () => {
+    await db.insert(steamProfiles).values({
+      steamId: "1",
+      personaName: "Alice",
+      avatarUrl: null,
+      achievements: [],
+      playtimeMinutes: 100,
+      status: "ok",
+      fetchedAt: new Date(),
+    });
+    const client = scriptedSteamClient({ playtimeMinutes: { "1": 250 } });
+
+    await refreshPlaytimeOnJoin(db, client, APP_ID, ["1"]);
+
+    expect(client.playtimeCalls).toEqual(["1"]);
+    const row = await readProfile("1");
+    expect(row).toMatchObject({ playtimeMinutes: 250 });
+  });
+
+  it("re-fetches playtime for an already-cached private player", async () => {
+    await db.insert(steamProfiles).values({
+      steamId: "1",
+      personaName: "Alice",
+      avatarUrl: null,
+      achievements: [],
+      playtimeMinutes: null,
+      status: "private",
+      fetchedAt: new Date(),
+    });
+    const client = scriptedSteamClient({ playtimeMinutes: { "1": 60 } });
+
+    await refreshPlaytimeOnJoin(db, client, APP_ID, ["1"]);
+
+    expect(client.playtimeCalls).toEqual(["1"]);
+    const row = await readProfile("1");
+    expect(row).toMatchObject({ playtimeMinutes: 60 });
+  });
+
+  it("does not fetch for a steamId with no cached SteamProfile row", async () => {
+    const client = scriptedSteamClient({ playtimeMinutes: { "1": 999 } });
+
+    await refreshPlaytimeOnJoin(db, client, APP_ID, ["1"]);
+
+    expect(client.playtimeCalls).toEqual([]);
+    const row = await readProfile("1");
+    expect(row).toBeUndefined();
+  });
+
+  it("does not fetch for a steamId cached as error - left to refreshUnseenSteamProfiles's own retry", async () => {
+    await db.insert(steamProfiles).values({
+      steamId: "1",
+      personaName: null,
+      avatarUrl: null,
+      achievements: [],
+      status: "error",
+      fetchedAt: new Date(),
+    });
+    const client = scriptedSteamClient({ playtimeMinutes: { "1": 999 } });
+
+    await refreshPlaytimeOnJoin(db, client, APP_ID, ["1"]);
+
+    expect(client.playtimeCalls).toEqual([]);
+  });
+
+  it("does not block other players when one player's playtime fetch fails, and does not throw", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await db.insert(steamProfiles).values([
+      { steamId: "1", personaName: "Alice", avatarUrl: null, achievements: [], status: "ok", fetchedAt: new Date() },
+      { steamId: "2", personaName: "Bob", avatarUrl: null, achievements: [], status: "ok", fetchedAt: new Date() },
+    ]);
+    const client = scriptedSteamClient({
+      playtimeMinutes: { "2": 400 },
+      failPlaytime: (steamId) => (steamId === "1" ? new Error("network error") : null),
+    });
+
+    await expect(refreshPlaytimeOnJoin(db, client, APP_ID, ["1", "2"])).resolves.toBeUndefined();
+
+    const alice = await readProfile("1");
+    const bob = await readProfile("2");
+    expect(alice).toMatchObject({ playtimeMinutes: null });
+    expect(bob).toMatchObject({ playtimeMinutes: 400 });
+  });
+
+  it("does nothing when given no steamIds", async () => {
+    const client = scriptedSteamClient({});
+
+    await expect(refreshPlaytimeOnJoin(db, client, APP_ID, [])).resolves.toBeUndefined();
+
+    expect(client.playtimeCalls).toEqual([]);
   });
 });

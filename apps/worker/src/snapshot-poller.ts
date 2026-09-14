@@ -1,17 +1,39 @@
-import type { Database, Snapshot } from "@wdza-stats/db";
+import { latestSnapshots, type Database, type Snapshot, type SnapshotPlayer } from "@wdza-stats/db";
+import { eq } from "drizzle-orm";
 import { ingestSnapshot } from "./match-tracker";
 import type {
   RawPlayersResponse,
   RawStatusResponse,
   RconClient,
 } from "./rcon-client";
-import { refreshUnseenSteamProfiles } from "./steam-profile-refresh";
+import { refreshPlaytimeOnJoin, refreshUnseenSteamProfiles } from "./steam-profile-refresh";
 import type { SteamClient } from "./steam-client";
 
 /** Steam enrichment is optional: omit it (e.g. no STEAM_API_KEY configured) and polling runs exactly as before. */
 export interface SteamRefreshConfig {
   client: SteamClient;
   appId: number;
+}
+
+/**
+ * steamIds present in `currentPlayers` but not in `previousPlayers` - a
+ * player who just joined the server between the last poll and this one.
+ * When there's no previous roster to compare against (the Worker's first
+ * poll since starting), every currently-online player counts as joined:
+ * from this process's perspective, it's the first time it's seeing any of
+ * them.
+ */
+export function newlyJoinedSteamIds(
+  previousPlayers: SnapshotPlayer[] | undefined,
+  currentPlayers: SnapshotPlayer[],
+): string[] {
+  if (!previousPlayers) {
+    return currentPlayers.map((player) => player.steamId);
+  }
+  const previousSteamIds = new Set(previousPlayers.map((player) => player.steamId));
+  return currentPlayers
+    .filter((player) => !previousSteamIds.has(player.steamId))
+    .map((player) => player.steamId);
 }
 
 function mergeSnapshot(
@@ -55,10 +77,13 @@ function mergeSnapshot(
  * steamId in this poll's live roster that isn't cached yet - deliberately
  * on every poll rather than gated by Match close, so a new player's avatar
  * shows up within one ~15s poll cycle of joining instead of waiting for
- * their Match to end (see docs/adr/0002 and steam-profile-refresh.ts). This
- * never throws out of here: a Steam outage must never take down snapshot
- * polling, which is why it isn't folded into the try/catch below - it has
- * its own.
+ * their Match to end (see docs/adr/0002 and steam-profile-refresh.ts) - and
+ * re-fetches playtime for anyone who just joined the roster since the last
+ * poll (see newlyJoinedSteamIds/refreshPlaytimeOnJoin below), so playtime
+ * tracks their actual total across sessions instead of being frozen at
+ * first-sighting. Neither refresh throws out of here: a Steam outage must
+ * never take down snapshot polling, which is why they aren't folded into
+ * the try/catch below - they have their own.
  */
 export async function pollAndPersistSnapshot(
   db: Database,
@@ -71,9 +96,33 @@ export async function pollAndPersistSnapshot(
   const snapshot = mergeSnapshot(status, players);
   const capturedAt = new Date();
 
+  // Read before ingestSnapshot overwrites this Server's latestSnapshots row,
+  // so "joined" can be computed against the roster as it stood one poll ago.
+  const [previousRow] = await db
+    .select({ payload: latestSnapshots.payload })
+    .from(latestSnapshots)
+    .where(eq(latestSnapshots.serverId, serverId))
+    .limit(1);
+
   await ingestSnapshot(db, serverId, snapshot, capturedAt);
 
   if (steamConfig) {
+    const joinedSteamIds = newlyJoinedSteamIds(previousRow?.payload.players, snapshot.players);
+
+    // Runs before refreshUnseenSteamProfiles: a steamId with no cached row
+    // yet is skipped here (refreshPlaytimeOnJoin only touches existing
+    // rows) and picked up by refreshUnseenSteamProfiles just below instead,
+    // which fetches playtime as part of creating that row - so a brand-new
+    // player's join doesn't trigger two playtime fetches for the same poll.
+    try {
+      await refreshPlaytimeOnJoin(db, steamConfig.client, steamConfig.appId, joinedSteamIds);
+    } catch (error) {
+      console.error(
+        `[worker] Steam playtime refresh failed for server ${serverId}:`,
+        error,
+      );
+    }
+
     try {
       await refreshUnseenSteamProfiles(
         db,

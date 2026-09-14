@@ -206,3 +206,45 @@ export async function refreshUnseenSteamProfiles(
     onProgress?.(index + 1, targets.length);
   }
 }
+
+/**
+ * Re-fetches WARDOGS playtime for players in `joinedSteamIds` who already
+ * have a cached SteamProfile row with status "ok" or "private" - keeps
+ * playtime current across sessions instead of frozen at first-sighting
+ * (refreshUnseenSteamProfiles only ever fetches it once, when a row is
+ * first created). A brand-new steamId has no row yet, so it's naturally
+ * skipped here and gets its first playtime fetch from
+ * refreshUnseenSteamProfiles instead - see the call site in
+ * snapshot-poller.ts for why that ordering avoids a redundant fetch. An
+ * "error" row is also skipped, left to refreshUnseenSteamProfiles's own
+ * cooldown-gated retry rather than doubling up on retry logic for the same
+ * row. Never throws - one player's failure never blocks the others.
+ */
+export async function refreshPlaytimeOnJoin(
+  db: Database,
+  steamClient: SteamClient,
+  appId: number,
+  joinedSteamIds: string[],
+): Promise<void> {
+  if (joinedSteamIds.length === 0) {
+    return;
+  }
+
+  const existing = await db
+    .select({ steamId: steamProfiles.steamId, status: steamProfiles.status })
+    .from(steamProfiles)
+    .where(inArray(steamProfiles.steamId, Array.from(new Set(joinedSteamIds))));
+
+  const targets = existing
+    .filter((row) => row.status === "ok" || row.status === "private")
+    .map((row) => row.steamId);
+
+  for (const steamId of targets) {
+    try {
+      const playtimeMinutes = await steamClient.fetchPlayerPlaytimeMinutes(steamId, appId);
+      await db.update(steamProfiles).set({ playtimeMinutes }).where(eq(steamProfiles.steamId, steamId));
+    } catch (error) {
+      console.error(`[worker] Steam playtime refresh failed for ${steamId}:`, error);
+    }
+  }
+}

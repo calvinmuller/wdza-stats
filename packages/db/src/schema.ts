@@ -7,6 +7,7 @@ import {
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
+import type { GameEventType } from "./game-event";
 import type { Snapshot } from "./snapshot";
 import type { SteamAchievementUnlock, SteamProfileStatus } from "./steam-profile";
 
@@ -71,7 +72,10 @@ export const playerMatchStats = pgTable(
   (table) => [primaryKey({ columns: [table.matchId, table.steamId] })],
 );
 
-// Derived rollup of playerMatchStats, keyed by steamId + Server.
+// Derived rollup of playerMatchStats, keyed by steamId + Server. Also carries
+// the gamification totals we invent ourselves (xp, level, streaks, MVP
+// count, win/loss) - see CONTEXT.md's PlayerCareerStat entry. `level`
+// defaults to 1 to match the level curve's floor (0 XP = level 1).
 export const playerCareerStats = pgTable(
   "player_career_stats",
   {
@@ -84,6 +88,13 @@ export const playerCareerStats = pgTable(
     deaths: integer("deaths").notNull().default(0),
     cash: integer("cash").notNull().default(0),
     matchesPlayed: integer("matches_played").notNull().default(0),
+    xp: integer("xp").notNull().default(0),
+    level: integer("level").notNull().default(1),
+    matchesWon: integer("matches_won").notNull().default(0),
+    matchesLost: integer("matches_lost").notNull().default(0),
+    highestKillStreak: integer("highest_kill_streak").notNull().default(0),
+    currentKillStreak: integer("current_kill_streak").notNull().default(0),
+    mvpCount: integer("mvp_count").notNull().default(0),
   },
   (table) => [primaryKey({ columns: [table.serverId, table.steamId] })],
 );
@@ -123,3 +134,34 @@ export const steamAchievementSchema = pgTable(
   },
   (table) => [primaryKey({ columns: [table.appId, table.apiName] })],
 );
+
+// GameEvent: a domain-level occurrence inferred by diffing two consecutive
+// Snapshots for one player or Match - see CONTEXT.md. The permanent,
+// idempotent log every gamification engine (XP, Challenge, Achievement,
+// Notification) reads from; never bypassed by those engines calling RCON or
+// Snapshot data directly. targetSteamId is never populated in v1 (no safe
+// kill/death attribution within a poll window) but the column exists so
+// later event types have a home for it without another migration.
+// sourceSnapshotId points at the matchSnapshots row the event was inferred
+// from, but isn't a foreign key: that row is deleted once its Match closes,
+// while the GameEvent it produced must outlive it. idempotencyKey is a
+// deterministic string derived from the event's own identity (Server,
+// Match, type, steamId, timestamp) so re-processing the same Snapshot
+// comparison - e.g. after a retry - never inserts a duplicate row.
+export const gameEvents = pgTable("game_events", {
+  id: serial("id").primaryKey(),
+  serverId: integer("server_id")
+    .notNull()
+    .references(() => servers.id),
+  matchId: integer("match_id")
+    .notNull()
+    .references(() => matches.id),
+  type: text("type").notNull().$type<GameEventType>(),
+  timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+  steamId: text("steam_id").notNull(),
+  targetSteamId: text("target_steam_id"),
+  faction: text("faction"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  sourceSnapshotId: integer("source_snapshot_id").notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+});

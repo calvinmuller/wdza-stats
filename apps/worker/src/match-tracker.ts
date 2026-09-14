@@ -1,14 +1,17 @@
 import {
+  gameEvents,
   latestSnapshots,
   matchSnapshots,
   matches,
   playerCareerStats,
   playerMatchStats,
   type Database,
+  type GameEventType,
   type Snapshot,
   type SnapshotPlayer,
 } from "@wdza-stats/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { diffRosterGameEvents } from "./game-events";
 
 /**
  * True when comparing `previous` to `next` indicates a new Match has begun:
@@ -176,11 +179,19 @@ async function closeMatch(
  * so a stale state on resume is detected as an ordinary boundary and the
  * stale Match is closed using that last-known-good Snapshot's timestamp.
  *
- * Logs a line for each Match opened and/or closed - the two things a poll
- * can meaningfully change from an operator's point of view, versus the
- * ~15s poll cadence itself which is too frequent to log on every tick.
- * Logged only after the transaction below actually commits, so a rolled-back
- * attempt never gets reported as having happened.
+ * Also diffs the previous roster against this Snapshot's to emit
+ * PlayerJoined/PlayerLeft GameEvents (see game-events.ts), attributed to
+ * whichever Match is open by the time the diff runs - the newly-opened one,
+ * if this same Snapshot also happened to start one. Duplicate drafts (e.g.
+ * from a retried write of the same transition) are silently dropped via
+ * their idempotencyKey unique constraint rather than erroring.
+ *
+ * Logs a line for each Match opened and/or closed, and each GameEvent
+ * actually inserted - the things a poll can meaningfully change from an
+ * operator's point of view, versus the ~15s poll cadence itself which is too
+ * frequent to log on every tick. Logged only after the transaction below
+ * actually commits, so a rolled-back attempt never gets reported as having
+ * happened.
  */
 export async function ingestSnapshot(
   db: Database,
@@ -190,6 +201,7 @@ export async function ingestSnapshot(
 ): Promise<void> {
   let closedMatch: { id: number; winner: string | null; playerCount: number } | undefined;
   let openedMatch: { id: number; map: string } | undefined;
+  let recordedEvents: Array<{ id: number; type: GameEventType; steamId: string; matchId: number }> = [];
 
   await db.transaction(async (tx) => {
     const [previousRow] = await tx
@@ -229,11 +241,34 @@ export async function ingestSnapshot(
       currentMatchId = openMatch!.id;
     }
 
-    await tx.insert(matchSnapshots).values({
+    const [insertedSnapshot] = await tx
+      .insert(matchSnapshots)
+      .values({
+        matchId: currentMatchId,
+        capturedAt,
+        payload: snapshot,
+      })
+      .returning();
+
+    const eventDrafts = diffRosterGameEvents(previousRow?.payload.players, snapshot.players, {
+      serverId,
       matchId: currentMatchId,
-      capturedAt,
-      payload: snapshot,
+      timestamp: capturedAt,
+      sourceSnapshotId: insertedSnapshot.id,
     });
+
+    if (eventDrafts.length > 0) {
+      recordedEvents = await tx
+        .insert(gameEvents)
+        .values(eventDrafts)
+        .onConflictDoNothing({ target: gameEvents.idempotencyKey })
+        .returning({
+          id: gameEvents.id,
+          type: gameEvents.type,
+          steamId: gameEvents.steamId,
+          matchId: gameEvents.matchId,
+        });
+    }
 
     await tx
       .insert(latestSnapshots)
@@ -251,5 +286,10 @@ export async function ingestSnapshot(
   }
   if (openedMatch) {
     console.log(`[worker] match started: matchId=${openedMatch.id}, map=${openedMatch.map}`);
+  }
+  for (const event of recordedEvents) {
+    console.log(
+      `[worker] game event: type=${event.type}, serverId=${serverId}, matchId=${event.matchId}, steamId=${event.steamId}, eventId=${event.id}`,
+    );
   }
 }

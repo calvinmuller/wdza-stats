@@ -1,5 +1,6 @@
 import {
   createDb,
+  gameEvents,
   latestSnapshots,
   matchSnapshots,
   matches,
@@ -210,6 +211,7 @@ describe("Match-boundary detection and persistence (integration)", () => {
   }
 
   afterEach(async () => {
+    await db.delete(gameEvents);
     await db.delete(playerMatchStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
@@ -550,17 +552,16 @@ describe("Match-boundary detection and persistence (integration)", () => {
       .select()
       .from(playerCareerStats)
       .where(eq(playerCareerStats.steamId, "1"));
-    expect(career).toEqual([
-      {
-        serverId: server.id,
-        steamId: "1",
-        displayName: "AliceRenamed",
-        kills: 5,
-        deaths: 1,
-        cash: 300,
-        matchesPlayed: 2,
-      },
-    ]);
+    expect(career).toHaveLength(1);
+    expect(career[0]).toMatchObject({
+      serverId: server.id,
+      steamId: "1",
+      displayName: "AliceRenamed",
+      kills: 5,
+      deaths: 1,
+      cash: 300,
+      matchesPlayed: 2,
+    });
   });
 
   it("closes the Match on a map/rotation change and opens a new one", async () => {

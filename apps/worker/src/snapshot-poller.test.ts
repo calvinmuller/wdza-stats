@@ -1,5 +1,6 @@
 import {
   createDb,
+  gameEvents,
   latestSnapshots,
   matchSnapshots,
   matches,
@@ -37,6 +38,7 @@ async function seedServer() {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  await db.delete(gameEvents);
   await db.delete(playerMatchStats);
   await db.delete(playerCareerStats);
   await db.delete(matchSnapshots);

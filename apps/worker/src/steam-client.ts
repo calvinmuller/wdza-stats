@@ -135,10 +135,9 @@ export function createSteamClient(apiKey: string): SteamClient {
 
       const response = await fetch(url);
 
-      // Steam answers a private profile (or a player who has never
-      // launched the game) with HTTP 400 and {success: false} in the body
-      // - not a 2xx, but not a genuine failure either.
-      if (!response.ok && response.status !== 400) {
+      // 429/5xx never carry a parseable playerstats body - genuine
+      // transient failures, fail fast without attempting to parse.
+      if (response.status === 429 || response.status >= 500) {
         throw new SteamApiError(
           `GetPlayerAchievements failed with status ${response.status}`,
           response.status,
@@ -146,9 +145,22 @@ export function createSteamClient(apiKey: string): SteamClient {
         );
       }
 
-      const data = (await response.json()) as {
-        playerstats?: { success: boolean; achievements?: RawPlayerAchievement[] };
-      };
+      // Steam answers a private profile (or a player who has never
+      // launched the game) with a non-2xx status - 403 with
+      // {"error":"Profile is not public"} observed in practice, despite
+      // the API reference implying 400 - and {success: false} in the body.
+      // Not a genuine failure, so any other status is parsed the same way
+      // a 200 would be, rather than assuming a specific non-2xx code.
+      let data: { playerstats?: { success: boolean; achievements?: RawPlayerAchievement[] } };
+      try {
+        data = await response.json();
+      } catch {
+        throw new SteamApiError(
+          `GetPlayerAchievements returned an unparseable response (status ${response.status})`,
+          response.status,
+          null,
+        );
+      }
 
       if (!data.playerstats?.success) {
         return { available: false };

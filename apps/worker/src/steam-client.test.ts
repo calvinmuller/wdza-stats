@@ -118,7 +118,21 @@ describe("fetchPlayerAchievements", () => {
     expect(result).toEqual({ available: false });
   });
 
-  it("throws SteamApiError on a genuine non-400 failure", async () => {
+  it("treats a 403 with success:false as unavailable, not an error - Steam's actual behavior for a private profile, despite the API reference implying 400", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({ playerstats: { error: "Profile is not public", success: false } }, { status: 403 }),
+      ),
+    );
+
+    const client = createSteamClient("key");
+    const result = await client.fetchPlayerAchievements("1", 1867240);
+
+    expect(result).toEqual({ available: false });
+  });
+
+  it("throws SteamApiError on a 5xx", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, { status: 500 })));
 
     const client = createSteamClient("key");

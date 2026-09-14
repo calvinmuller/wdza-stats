@@ -243,6 +243,7 @@ export async function refreshPlaytimeOnJoin(
     try {
       const playtimeMinutes = await steamClient.fetchPlayerPlaytimeMinutes(steamId, appId);
       await db.update(steamProfiles).set({ playtimeMinutes }).where(eq(steamProfiles.steamId, steamId));
+      console.log(`[worker] refreshed playtime on join for ${steamId}: ${playtimeMinutes ?? "null"} min`);
     } catch (error) {
       console.error(`[worker] Steam playtime refresh failed for ${steamId}:`, error);
     }

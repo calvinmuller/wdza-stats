@@ -113,6 +113,24 @@ describe("pollAndPersistSnapshot", () => {
     });
   });
 
+  it("logs a summary line on every poll, even with nothing else to report", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    expect(logSpy).toHaveBeenCalledWith("[worker] poll: 1 player(s) online, map=Sandstorm");
+    logSpy.mockRestore();
+  });
+
   it("persists an empty rotation entries list when the RCON server omits it", async () => {
     const server = await seedServer();
     const rawStatus = statusFixture({ map: "Sandstorm" });

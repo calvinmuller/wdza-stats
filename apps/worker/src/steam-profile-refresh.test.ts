@@ -60,6 +60,24 @@ describe("refreshUnseenSteamProfiles", () => {
     logSpy.mockRestore();
   });
 
+  it("logs a 0/N summary when every steamId is already cached and none need refresh", async () => {
+    await db.insert(steamProfiles).values({
+      steamId: "1",
+      personaName: "Alice",
+      avatarUrl: null,
+      achievements: [],
+      status: "ok",
+      fetchedAt: new Date(),
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const client = scriptedSteamClient({});
+
+    await refreshUnseenSteamProfiles(db, client, APP_ID, ["1"]);
+
+    expect(logSpy).toHaveBeenCalledWith("[worker] steam profile refresh: 0/1 player(s) need refresh");
+    logSpy.mockRestore();
+  });
+
   it("caches playtime alongside achievements", async () => {
     const client = scriptedSteamClient({
       summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
@@ -318,6 +336,16 @@ describe("refreshPlaytimeOnJoin", () => {
     expect(client.playtimeCalls).toEqual([]);
     const row = await readProfile("1");
     expect(row).toBeUndefined();
+  });
+
+  it("logs a 0/N summary when joiners exist but none have a cached row to refresh", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const client = scriptedSteamClient({});
+
+    await refreshPlaytimeOnJoin(db, client, APP_ID, ["1"]);
+
+    expect(logSpy).toHaveBeenCalledWith("[worker] playtime-on-join: 0/1 joiner(s) need refresh");
+    logSpy.mockRestore();
   });
 
   it("does not fetch for a steamId cached as error - left to refreshUnseenSteamProfiles's own retry", async () => {

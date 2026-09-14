@@ -96,6 +96,11 @@ export async function pollAndPersistSnapshot(
   const snapshot = mergeSnapshot(status, players);
   const capturedAt = new Date();
 
+  // One line per poll: a successful ~15s poll otherwise produces no output
+  // at all unless a Match boundary or Steam refresh happens to occur, which
+  // made the worker look idle/stuck during ordinary quiet stretches.
+  console.log(`[worker] poll: ${snapshot.players.length} player(s) online, map=${snapshot.map}`);
+
   // Read before ingestSnapshot overwrites this Server's latestSnapshots row,
   // so "joined" can be computed against the roster as it stood one poll ago.
   const [previousRow] = await db

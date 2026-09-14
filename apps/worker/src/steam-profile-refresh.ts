@@ -125,6 +125,14 @@ export async function refreshUnseenSteamProfiles(
     return now - row.fetchedAt.getTime() >= ERROR_RETRY_COOLDOWN_MS;
   });
 
+  // Always logged, even when targets is empty - otherwise this whole
+  // subsystem is silent for every poll where nobody new/erroring is in the
+  // roster, which is most polls, and looks indistinguishable from it never
+  // running at all.
+  console.log(
+    `[worker] steam profile refresh: ${targets.length}/${uniqueSteamIds.length} player(s) need refresh`,
+  );
+
   if (targets.length === 0) {
     return;
   }
@@ -242,6 +250,10 @@ export async function refreshPlaytimeOnJoin(
   const targets = existing
     .filter((row) => row.status === "ok" || row.status === "private")
     .map((row) => row.steamId);
+
+  console.log(
+    `[worker] playtime-on-join: ${targets.length}/${joinedSteamIds.length} joiner(s) need refresh`,
+  );
 
   for (const steamId of targets) {
     try {

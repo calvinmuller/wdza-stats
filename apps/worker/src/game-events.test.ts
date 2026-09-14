@@ -8,11 +8,13 @@ import {
   playerMatchStats,
   servers,
   type Database,
+  type SnapshotFaction,
   type SnapshotPlayer,
 } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
+  diffFactionScoreGameEvents,
   diffKillDeathGameEvents,
   diffRosterGameEvents,
   matchLifecycleEvent,
@@ -42,6 +44,10 @@ function context(overrides: Partial<RosterDiffContext> = {}): RosterDiffContext 
     sourceSnapshotId: 1,
     ...overrides,
   };
+}
+
+function faction(overrides: Partial<SnapshotFaction> = {}): SnapshotFaction {
+  return { name: "Lonestar", color: "#ff0000", score: 0, ...overrides };
 }
 
 describe("diffRosterGameEvents", () => {
@@ -198,6 +204,111 @@ describe("diffKillDeathGameEvents", () => {
 
     const first = diffKillDeathGameEvents(previous, current, context({ timestamp: new Date("2026-01-01T00:00:00.000Z") }))[0];
     const second = diffKillDeathGameEvents(previous, current, context({ timestamp: new Date("2026-01-01T00:05:00.000Z") }))[0];
+
+    expect(first.idempotencyKey).toBe(second.idempotencyKey);
+  });
+});
+
+describe("diffFactionScoreGameEvents", () => {
+  it("emits FactionScoreChanged with old and new score for a normal increase", () => {
+    // Lonestar is already the recorded leader and stays the sole leader
+    // after the increase, so no FactionTookLead fires alongside it.
+    const previous = [faction({ name: "Lonestar", score: 5 }), faction({ name: "Valkyra", score: 0 })];
+    const current = [faction({ name: "Lonestar", score: 10 }), faction({ name: "Valkyra", score: 0 })];
+
+    const events = diffFactionScoreGameEvents(previous, current, "Lonestar", context());
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "FactionScoreChanged",
+        faction: "Lonestar",
+        metadata: { previousScore: 5, newScore: 10 },
+      }),
+    ]);
+  });
+
+  it("emits nothing when no Faction's score changed", () => {
+    const factions = [faction({ name: "Lonestar", score: 5 }), faction({ name: "Valkyra", score: 5 })];
+    expect(diffFactionScoreGameEvents(factions, factions, null, context())).toEqual([]);
+  });
+
+  it("skips a Faction absent from previousFactions instead of diffing against a 0 baseline", () => {
+    // previousLeader already names Lonestar so its continuing sole lead
+    // doesn't also fire FactionTookLead here, isolating the assertion to
+    // FactionScoreChanged.
+    const previous: SnapshotFaction[] = [];
+    const current = [faction({ name: "Lonestar", score: 10 })];
+
+    expect(diffFactionScoreGameEvents(previous, current, "Lonestar", context())).toEqual([]);
+  });
+
+  it("fires FactionTookLead when a Faction strictly overtakes and no one was leading before", () => {
+    const previous = [faction({ name: "Lonestar", score: 0 }), faction({ name: "Valkyra", score: 0 })];
+    const current = [faction({ name: "Lonestar", score: 10 }), faction({ name: "Valkyra", score: 0 })];
+
+    const events = diffFactionScoreGameEvents(previous, current, null, context());
+
+    expect(events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "FactionTookLead", faction: "Lonestar" })]),
+    );
+  });
+
+  it("does not fire FactionTookLead when a score change produces a tie for the lead", () => {
+    const previous = [faction({ name: "Lonestar", score: 5 }), faction({ name: "Valkyra", score: 0 })];
+    const current = [faction({ name: "Lonestar", score: 5 }), faction({ name: "Valkyra", score: 5 })];
+
+    const events = diffFactionScoreGameEvents(previous, current, "Lonestar", context());
+
+    expect(events.some((event) => event.type === "FactionTookLead")).toBe(false);
+  });
+
+  it("fires FactionTookLead when a Faction overtakes a tie to take sole lead", () => {
+    const previous = [faction({ name: "Lonestar", score: 10 }), faction({ name: "Valkyra", score: 10 })];
+    const current = [faction({ name: "Lonestar", score: 10 }), faction({ name: "Valkyra", score: 12 })];
+
+    const events = diffFactionScoreGameEvents(previous, current, "Lonestar", context());
+
+    expect(events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "FactionTookLead", faction: "Valkyra" })]),
+    );
+  });
+
+  it("does not fire FactionTookLead when the current leader already held the lead through a tie", () => {
+    // Lonestar led, tied, and pulled back ahead without Valkyra ever
+    // strictly overtaking - the tie must not have reset who's "leading".
+    const previous = [faction({ name: "Lonestar", score: 10 }), faction({ name: "Valkyra", score: 10 })];
+    const current = [faction({ name: "Lonestar", score: 12 }), faction({ name: "Valkyra", score: 10 })];
+
+    const events = diffFactionScoreGameEvents(previous, current, "Lonestar", context());
+
+    expect(events.some((event) => event.type === "FactionTookLead")).toBe(false);
+  });
+
+  it("does not fire FactionTookLead when the previous leader stays the sole leader", () => {
+    const previous = [faction({ name: "Lonestar", score: 5 }), faction({ name: "Valkyra", score: 0 })];
+    const current = [faction({ name: "Lonestar", score: 10 }), faction({ name: "Valkyra", score: 0 })];
+
+    const events = diffFactionScoreGameEvents(previous, current, "Lonestar", context());
+
+    expect(events.some((event) => event.type === "FactionTookLead")).toBe(false);
+  });
+
+  it("derives a stable idempotencyKey for FactionScoreChanged from the resulting score, not the timestamp", () => {
+    const previous = [faction({ name: "Lonestar", score: 5 })];
+    const current = [faction({ name: "Lonestar", score: 10 })];
+
+    const first = diffFactionScoreGameEvents(
+      previous,
+      current,
+      null,
+      context({ timestamp: new Date("2026-01-01T00:00:00.000Z") }),
+    )[0];
+    const second = diffFactionScoreGameEvents(
+      previous,
+      current,
+      null,
+      context({ timestamp: new Date("2026-01-01T00:05:00.000Z") }),
+    )[0];
 
     expect(first.idempotencyKey).toBe(second.idempotencyKey);
   });
@@ -467,6 +578,114 @@ describe("GameEvent recording (integration)", () => {
     const rows = await db.select().from(gameEvents).where(eq(gameEvents.serverId, server.id));
     expect(rows.filter((row) => row.type === "PlayerKilled")).toHaveLength(0);
     expect(rows.filter((row) => row.type === "PlayerDeath")).toHaveLength(0);
+  });
+
+  it("records FactionScoreChanged/FactionTookLead across a tie, keeping the lead sticky through it", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture({
+          factionScores: [
+            { name: "Lonestar", colorHex: "#ff0000", score: 0 },
+            { name: "Valkyra", colorHex: "#0000ff", score: 0 },
+          ],
+        }),
+        players: playersFixture([]),
+      },
+      {
+        // Lonestar takes sole lead
+        status: statusFixture({
+          factionScores: [
+            { name: "Lonestar", colorHex: "#ff0000", score: 10 },
+            { name: "Valkyra", colorHex: "#0000ff", score: 0 },
+          ],
+        }),
+        players: playersFixture([]),
+      },
+      {
+        // Valkyra ties - must not reset who's "leading"
+        status: statusFixture({
+          factionScores: [
+            { name: "Lonestar", colorHex: "#ff0000", score: 10 },
+            { name: "Valkyra", colorHex: "#0000ff", score: 10 },
+          ],
+        }),
+        players: playersFixture([]),
+      },
+      {
+        // Valkyra overtakes the tie to take sole lead
+        status: statusFixture({
+          factionScores: [
+            { name: "Lonestar", colorHex: "#ff0000", score: 10 },
+            { name: "Valkyra", colorHex: "#0000ff", score: 12 },
+          ],
+        }),
+        players: playersFixture([]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id); // 0-0, opens the Match, no diff
+    await pollAndPersistSnapshot(db, client, server.id); // Lonestar 0->10, takes the lead
+    await pollAndPersistSnapshot(db, client, server.id); // Valkyra 0->10, ties - no lead change
+    await pollAndPersistSnapshot(db, client, server.id); // Valkyra 10->12, overtakes the tie
+
+    const rows = await db
+      .select()
+      .from(gameEvents)
+      .where(eq(gameEvents.serverId, server.id))
+      .orderBy(gameEvents.id);
+    const scoreChanged = rows.filter((row) => row.type === "FactionScoreChanged");
+    const tookLead = rows.filter((row) => row.type === "FactionTookLead");
+
+    expect(scoreChanged).toHaveLength(3);
+    expect(scoreChanged.map((row) => row.metadata)).toEqual(
+      expect.arrayContaining([
+        { previousScore: 0, newScore: 10 },
+        { previousScore: 0, newScore: 10 },
+        { previousScore: 10, newScore: 12 },
+      ]),
+    );
+    expect(tookLead).toEqual([
+      expect.objectContaining({ faction: "Lonestar" }),
+      expect.objectContaining({ faction: "Valkyra" }),
+    ]);
+  });
+
+  it("does not fire FactionTookLead when a Match's boundary Snapshot already shows a non-tied spread", async () => {
+    // Nothing enforces that faction scores reset to 0-0 at a Match
+    // boundary (detectMatchBoundary never checks them), so the boundary
+    // Snapshot itself can already have one Faction ahead. The first real
+    // diff after it must not misreport that pre-existing leader as
+    // "taking" a lead it already held.
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture({
+          factionScores: [
+            { name: "Lonestar", colorHex: "#ff0000", score: 10 },
+            { name: "Valkyra", colorHex: "#0000ff", score: 0 },
+          ],
+        }),
+        players: playersFixture([]),
+      },
+      {
+        // unchanged - Lonestar was already leading before this diff ever ran
+        status: statusFixture({
+          factionScores: [
+            { name: "Lonestar", colorHex: "#ff0000", score: 10 },
+            { name: "Valkyra", colorHex: "#0000ff", score: 0 },
+          ],
+        }),
+        players: playersFixture([]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id); // boundary: opens the Match, no diff
+    await pollAndPersistSnapshot(db, client, server.id); // unchanged scores, first real diff
+
+    const rows = await db.select().from(gameEvents).where(eq(gameEvents.serverId, server.id));
+    expect(rows.filter((row) => row.type === "FactionTookLead")).toHaveLength(0);
+    expect(rows.filter((row) => row.type === "FactionScoreChanged")).toHaveLength(0);
   });
 
   it("never creates duplicate PlayerKilled rows when the same computed event is persisted twice", async () => {

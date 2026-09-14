@@ -10,8 +10,14 @@ import {
   type Snapshot,
   type SnapshotPlayer,
 } from "@wdza-stats/db";
-import { and, eq, isNull, sql } from "drizzle-orm";
-import { diffKillDeathGameEvents, diffRosterGameEvents, matchLifecycleEvent } from "./game-events";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import {
+  diffFactionScoreGameEvents,
+  diffKillDeathGameEvents,
+  diffRosterGameEvents,
+  matchLifecycleEvent,
+  soleLeader,
+} from "./game-events";
 
 /**
  * True when comparing `previous` to `next` indicates a new Match has begun:
@@ -187,9 +193,15 @@ async function closeMatch(
  * carrying its own Match's id. PlayerKilled/PlayerDeath are emitted from
  * kill/death counter deltas, but only when this Snapshot did *not* cross a
  * Match boundary - a boundary's counter reset must never be misread as a
- * batch of deaths (see diffKillDeathGameEvents). Duplicate drafts (e.g. from
- * a retried write of the same transition) are silently dropped via their
- * idempotencyKey unique constraint rather than erroring.
+ * batch of deaths (see diffKillDeathGameEvents). FactionScoreChanged and
+ * FactionTookLead are emitted under the same non-boundary guard, diffing
+ * Faction scores against the previous Snapshot and against whichever
+ * Faction this Match's most recent FactionTookLead event named as leader
+ * (a fresh query, not just the previous Snapshot's scores - see
+ * diffFactionScoreGameEvents for why a tie must not reset that state).
+ * Duplicate drafts (e.g. from a retried write of the same transition) are
+ * silently dropped via their idempotencyKey unique constraint rather than
+ * erroring.
  *
  * Logs a line for each Match opened and/or closed, and each GameEvent
  * actually inserted - the things a poll can meaningfully change from an
@@ -285,6 +297,29 @@ export async function ingestSnapshot(
     if (!isBoundary && previousRow) {
       eventDrafts.push(
         ...diffKillDeathGameEvents(previousRow.payload.players, snapshot.players, {
+          serverId,
+          matchId: currentMatchId,
+          timestamp: capturedAt,
+          sourceSnapshotId: insertedSnapshot.id,
+        }),
+      );
+
+      const [lastLeaderEvent] = await tx
+        .select({ faction: gameEvents.faction })
+        .from(gameEvents)
+        .where(and(eq(gameEvents.matchId, currentMatchId), eq(gameEvents.type, "FactionTookLead")))
+        .orderBy(desc(gameEvents.id))
+        .limit(1);
+
+      // Falls back to the previous Snapshot's own sole leader (not null)
+      // when this Match has no FactionTookLead row yet - covers a Match
+      // whose boundary Snapshot already showed a non-tied score spread,
+      // so that pre-existing leader isn't misreported as "taking" a lead
+      // it already held. See soleLeader's doc comment.
+      const previousLeader = lastLeaderEvent?.faction ?? soleLeader(previousRow.payload.factions)?.name ?? null;
+
+      eventDrafts.push(
+        ...diffFactionScoreGameEvents(previousRow.payload.factions, snapshot.factions, previousLeader, {
           serverId,
           matchId: currentMatchId,
           timestamp: capturedAt,

@@ -1,4 +1,4 @@
-import type { GameEventType, SnapshotPlayer } from "@wdza-stats/db";
+import type { GameEventType, SnapshotFaction, SnapshotPlayer } from "@wdza-stats/db";
 
 /** Everything a poll's roster diff needs to attribute and dedupe its events, gathered before diffing so the diff function stays pure. */
 export interface RosterDiffContext {
@@ -16,7 +16,7 @@ export interface GameEventDraft {
   steamId: string | null;
   targetSteamId: string | null;
   faction: string | null;
-  metadata: null;
+  metadata: Record<string, unknown> | null;
   sourceSnapshotId: number;
   idempotencyKey: string;
 }
@@ -181,4 +181,101 @@ export function diffKillDeathGameEvents(
       ...counterDeltaEvents("PlayerDeath", player, previous.deaths, player.deaths, context),
     ];
   });
+}
+
+function factionScoreChangedEvent(
+  faction: SnapshotFaction,
+  previousScore: number,
+  context: RosterDiffContext,
+): GameEventDraft {
+  return {
+    serverId: context.serverId,
+    matchId: context.matchId,
+    type: "FactionScoreChanged",
+    timestamp: context.timestamp,
+    steamId: null,
+    targetSteamId: null,
+    faction: faction.name,
+    metadata: { previousScore, newScore: faction.score },
+    sourceSnapshotId: context.sourceSnapshotId,
+    idempotencyKey: buildIdempotencyKey(context, "FactionScoreChanged", faction.name, String(faction.score)),
+  };
+}
+
+function factionTookLeadEvent(faction: SnapshotFaction, context: RosterDiffContext): GameEventDraft {
+  return {
+    serverId: context.serverId,
+    matchId: context.matchId,
+    type: "FactionTookLead",
+    timestamp: context.timestamp,
+    steamId: null,
+    targetSteamId: null,
+    faction: faction.name,
+    metadata: null,
+    sourceSnapshotId: context.sourceSnapshotId,
+    idempotencyKey: buildIdempotencyKey(context, "FactionTookLead", faction.name, String(faction.score)),
+  };
+}
+
+/**
+ * The sole Faction whose score strictly exceeds every other Faction's -
+ * null when the list is empty or when the top score is shared by more than
+ * one Faction, since a tie has no sole leader. Exported so match-tracker.ts
+ * can compute it for a Match's boundary Snapshot as the fallback
+ * `previousLeader` when this Match has no `FactionTookLead` row yet - that
+ * Snapshot's own leader (or lack of one, on the far more common tied/zero
+ * start) is what "not already the sole leader" must be judged against, not
+ * an assumed-null baseline that would misfire if a Match ever opened with
+ * an existing spread.
+ */
+export function soleLeader(factions: SnapshotFaction[]): SnapshotFaction | null {
+  if (factions.length === 0) {
+    return null;
+  }
+  const [first, second] = [...factions].sort((a, b) => b.score - a.score);
+  if (second && second.score === first.score) {
+    return null;
+  }
+  return first;
+}
+
+/**
+ * `FactionScoreChanged` for each Faction present in both `previousFactions`
+ * and `currentFactions` whose score differs between them, carrying the old
+ * and new score in metadata. `FactionTookLead` fires when the current sole
+ * leader (see soleLeader) differs from `previousLeader` - the name of
+ * whichever Faction most recently strictly took the lead in this Match, per
+ * the caller's own history (not necessarily the immediately-previous
+ * Snapshot's leader), which is what makes a tie a no-op for "who's leading"
+ * rather than resetting it: a tied Snapshot's soleLeader is null, so it
+ * never overwrites `previousLeader`, and the prior leader keeps the lead
+ * until someone strictly passes them (see spec.md's Domain Decisions).
+ *
+ * A Faction absent from `previousFactions` is skipped for
+ * `FactionScoreChanged` rather than diffed against a 0 baseline, mirroring
+ * diffKillDeathGameEvents - callers only invoke this for consecutive
+ * Snapshots within the same Match (see match-tracker.ts's `!isBoundary`
+ * guard), so `previousFactions` is never a stale prior Match's state.
+ */
+export function diffFactionScoreGameEvents(
+  previousFactions: SnapshotFaction[],
+  currentFactions: SnapshotFaction[],
+  previousLeader: string | null,
+  context: RosterDiffContext,
+): GameEventDraft[] {
+  const previousByName = new Map(previousFactions.map((faction) => [faction.name, faction.score]));
+
+  const events: GameEventDraft[] = currentFactions
+    .filter((faction) => {
+      const previousScore = previousByName.get(faction.name);
+      return previousScore !== undefined && previousScore !== faction.score;
+    })
+    .map((faction) => factionScoreChangedEvent(faction, previousByName.get(faction.name)!, context));
+
+  const leader = soleLeader(currentFactions);
+  if (leader && leader.name !== previousLeader) {
+    events.push(factionTookLeadEvent(leader, context));
+  }
+
+  return events;
 }

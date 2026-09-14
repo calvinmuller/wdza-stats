@@ -26,9 +26,33 @@ One player's kills/deaths/cash earned within one Match, computed as the delta be
 _Avoid_: Round stats, player match record
 
 **PlayerCareerStat**:
-A player's totals aggregated across every closed Match on one Server, keyed by steamId + Server. Derived/rollup data — PlayerMatchStat rows are the source of truth. Scoped per-Server by design: the same steamId can have separate career totals on different Servers, since rules and communities differ between them.
-_Avoid_: Lifetime stats, player profile
+A player's totals aggregated across every closed Match on one Server, keyed by steamId + Server — including both Wardogs-reported totals (kills, deaths, matchesPlayed) and gamification totals we invent ourselves (xp, level, currentKillStreak, highestKillStreak, mvpCount). One row per player per Server is the single source of truth for both; there is no separate progression table. Scoped per-Server by design: the same steamId can have separate career totals and separate XP/level on different Servers, since rules and communities differ between them.
+_Avoid_: Lifetime stats, player profile, PlayerProfile, progression record
 
 **SteamProfile**:
 A player's persona name, avatar, and unlocked WARDOGS achievements as reported by the Steam Web API, keyed by steamId alone. Unlike PlayerCareerStat, this is a property of the Steam account itself, not of any one Server, so it is never scoped or duplicated per-Server. Refreshed when the player appears in a newly-closed Match; cached as unavailable rather than retried when Steam reports the underlying data as private.
 _Avoid_: Player profile, Steam stats
+
+**GameEvent**:
+A domain-level occurrence (a kill, a death, a join, a leave, a kill-streak change, a Faction taking the lead, a Match starting or ending) inferred by diffing two consecutive Snapshots for one player or Match. Not a raw feed from the RCON API, since no such stream exists — a GameEvent is always an inference, never a direct report. Persisted as the sole, idempotent input that the XP, Challenge, and Achievement engines react to; never bypassed by those engines calling RCON or Snapshot data directly.
+_Avoid_: Event (too ambiguous outside this glossary), RCON event
+
+**KillStreak**:
+A player's count of consecutive kills without an intervening death. Scoped to a single Match: it always resets to 0 when a new Match starts, regardless of how many consecutive kills the player had when the previous Match ended.
+_Avoid_: Streak (ambiguous with other running counters)
+
+**XpTransaction**:
+An immutable ledger entry recording one award of XP to a player for one GameEvent or milestone. Keyed so the same GameEvent can never award XP twice. `PlayerCareerStat.xp` is a cached running total derived by summing these, kept only for fast leaderboard reads — the ledger, not the cached total, is the source of truth.
+_Avoid_: XP award, XP log
+
+**Achievement**:
+A one-time milestone a player unlocks at most once per Server (first kill, a kill-streak threshold, 100 matches played, etc.), recorded in PlayerAchievement with an unlock timestamp.
+_Avoid_: Badge, trophy
+
+**Challenge**:
+A goal with a target and a deadline (daily is the first scope shipped; weekly/season/server-wide are designed for but not yet built) that a player makes progress toward and completes once for an XP reward. Tracked separately per player per active Challenge instance, so multiple concurrent Challenges don't interfere with each other's progress.
+_Avoid_: Quest, mission, task
+
+**Notification**:
+A throttled, recorded representation of a noteworthy GameEvent or milestone, shown in the dashboard's recent-events feed. Never delivered to the game server itself — see [docs/adr/0003](./docs/adr/0003-gamification-notifications-stay-off-rcon-writes.md) for why RCON stays read-only.
+_Avoid_: Broadcast (implies delivery to players, which doesn't happen yet), alert

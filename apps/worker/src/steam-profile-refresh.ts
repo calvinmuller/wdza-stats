@@ -163,6 +163,7 @@ export async function refreshUnseenSteamProfiles(
         status: "error",
         fetchedAt: new Date(),
       });
+      console.log(`[worker] cached Steam profile for ${steamId}: status=error (no summary returned)`);
       onProgress?.(index + 1, targets.length);
       continue;
     }
@@ -203,6 +204,9 @@ export async function refreshUnseenSteamProfiles(
       status,
       fetchedAt: new Date(),
     });
+    console.log(
+      `[worker] cached Steam profile for ${steamId}: status=${status}, ${achievements.length} achievement(s), playtime=${playtimeMinutes ?? "null"} min`,
+    );
     onProgress?.(index + 1, targets.length);
   }
 }

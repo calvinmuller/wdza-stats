@@ -3,18 +3,28 @@ import {
   servers,
   type Database,
   type Snapshot,
+  type SnapshotPlayer,
 } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
+import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
+
+export interface LiveSnapshotPlayer extends SnapshotPlayer {
+  avatarUrl: string | null;
+}
 
 export interface LiveSnapshotView {
   serverName: string;
   capturedAt: string;
-  snapshot: Snapshot;
+  snapshot: Omit<Snapshot, "players"> & { players: LiveSnapshotPlayer[] };
 }
 
 /**
- * Reads the given Server's latest Snapshot from Postgres. Returns null when
- * the Server isn't seeded, or hasn't been polled by the Worker yet.
+ * Reads the given Server's latest Snapshot from Postgres, enriching each
+ * online player with their cached Steam avatar - the same batched
+ * steamId-to-avatar lookup used by the leaderboard/search/match-history
+ * views (getAvatarUrlsBySteamId), since a Snapshot's players come from the
+ * RCON payload and carry no avatar of their own. Returns null when the
+ * Server isn't seeded, or hasn't been polled by the Worker yet.
  */
 export async function getLiveSnapshot(
   db: Database,
@@ -35,10 +45,21 @@ export async function getLiveSnapshot(
     return null;
   }
 
+  const avatarUrls = await getAvatarUrlsBySteamId(
+    db,
+    row.payload.players.map((player) => player.steamId),
+  );
+
   return {
     serverName: row.serverName,
     capturedAt: row.capturedAt.toISOString(),
-    snapshot: row.payload,
+    snapshot: {
+      ...row.payload,
+      players: row.payload.players.map((player) => ({
+        ...player,
+        avatarUrl: avatarUrls.get(player.steamId) ?? null,
+      })),
+    },
   };
 }
 

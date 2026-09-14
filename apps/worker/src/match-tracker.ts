@@ -104,13 +104,14 @@ export function winningFaction(finalSnapshot: Snapshot): string | null {
  * Closes an open Match: computes each observed player's delta from its
  * retained matchSnapshots, writes PlayerMatchStat rows, rolls those deltas
  * into PlayerCareerStat, stamps endedAt and the winning Faction, and drops
- * the now-redundant raw Snapshots for that Match.
+ * the now-redundant raw Snapshots for that Match. Returns a summary for the
+ * caller to log once the enclosing transaction has actually committed.
  */
 async function closeMatch(
   tx: Tx,
   match: { id: number; serverId: number },
   endedAt: Date,
-): Promise<void> {
+): Promise<{ winner: string | null; playerCount: number }> {
   const rows = await tx
     .select()
     .from(matchSnapshots)
@@ -158,6 +159,8 @@ async function closeMatch(
     .set({ endedAt, winningFaction: winner })
     .where(eq(matches.id, match.id));
   await tx.delete(matchSnapshots).where(eq(matchSnapshots.matchId, match.id));
+
+  return { winner, playerCount: deltas.length };
 }
 
 /**
@@ -172,6 +175,12 @@ async function closeMatch(
  * always whatever was last persisted, regardless of how long ago that was,
  * so a stale state on resume is detected as an ordinary boundary and the
  * stale Match is closed using that last-known-good Snapshot's timestamp.
+ *
+ * Logs a line for each Match opened and/or closed - the two things a poll
+ * can meaningfully change from an operator's point of view, versus the
+ * ~15s poll cadence itself which is too frequent to log on every tick.
+ * Logged only after the transaction below actually commits, so a rolled-back
+ * attempt never gets reported as having happened.
  */
 export async function ingestSnapshot(
   db: Database,
@@ -179,6 +188,9 @@ export async function ingestSnapshot(
   snapshot: Snapshot,
   capturedAt: Date,
 ): Promise<void> {
+  let closedMatch: { id: number; winner: string | null; playerCount: number } | undefined;
+  let openedMatch: { id: number; map: string } | undefined;
+
   await db.transaction(async (tx) => {
     const [previousRow] = await tx
       .select()
@@ -199,7 +211,8 @@ export async function ingestSnapshot(
 
     if (isBoundary) {
       if (openMatch && previousRow) {
-        await closeMatch(tx, openMatch, previousRow.capturedAt);
+        const summary = await closeMatch(tx, openMatch, previousRow.capturedAt);
+        closedMatch = { id: openMatch.id, ...summary };
       }
       const [newMatch] = await tx
         .insert(matches)
@@ -211,6 +224,7 @@ export async function ingestSnapshot(
         })
         .returning();
       currentMatchId = newMatch.id;
+      openedMatch = { id: newMatch.id, map: newMatch.map };
     } else {
       currentMatchId = openMatch!.id;
     }
@@ -229,4 +243,13 @@ export async function ingestSnapshot(
         set: { capturedAt, payload: snapshot },
       });
   });
+
+  if (closedMatch) {
+    console.log(
+      `[worker] match closed: matchId=${closedMatch.id}, winner=${closedMatch.winner ?? "none"}, ${closedMatch.playerCount} player(s)`,
+    );
+  }
+  if (openedMatch) {
+    console.log(`[worker] match started: matchId=${openedMatch.id}, map=${openedMatch.map}`);
+  }
 }

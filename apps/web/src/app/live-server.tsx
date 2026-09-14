@@ -4,12 +4,12 @@
 // which pulls in the `postgres` driver (Node-only, uses `fs`/`tls`/etc.) -
 // that can't go in this Client Component's browser bundle.
 import { getRotationPreview, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
-import type { SnapshotPlayer } from "@wdza-stats/db/snapshot";
 import { useEffect, useMemo, useState } from "react";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { LightingBadge } from "@/components/lighting-badge";
+import { PlayerAvatar } from "@/components/player-avatar";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
-import type { LiveSnapshotView } from "@/lib/live-snapshot";
+import type { LiveSnapshotPlayer, LiveSnapshotView } from "@/lib/live-snapshot";
 
 // No point refreshing faster than new Snapshots can actually arrive.
 export const REFRESH_INTERVAL_MS = SNAPSHOT_POLL_INTERVAL_MS;
@@ -56,12 +56,18 @@ export function LiveServerView({
     [data],
   );
 
-  const playerColumns: SortableColumn<SnapshotPlayer>[] = [
+  const playerColumns: SortableColumn<LiveSnapshotPlayer>[] = [
     {
       key: "displayName",
       label: "Player",
       value: (player) => player.displayName,
       cellClassName: "font-medium text-zinc-100",
+      render: (player) => (
+        <span className="flex items-center gap-2">
+          <PlayerAvatar avatarUrl={player.avatarUrl} size={24} />
+          {player.displayName}
+        </span>
+      ),
     },
     {
       key: "faction",

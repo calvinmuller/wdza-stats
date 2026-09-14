@@ -8,6 +8,7 @@ import {
   playerMatchStats,
   servers,
   steamProfiles,
+  xpTransactions,
   type Database,
 } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
@@ -38,6 +39,7 @@ async function seedServer() {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  await db.delete(xpTransactions);
   await db.delete(gameEvents);
   await db.delete(playerMatchStats);
   await db.delete(playerCareerStats);

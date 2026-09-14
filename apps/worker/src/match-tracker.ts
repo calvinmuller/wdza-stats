@@ -5,10 +5,13 @@ import {
   matches,
   playerCareerStats,
   playerMatchStats,
+  xpRewards,
+  xpTransactions,
   type Database,
   type GameEventType,
   type Snapshot,
   type SnapshotPlayer,
+  type XpReason,
 } from "@wdza-stats/db";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
@@ -20,6 +23,12 @@ import {
   soleLeader,
   type KillStreakUpdate,
 } from "./game-events";
+import {
+  computeXpTransactionDrafts,
+  type RecordedGameEvent,
+  type XpTransactionContext,
+  type XpTransactionDraft,
+} from "./xp-engine";
 
 /**
  * True when comparing `previous` to `next` indicates a new Match has begun:
@@ -210,6 +219,105 @@ async function applyKillStreakUpdates(
 }
 
 /**
+ * Gathers the extra per-Match state computeXpTransactionDrafts needs beyond
+ * the recorded events themselves: the current XP_REWARDS config, each
+ * relevant Match's earliest-recorded PlayerKilled event id (for
+ * first_blood), and - for a Match this same batch closed - its participant
+ * roster and winning Faction (for match_completed/match_win). Queried fresh
+ * every call rather than cached, matching this file's existing per-poll
+ * query style (e.g. currentStreaks in ingestSnapshot) at a volume too low to
+ * matter.
+ */
+async function buildXpTransactionContext(
+  tx: Tx,
+  serverId: number,
+  recordedEvents: RecordedGameEvent[],
+  closedMatch: { id: number; winner: string | null } | undefined,
+): Promise<XpTransactionContext> {
+  const rewardRows = await tx.select().from(xpRewards);
+  const rewards = new Map<XpReason, number>(rewardRows.map((row) => [row.reason, row.amount]));
+
+  const killMatchIds = [...new Set(
+    recordedEvents.filter((event) => event.type === "PlayerKilled").map((event) => event.matchId),
+  )];
+  const firstKillEventIdByMatch = new Map<number, number>();
+  for (const matchId of killMatchIds) {
+    const [row] = await tx
+      .select({ id: sql<number>`MIN(${gameEvents.id})` })
+      .from(gameEvents)
+      .where(and(eq(gameEvents.matchId, matchId), eq(gameEvents.type, "PlayerKilled" satisfies GameEventType)));
+    if (row?.id != null) {
+      firstKillEventIdByMatch.set(matchId, row.id);
+    }
+  }
+
+  const matchCompletions: XpTransactionContext["matchCompletions"] = new Map();
+  const hasMatchEnded = recordedEvents.some((event) => event.type === "MatchEnded");
+  if (hasMatchEnded && closedMatch) {
+    const participants = await tx
+      .select({ steamId: playerMatchStats.steamId, faction: playerMatchStats.faction })
+      .from(playerMatchStats)
+      .where(eq(playerMatchStats.matchId, closedMatch.id));
+    matchCompletions.set(closedMatch.id, { winningFaction: closedMatch.winner, participants });
+  }
+
+  return { serverId, xpRewards: rewards, firstKillEventIdByMatch, matchCompletions };
+}
+
+/**
+ * Persists a batch of XpTransactionDrafts to the xp_transactions ledger and
+ * rolls each actually-inserted amount into playerCareerStats.xp. The
+ * insert's (event_id, reason, steam_id) uniqueness is what makes a draft
+ * idempotent: persisting the same draft twice (e.g. a reprocessed
+ * GameEvent) inserts nothing the second time, via onConflictDoNothing, so
+ * the returning() rows - and thus the xp increment - only ever reflect
+ * genuinely new transactions. steam_id is part of that key (not just
+ * event_id+reason) because a single MatchEnded event fans out
+ * match_completed/match_win to every participant under one eventId - see
+ * xpTransactions' own doc comment in schema.ts. Uses a plain UPDATE rather
+ * than an upsert: every reason here fires only after a step that already
+ * guarantees the target playerCareerStats row exists (applyKillStreakUpdates
+ * for kill/first_blood/streak reasons, closeMatch for
+ * match_completed/match_win), unlike applyKillStreakUpdates itself. Returns
+ * the actually-inserted transactions for the caller to log once the
+ * enclosing transaction has committed.
+ */
+export async function applyXpTransactionDrafts(
+  tx: Tx,
+  drafts: XpTransactionDraft[],
+): Promise<XpTransactionDraft[]> {
+  if (drafts.length === 0) {
+    return [];
+  }
+
+  const inserted = await tx
+    .insert(xpTransactions)
+    .values(drafts)
+    .onConflictDoNothing({ target: [xpTransactions.eventId, xpTransactions.reason, xpTransactions.steamId] })
+    .returning({
+      serverId: xpTransactions.serverId,
+      steamId: xpTransactions.steamId,
+      amount: xpTransactions.amount,
+      reason: xpTransactions.reason,
+      eventId: xpTransactions.eventId,
+    });
+
+  for (const transaction of inserted) {
+    await tx
+      .update(playerCareerStats)
+      .set({ xp: sql`${playerCareerStats.xp} + ${transaction.amount}` })
+      .where(
+        and(
+          eq(playerCareerStats.serverId, transaction.serverId),
+          eq(playerCareerStats.steamId, transaction.steamId),
+        ),
+      );
+  }
+
+  return inserted;
+}
+
+/**
  * Ingests one freshly-polled Snapshot for a Server: detects whether it
  * starts a new Match (comparing it to the Server's last-persisted
  * Snapshot), closing and rolling up the previous Match if so, then
@@ -262,7 +370,8 @@ export async function ingestSnapshot(
 ): Promise<void> {
   let closedMatch: { id: number; winner: string | null; playerCount: number; endedAt: Date } | undefined;
   let openedMatch: { id: number; map: string } | undefined;
-  let recordedEvents: Array<{ id: number; type: GameEventType; steamId: string | null; matchId: number }> = [];
+  let recordedEvents: RecordedGameEvent[] = [];
+  let recordedXpTransactions: XpTransactionDraft[] = [];
 
   await db.transaction(async (tx) => {
     const [previousRow] = await tx
@@ -410,7 +519,14 @@ export async function ingestSnapshot(
           type: gameEvents.type,
           steamId: gameEvents.steamId,
           matchId: gameEvents.matchId,
+          metadata: gameEvents.metadata,
         });
+    }
+
+    if (recordedEvents.length > 0) {
+      const xpTransactionContext = await buildXpTransactionContext(tx, serverId, recordedEvents, closedMatch);
+      const xpTransactionDrafts = computeXpTransactionDrafts(recordedEvents, xpTransactionContext);
+      recordedXpTransactions = await applyXpTransactionDrafts(tx, xpTransactionDrafts);
     }
 
     await tx
@@ -434,6 +550,11 @@ export async function ingestSnapshot(
     const steamIdPart = event.steamId ? `, steamId=${event.steamId}` : "";
     console.log(
       `[worker] game event: type=${event.type}, serverId=${serverId}, matchId=${event.matchId}${steamIdPart}, eventId=${event.id}`,
+    );
+  }
+  for (const transaction of recordedXpTransactions) {
+    console.log(
+      `[worker] xp transaction: reason=${transaction.reason}, amount=${transaction.amount}, serverId=${serverId}, steamId=${transaction.steamId}, eventId=${transaction.eventId}`,
     );
   }
 }

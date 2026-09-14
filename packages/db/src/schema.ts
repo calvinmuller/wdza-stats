@@ -6,10 +6,12 @@ import {
   serial,
   text,
   timestamp,
+  unique,
 } from "drizzle-orm/pg-core";
 import type { GameEventType } from "./game-event";
 import type { Snapshot } from "./snapshot";
 import type { SteamAchievementUnlock, SteamProfileStatus } from "./steam-profile";
+import type { XpReason } from "./xp";
 
 // Domain terms (Server, Match, PlayerMatchStat, PlayerCareerStat, Snapshot) are defined in CONTEXT.md.
 
@@ -166,3 +168,43 @@ export const gameEvents = pgTable("game_events", {
   sourceSnapshotId: integer("source_snapshot_id").notNull(),
   idempotencyKey: text("idempotency_key").notNull().unique(),
 });
+
+// The XP_REWARDS config table: the amount awarded per XpReason, seeded with
+// the spec's defaults in this table's own migration - see CONTEXT.md's
+// XpTransaction entry. Read by the Progression Engine rather than inlining
+// amounts in application code, so rewards can be retuned without a deploy.
+export const xpRewards = pgTable("xp_rewards", {
+  reason: text("reason").primaryKey().$type<XpReason>(),
+  amount: integer("amount").notNull(),
+});
+
+// XpTransaction: an immutable ledger entry recording one award of XP to a
+// player for one GameEvent - see CONTEXT.md. The unique (event_id, reason,
+// steam_id) triple is what makes an award idempotent: reprocessing the same
+// GameEvent (e.g. after a retry) can never insert a second row for the same
+// reason to the same player, so playerCareerStats.xp - a cached sum of this
+// ledger, kept only for fast leaderboard reads - never double-counts.
+// steam_id is part of the key (not just event_id+reason) because a single
+// Match-scoped event - MatchEnded - fans out match_completed/match_win to
+// every participant under that one eventId, so eventId+reason alone would
+// collide across players. eventId is a real foreign key (unlike
+// gameEvents.sourceSnapshotId's pointer into the ephemeral matchSnapshots
+// table): a GameEvent row is permanent, so an XpTransaction can safely
+// outlive it by reference.
+export const xpTransactions = pgTable(
+  "xp_transactions",
+  {
+    id: serial("id").primaryKey(),
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => servers.id),
+    steamId: text("steam_id").notNull(),
+    amount: integer("amount").notNull(),
+    reason: text("reason").notNull().$type<XpReason>(),
+    eventId: integer("event_id")
+      .notNull()
+      .references(() => gameEvents.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique().on(table.eventId, table.reason, table.steamId)],
+);

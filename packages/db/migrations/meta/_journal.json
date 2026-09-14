@@ -57,6 +57,13 @@
       "when": 1789394824155,
       "tag": "0007_wooden_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789399402465,
+      "tag": "0008_same_whiplash",
+      "breakpoints": true
     }
   ]
 }

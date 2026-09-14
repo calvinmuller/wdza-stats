@@ -7,6 +7,7 @@ import {
   playerCareerStats,
   playerMatchStats,
   servers,
+  xpTransactions,
   type Database,
   type Snapshot,
   type SnapshotPlayer,
@@ -14,6 +15,7 @@ import {
 import { and, eq, isNotNull } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
+  applyXpTransactionDrafts,
   computePlayerDeltas,
   detectMatchBoundary,
   winningFaction,
@@ -211,6 +213,7 @@ describe("Match-boundary detection and persistence (integration)", () => {
   }
 
   afterEach(async () => {
+    await db.delete(xpTransactions);
     await db.delete(gameEvents);
     await db.delete(playerMatchStats);
     await db.delete(playerCareerStats);
@@ -650,5 +653,228 @@ describe("Match-boundary detection and persistence (integration)", () => {
     expect(stats).toEqual([
       { matchId: closed.id, steamId: "1", faction: "Lonestar", kills: 0, deaths: 0, cash: 0 },
     ]);
+  });
+});
+
+// Integration: runs the real ingestion pipeline against a real test
+// Postgres database and asserts on the resulting xp_transactions ledger and
+// playerCareerStats.xp cache - see ticket 05.
+describe("XP ledger and awards (integration)", () => {
+  const db: Database = createDb(process.env.DATABASE_URL!);
+
+  async function seedServer() {
+    const [server] = await db
+      .insert(servers)
+      .values({
+        name: "Test Server",
+        baseUrl: `http://rcon-xp-engine-${crypto.randomUUID()}.test:9006`,
+      })
+      .returning();
+    return server;
+  }
+
+  async function transactionsFor(steamId: string) {
+    return db.select().from(xpTransactions).where(eq(xpTransactions.steamId, steamId));
+  }
+
+  async function careerStatsFor(serverId: number, steamId: string) {
+    const [row] = await db
+      .select()
+      .from(playerCareerStats)
+      .where(and(eq(playerCareerStats.serverId, serverId), eq(playerCareerStats.steamId, steamId)));
+    return row;
+  }
+
+  afterEach(async () => {
+    await db.delete(xpTransactions);
+    await db.delete(gameEvents);
+    await db.delete(playerMatchStats);
+    await db.delete(playerCareerStats);
+    await db.delete(matchSnapshots);
+    await db.delete(matches);
+    await db.delete(latestSnapshots);
+    await db.delete(servers);
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("awards the configured kill and first_blood amounts for a Match's opening kill", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const transactions = await transactionsFor("1");
+    expect(transactions.map((t) => ({ reason: t.reason, amount: t.amount }))).toEqual(
+      expect.arrayContaining([
+        { reason: "kill", amount: 100 },
+        { reason: "first_blood", amount: 100 },
+      ]),
+    );
+    expect(transactions).toHaveLength(2);
+
+    const career = await careerStatsFor(server.id, "1");
+    expect(career.xp).toBe(200);
+  });
+
+  it("awards first_blood only to a Match's actual first kill, not a later one", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          { steamId: "2", name: "Bob", faction: "Valkyra", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
+          { steamId: "2", name: "Bob", faction: "Valkyra", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
+          { steamId: "2", name: "Bob", faction: "Valkyra", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const aliceTransactions = await transactionsFor("1");
+    expect(aliceTransactions.map((t) => t.reason)).toEqual(expect.arrayContaining(["kill", "first_blood"]));
+
+    const bobTransactions = await transactionsFor("2");
+    expect(bobTransactions.map((t) => t.reason)).toEqual(["kill"]);
+  });
+
+  it("fires each kill-streak milestone exactly once as a streak climbs past it", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // Ten kills in one poll - streak climbs 1 through 10.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 10, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const transactions = await transactionsFor("1");
+    const milestoneReasons = transactions.map((t) => t.reason).filter((reason) => reason.startsWith("streak"));
+    expect(milestoneReasons.sort()).toEqual(["streak10", "streak3", "streak5"]);
+
+    const kills = transactions.filter((t) => t.reason === "kill");
+    expect(kills).toHaveLength(10);
+
+    const career = await careerStatsFor(server.id, "1");
+    const ledgerTotal = transactions.reduce((sum, t) => sum + t.amount, 0);
+    expect(career.xp).toBe(ledgerTotal);
+    // 10 kills (1000) + first_blood (100) + streak3/5/10 (150+250+500=900)
+    expect(career.xp).toBe(2000);
+  });
+
+  it("awards match_completed to every participant and match_win only to the winning Faction, when a Match closes", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          { steamId: "2", name: "Bob", faction: "Valkyra", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // map change closes the Match - statusFixture()'s default scores lead with Lonestar 10-8.
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const aliceTransactions = await transactionsFor("1");
+    expect(aliceTransactions.map((t) => ({ reason: t.reason, amount: t.amount }))).toEqual(
+      expect.arrayContaining([
+        { reason: "match_completed", amount: 250 },
+        { reason: "match_win", amount: 500 },
+      ]),
+    );
+
+    const bobTransactions = await transactionsFor("2");
+    expect(bobTransactions.map((t) => t.reason)).toEqual(["match_completed"]);
+
+    const aliceCareer = await careerStatsFor(server.id, "1");
+    expect(aliceCareer.xp).toBe(750);
+    const bobCareer = await careerStatsFor(server.id, "2");
+    expect(bobCareer.xp).toBe(250);
+  });
+
+  it("never double-awards XP for the same GameEvent and reason, even if applied twice (reprocessing safety)", async () => {
+    const server = await seedServer();
+    const [match] = await db
+      .insert(matches)
+      .values({ serverId: server.id, map: "Sandstorm", experiences: ["TeamDeathmatch"], startedAt: new Date() })
+      .returning();
+    const [event] = await db
+      .insert(gameEvents)
+      .values({
+        serverId: server.id,
+        matchId: match.id,
+        type: "PlayerKilled",
+        timestamp: new Date(),
+        steamId: "1",
+        idempotencyKey: `reprocess-test-${crypto.randomUUID()}`,
+        sourceSnapshotId: 0,
+      })
+      .returning();
+    await db.insert(playerCareerStats).values({
+      serverId: server.id,
+      steamId: "1",
+      displayName: "Alice",
+    });
+
+    const draft = { serverId: server.id, steamId: "1", amount: 100, reason: "kill" as const, eventId: event.id };
+
+    await db.transaction((tx) => applyXpTransactionDrafts(tx, [draft]));
+    await db.transaction((tx) => applyXpTransactionDrafts(tx, [draft]));
+
+    const transactions = await transactionsFor("1");
+    expect(transactions).toHaveLength(1);
+
+    const career = await careerStatsFor(server.id, "1");
+    expect(career.xp).toBe(100);
   });
 });

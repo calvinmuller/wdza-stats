@@ -7,6 +7,7 @@ import {
   playerCareerStats,
   playerMatchStats,
   servers,
+  xpTransactions,
   type Database,
   type SnapshotFaction,
   type SnapshotPlayer,
@@ -509,6 +510,7 @@ describe("GameEvent recording (integration)", () => {
   }
 
   afterEach(async () => {
+    await db.delete(xpTransactions);
     await db.delete(gameEvents);
     await db.delete(playerMatchStats);
     await db.delete(playerCareerStats);

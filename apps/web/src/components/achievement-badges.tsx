@@ -20,7 +20,6 @@ export function AchievementBadges({
         {achievements.map((achievement) => (
           <li
             key={achievement.apiName}
-            title={achievement.description ?? achievement.displayName}
             className="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-900/60 px-3 py-2"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -31,7 +30,12 @@ export function AchievementBadges({
               height={32}
               className="size-8 shrink-0 rounded"
             />
-            <span className="text-sm text-zinc-200">{achievement.displayName}</span>
+            <div className="flex flex-col">
+              <span className="text-sm text-zinc-200">{achievement.displayName}</span>
+              {achievement.description && (
+                <span className="text-xs text-zinc-400">{achievement.description}</span>
+              )}
+            </div>
           </li>
         ))}
       </ul>

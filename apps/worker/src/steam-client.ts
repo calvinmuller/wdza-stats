@@ -85,6 +85,18 @@ interface RawSchemaAchievement {
   icon: string;
 }
 
+// GetSchemaForGame still returns icon URLs on steamcdn-a.akamaihd.net, a
+// CDN host Steam has decommissioned (every path 404s there now). The same
+// images are actually served from shared.fastly.steamstatic.com under a
+// renamed path segment - this rewrites the schema's stale host/path to the
+// one that's actually live.
+function toCurrentSteamCdnUrl(iconUrl: string): string {
+  return iconUrl.replace(
+    /^https?:\/\/steamcdn-a\.akamaihd\.net\/steamcommunity\/public\/images\/apps\//,
+    "https://shared.fastly.steamstatic.com/community_assets/images/apps/",
+  );
+}
+
 export function createSteamClient(apiKey: string): SteamClient {
   async function get<T>(path: string, params: Record<string, string>): Promise<T> {
     const url = new URL(path, STEAM_API_BASE_URL);
@@ -185,7 +197,7 @@ export function createSteamClient(apiKey: string): SteamClient {
         apiName: achievement.name,
         displayName: achievement.displayName,
         description: achievement.description ?? null,
-        iconUrl: achievement.icon,
+        iconUrl: toCurrentSteamCdnUrl(achievement.icon),
       }));
     },
   };

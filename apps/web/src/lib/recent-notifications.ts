@@ -1,0 +1,39 @@
+import { notifications, type Database, type NotificationPriority } from "@wdza-stats/db";
+import { desc, eq } from "drizzle-orm";
+
+// How many rows the dashboard's recent-events feed shows - a small, fixed
+// window rather than paginated, matching the feed's "at a glance" purpose.
+export const RECENT_NOTIFICATIONS_LIMIT = 20;
+
+export interface RecentNotificationView {
+  id: number;
+  priority: NotificationPriority;
+  message: string;
+  timestamp: string;
+}
+
+/**
+ * The Server's most recent Notification rows (ticket 10), most recent first -
+ * the dashboard's recent-events feed. Reads the already-throttled/curated
+ * `Notification` table rather than the raw GameEvent log, per ticket 14's
+ * spec, so this never floods the page with every kill.
+ */
+export async function getRecentNotifications(
+  db: Database,
+  serverId: number,
+  limit: number = RECENT_NOTIFICATIONS_LIMIT,
+): Promise<RecentNotificationView[]> {
+  const rows = await db
+    .select({
+      id: notifications.id,
+      priority: notifications.priority,
+      message: notifications.message,
+      timestamp: notifications.timestamp,
+    })
+    .from(notifications)
+    .where(eq(notifications.serverId, serverId))
+    .orderBy(desc(notifications.timestamp), desc(notifications.id))
+    .limit(limit);
+
+  return rows.map((row) => ({ ...row, timestamp: row.timestamp.toISOString() }));
+}

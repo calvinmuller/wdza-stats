@@ -6,6 +6,8 @@ import {
   type SnapshotPlayer,
 } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
+import { getActiveChallenges, type ActiveChallengeView } from "./active-challenges";
+import { getRecentNotifications, type RecentNotificationView } from "./recent-notifications";
 import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
 
 export interface LiveSnapshotPlayer extends SnapshotPlayer {
@@ -16,6 +18,8 @@ export interface LiveSnapshotView {
   serverName: string;
   capturedAt: string;
   snapshot: Omit<Snapshot, "players"> & { players: LiveSnapshotPlayer[] };
+  activeChallenges: ActiveChallengeView[];
+  recentNotifications: RecentNotificationView[];
 }
 
 /**
@@ -32,6 +36,7 @@ export async function getLiveSnapshot(
 ): Promise<LiveSnapshotView | null> {
   const [row] = await db
     .select({
+      serverId: servers.id,
       serverName: servers.name,
       capturedAt: latestSnapshots.capturedAt,
       payload: latestSnapshots.payload,
@@ -45,10 +50,14 @@ export async function getLiveSnapshot(
     return null;
   }
 
-  const avatarUrls = await getAvatarUrlsBySteamId(
-    db,
-    row.payload.players.map((player) => player.steamId),
-  );
+  const [avatarUrls, activeChallenges, recentNotifications] = await Promise.all([
+    getAvatarUrlsBySteamId(
+      db,
+      row.payload.players.map((player) => player.steamId),
+    ),
+    getActiveChallenges(db, row.serverId, row.capturedAt),
+    getRecentNotifications(db, row.serverId),
+  ]);
 
   return {
     serverName: row.serverName,
@@ -60,6 +69,8 @@ export async function getLiveSnapshot(
         avatarUrl: avatarUrls.get(player.steamId) ?? null,
       })),
     },
+    activeChallenges,
+    recentNotifications,
   };
 }
 

@@ -1,5 +1,11 @@
-import type { ChallengeScope, ChallengeType } from "@wdza-stats/db";
+import { dailyPeriodKey, type ChallengeScope, type ChallengeType } from "@wdza-stats/db";
 import type { MatchCompletionInfo, RecordedGameEvent } from "./xp-engine";
+
+// Re-exported for this module's existing callers (match-tracker.ts,
+// challenge-engine.test.ts) - the shared definition now lives in
+// packages/db/src/challenge.ts so the web dashboard (ticket 14) can compute
+// the identical period key without importing this worker-only module.
+export { dailyPeriodKey };
 
 /** The Challenge Engine's own view of a challenge_definitions row - see schema.ts. */
 export interface ChallengeDefinitionRow {
@@ -8,20 +14,6 @@ export interface ChallengeDefinitionRow {
   scope: ChallengeScope;
   target: number;
   xpReward: number;
-}
-
-/**
- * Today's period key for the "daily" scope: the UTC calendar date `date`
- * falls on, as YYYY-MM-DD. Deterministic and stable across however many
- * times it's computed for the same instant, which is what lets
- * dailyChallengeInstanceDrafts' (definitionId, serverId, periodKey) triple
- * make generation idempotent (see schema.ts's challengeInstances doc
- * comment) - re-running generation for the same UTC day always produces the
- * same key, so it never creates a second instance for a day that already has
- * one.
- */
-export function dailyPeriodKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
 }
 
 export interface ChallengeInstanceDraft {

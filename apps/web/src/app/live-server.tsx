@@ -9,7 +9,15 @@ import { FactionSwatch } from "@/components/faction-swatch";
 import { LightingBadge } from "@/components/lighting-badge";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
+import { formatDateTime } from "@/lib/format-date";
 import type { LiveSnapshotPlayer, LiveSnapshotView } from "@/lib/live-snapshot";
+import type { RecentNotificationView } from "@/lib/recent-notifications";
+
+const NOTIFICATION_PRIORITY_CLASSNAME: Record<RecentNotificationView["priority"], string> = {
+  high: "text-amber-400",
+  normal: "text-zinc-200",
+  low: "text-zinc-400",
+};
 
 // No point refreshing faster than new Snapshots can actually arrive.
 export const REFRESH_INTERVAL_MS = SNAPSHOT_POLL_INTERVAL_MS;
@@ -103,7 +111,7 @@ export function LiveServerView({
     );
   }
 
-  const { serverName, capturedAt, snapshot } = data;
+  const { serverName, capturedAt, snapshot, activeChallenges, recentNotifications } = data;
   const rotation = getRotationPreview(snapshot.rotation);
   const playerCount = snapshot.players.length;
   const maxPlayers = snapshot.playerSlots.max;
@@ -177,6 +185,60 @@ export function LiveServerView({
           defaultSort={{ column: "kills", direction: "desc" }}
           emptyMessage="No players online right now."
         />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-xl">Today&apos;s challenges</h2>
+        {activeChallenges.length === 0 ? (
+          <p className="text-sm text-zinc-400">No active challenges right now.</p>
+        ) : (
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {activeChallenges.map((challenge) => (
+              <li
+                key={challenge.instanceId}
+                className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3"
+              >
+                <p className="text-sm font-medium text-zinc-200">
+                  {challenge.description}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  +{challenge.xpReward} XP &middot; {challenge.completedCount} completed
+                  {challenge.participantCount > 0 && (
+                    <> &middot; {challenge.participantCount} in progress</>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-xl">Recent activity</h2>
+        {recentNotifications.length === 0 ? (
+          <p className="text-sm text-zinc-400">Nothing noteworthy has happened yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {recentNotifications.map((notification) => (
+              <li
+                key={notification.id}
+                className="flex items-baseline justify-between gap-4 rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-2"
+              >
+                <span
+                  className={`text-sm ${NOTIFICATION_PRIORITY_CLASSNAME[notification.priority]}`}
+                >
+                  {notification.message}
+                </span>
+                <time
+                  dateTime={notification.timestamp}
+                  className="whitespace-nowrap text-xs text-zinc-500"
+                >
+                  {formatDateTime(notification.timestamp)}
+                </time>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );

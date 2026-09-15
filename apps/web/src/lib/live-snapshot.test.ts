@@ -1,6 +1,11 @@
 import {
+  challengeDefinitions,
+  challengeInstances,
   createDb,
+  gameEvents,
   latestSnapshots,
+  matches,
+  notifications,
   servers,
   steamProfiles,
   type Database,
@@ -12,6 +17,11 @@ import { snapshotFixture } from "./live-snapshot-fixture";
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 afterEach(async () => {
+  await db.delete(notifications);
+  await db.delete(gameEvents);
+  await db.delete(matches);
+  await db.delete(challengeInstances);
+  await db.delete(challengeDefinitions);
   await db.delete(latestSnapshots);
   await db.delete(servers);
   await db.delete(steamProfiles);
@@ -58,6 +68,8 @@ describe("getLiveSnapshot", () => {
         ...snapshot,
         players: snapshot.players.map((player) => ({ ...player, avatarUrl: null })),
       },
+      activeChallenges: [],
+      recentNotifications: [],
     });
   });
 
@@ -97,6 +109,57 @@ describe("getLiveSnapshot", () => {
 
     expect(result?.snapshot.players).toEqual([
       { ...snapshot.players[0], avatarUrl: "https://avatars.steamstatic.com/alice.jpg" },
+    ]);
+  });
+
+  it("includes the Server's active daily challenges and recent Notifications, scoped to the Snapshot's own capturedAt", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: "http://rcon.test:9006" })
+      .returning();
+    const capturedAt = new Date("2026-03-05T12:00:00.000Z");
+    await db
+      .insert(latestSnapshots)
+      .values({ serverId: server.id, capturedAt, payload: snapshotFixture({}) });
+
+    const [definition] = await db
+      .insert(challengeDefinitions)
+      .values({ type: "kills", scope: "daily", target: 20, xpReward: 150 })
+      .returning();
+    await db
+      .insert(challengeInstances)
+      .values({ definitionId: definition.id, serverId: server.id, periodKey: "2026-03-05" });
+
+    const [match] = await db
+      .insert(matches)
+      .values({ serverId: server.id, map: "Sandstorm", experiences: ["TeamDeathmatch"], startedAt: capturedAt })
+      .returning();
+    const [event] = await db
+      .insert(gameEvents)
+      .values({
+        serverId: server.id,
+        matchId: match.id,
+        type: "MatchStarted",
+        timestamp: capturedAt,
+        idempotencyKey: "live-snapshot-test-match-started",
+        sourceSnapshotId: 0,
+      })
+      .returning();
+    await db.insert(notifications).values({
+      serverId: server.id,
+      priority: "high",
+      message: "Match started on Sandstorm",
+      eventId: event.id,
+      timestamp: capturedAt,
+    });
+
+    const result = await getLiveSnapshot(db, "http://rcon.test:9006");
+
+    expect(result?.activeChallenges).toEqual([
+      expect.objectContaining({ type: "kills", target: 20, xpReward: 150 }),
+    ]);
+    expect(result?.recentNotifications).toEqual([
+      expect.objectContaining({ message: "Match started on Sandstorm" }),
     ]);
   });
 });

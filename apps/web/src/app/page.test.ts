@@ -1,4 +1,14 @@
-import { createDb, latestSnapshots, servers, type Database } from "@wdza-stats/db";
+import {
+  challengeDefinitions,
+  challengeInstances,
+  createDb,
+  gameEvents,
+  latestSnapshots,
+  matches,
+  notifications,
+  servers,
+  type Database,
+} from "@wdza-stats/db";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { snapshotFixture } from "@/lib/live-snapshot-fixture";
@@ -9,6 +19,11 @@ const db: Database = createDb(process.env.DATABASE_URL!);
 const BASE_URL = process.env.RCON_BASE_URL!;
 
 afterEach(async () => {
+  await db.delete(notifications);
+  await db.delete(gameEvents);
+  await db.delete(matches);
+  await db.delete(challengeInstances);
+  await db.delete(challengeDefinitions);
   await db.delete(latestSnapshots);
   await db.delete(servers);
 });
@@ -94,5 +109,63 @@ describe("HomePage", () => {
     const html = renderToStaticMarkup(element);
 
     expect(html.toLowerCase()).toContain("no live data");
+  });
+
+  it("renders active daily challenges and the recent-events feed alongside the existing live view content", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+    const capturedAt = new Date("2026-03-05T12:00:00.000Z");
+    await db.insert(latestSnapshots).values({
+      serverId: server.id,
+      capturedAt,
+      payload: snapshotFixture({ map: "Deadcity" }),
+    });
+
+    const [definition] = await db
+      .insert(challengeDefinitions)
+      .values({ type: "kills", scope: "daily", target: 20, xpReward: 150 })
+      .returning();
+    await db
+      .insert(challengeInstances)
+      .values({ definitionId: definition.id, serverId: server.id, periodKey: "2026-03-05" });
+
+    const [match] = await db
+      .insert(matches)
+      .values({ serverId: server.id, map: "Deadcity", experiences: ["TeamDeathmatch"], startedAt: capturedAt })
+      .returning();
+    const [event] = await db
+      .insert(gameEvents)
+      .values({
+        serverId: server.id,
+        matchId: match.id,
+        type: "MatchStarted",
+        timestamp: capturedAt,
+        idempotencyKey: "page-test-match-started",
+        sourceSnapshotId: 0,
+      })
+      .returning();
+    await db.insert(notifications).values({
+      serverId: server.id,
+      priority: "high",
+      message: "Match started on Deadcity",
+      eventId: event.id,
+      timestamp: capturedAt,
+    });
+
+    const element = await HomePage();
+    const html = renderToStaticMarkup(element);
+
+    // Existing live view content is unaffected by the new sections.
+    expect(html).toContain("WDZA Test");
+    expect(html).toContain("Deadcity");
+
+    expect(html).toContain("Today&#x27;s challenges");
+    expect(html).toContain("Get 20 kills");
+    expect(html).toContain("+150 XP");
+
+    expect(html).toContain("Recent activity");
+    expect(html).toContain("Match started on Deadcity");
   });
 });

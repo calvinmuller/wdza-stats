@@ -43,6 +43,8 @@ describe("GET /api/live-snapshot", () => {
       serverName: "WDZA Test",
       capturedAt: capturedAt.toISOString(),
       snapshot: expect.objectContaining({ map: "Deadcity" }),
+      activeChallenges: [],
+      recentNotifications: [],
     });
   });
 });

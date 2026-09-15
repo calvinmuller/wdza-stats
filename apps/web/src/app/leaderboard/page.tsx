@@ -53,13 +53,14 @@ export default async function LeaderboardPage({
       </nav>
 
       <p className="max-w-2xl text-xs text-zinc-500">
-        <span className="font-medium text-zinc-400">Adj. K/D</span> blends
-        each player&rsquo;s raw K/D toward the server average, weighted by
-        matches played against 10 &ldquo;average&rdquo; matches of prior — so
-        a player with only a few games is pulled most of the way to the
-        average, while a player with a long track record keeps most of
-        their own number. This is what the K/D sort ranks by, so a lucky
-        game or two won&rsquo;t outrank a proven record.
+        The <span className="font-medium text-zinc-400">K/D</span> shown here
+        has been adjusted: it blends each player&rsquo;s raw K/D toward the
+        server average, weighted by matches played against 10
+        &ldquo;average&rdquo; matches of prior — so a player with only a few
+        games is pulled most of the way to the average, while a player with a
+        long track record keeps most of their own number. This is what the
+        K/D sort ranks by, so a lucky game or two won&rsquo;t outrank a proven
+        record.
       </p>
 
       {rows.length === 0 ? (

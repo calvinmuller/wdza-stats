@@ -691,8 +691,11 @@ async function applyChallengeProgressUpdates(
 /**
  * Gathers the extra per-Match/per-player state computeAchievementUnlockDrafts
  * needs beyond the recorded events themselves: the current
- * ACHIEVEMENT_DEFINITIONS config, each relevant player's total ever/
- * within-Match PlayerKilled counts (for first_kill/match_kills), and - for a
+ * ACHIEVEMENT_DEFINITIONS config, each relevant PlayerKilled event's 1-indexed
+ * ordinal within its own Match across every player (for first_kill - "First
+ * Blood" means the game's opening kill, not any one player's own first-ever
+ * kill), each relevant player's within-Match PlayerKilled count (for
+ * match_kills), and - for a
  * Match this same batch closed - its participants' resulting
  * matchesPlayed/matchesWon/per-Match deaths (for matches_played/matches_won/
  * survivor). Queried fresh every call rather than cached, matching
@@ -711,36 +714,30 @@ async function buildAchievementContext(
     threshold: row.threshold,
   }));
 
-  const killSteamIds = [
-    ...new Set(
-      recordedEvents
-        .filter((event): event is RecordedGameEvent & { steamId: string } => event.type === "PlayerKilled" && event.steamId != null)
-        .map((event) => event.steamId),
-    ),
-  ];
-  const totalKillsBySteamId = new Map<string, number>();
-  if (killSteamIds.length > 0) {
-    const rows = await tx
-      .select({ steamId: gameEvents.steamId, count: sql<number>`COUNT(*)` })
-      .from(gameEvents)
-      .where(
-        and(
-          eq(gameEvents.serverId, serverId),
-          eq(gameEvents.type, "PlayerKilled" satisfies GameEventType),
-          inArray(gameEvents.steamId, killSteamIds),
-        ),
-      )
-      .groupBy(gameEvents.steamId);
-    for (const row of rows) {
-      if (row.steamId) {
-        totalKillsBySteamId.set(row.steamId, Number(row.count));
-      }
-    }
-  }
-
   const killMatchIds = [...new Set(
     recordedEvents.filter((event) => event.type === "PlayerKilled").map((event) => event.matchId),
   )];
+
+  // Only ordinals up to the highest configured first_kill threshold can ever
+  // match a definition, so cap each Match's lookup there rather than
+  // ordering every PlayerKilled event the Match has ever had.
+  const firstKillThresholds = definitions.filter((d) => d.trigger === "first_kill").map((d) => d.threshold);
+  const maxFirstKillThreshold = firstKillThresholds.length > 0 ? Math.max(...firstKillThresholds) : 0;
+  const matchKillOrdinalByEventId = new Map<number, number>();
+  if (maxFirstKillThreshold > 0) {
+    for (const matchId of killMatchIds) {
+      const rows = await tx
+        .select({ id: gameEvents.id })
+        .from(gameEvents)
+        .where(and(eq(gameEvents.matchId, matchId), eq(gameEvents.type, "PlayerKilled" satisfies GameEventType)))
+        .orderBy(gameEvents.id)
+        .limit(maxFirstKillThreshold);
+      rows.forEach((row, index) => {
+        matchKillOrdinalByEventId.set(row.id, index + 1);
+      });
+    }
+  }
+
   const matchKillsByPlayerMatch = new Map<string, number>();
   for (const matchId of killMatchIds) {
     const rows = await tx
@@ -791,7 +788,7 @@ async function buildAchievementContext(
     matchCompletions.set(closedMatch.id, { participants });
   }
 
-  return { serverId, definitions, totalKillsBySteamId, matchKillsByPlayerMatch, matchCompletions };
+  return { serverId, definitions, matchKillOrdinalByEventId, matchKillsByPlayerMatch, matchCompletions };
 }
 
 /**

@@ -1680,8 +1680,8 @@ describe("Notification engine (integration)", () => {
     // Far fewer Notifications than GameEvents this run produced (10
     // PlayerKilled events, a PlayerJoined/PlayerLeft pair, etc.) - none of
     // those routine events ever reach this table at all.
-    expect(rows).toHaveLength(14);
-    expect(rows.filter((r) => r.priority === "high")).toHaveLength(10);
+    expect(rows).toHaveLength(15);
+    expect(rows.filter((r) => r.priority === "high")).toHaveLength(11);
     expect(rows.filter((r) => r.priority === "normal")).toHaveLength(3);
     expect(rows.filter((r) => r.priority === "low")).toHaveLength(1);
 
@@ -1691,6 +1691,7 @@ describe("Notification engine (integration)", () => {
     expect(messages).toContain("🔥 Alice is on a 10 kill streak!");
     expect(messages).toContain("⚡ Alice hit a 5 kill streak!");
     expect(messages).toContain("🔫 Alice is on a 3 kill streak!");
+    expect(messages).toContain("🏅 Alice unlocked an achievement: First Blood!");
     expect(messages).toContain("🏅 Alice unlocked an achievement: Killing Spree!");
     expect(messages).toContain("🏅 Alice unlocked an achievement: Rampage!");
     expect(messages).toContain("🏅 Alice unlocked an achievement: Survivor!");
@@ -1747,11 +1748,13 @@ describe("Notification engine (integration)", () => {
     await pollAndPersistSnapshot(db, client, server.id); // the 3 kill streak
 
     const afterStreak = await notificationsFor(server.id);
-    // 1 (the opening poll's "high" priority MatchStarted) + the pre-filled
-    // cap - the new KillStreak3 draft found no budget left and was dropped,
-    // not cap + 2.
-    expect(afterStreak).toHaveLength(cap + 1);
+    // 2 (the opening poll's "high" priority MatchStarted, plus this poll's
+    // "high" priority First Blood achievement unlock for Alice's 3-kill
+    // burst's opening kill) + the pre-filled cap - the new KillStreak3 draft
+    // found no budget left and was dropped, not cap + 3.
+    expect(afterStreak).toHaveLength(cap + 2);
     expect(afterStreak.some((r) => r.message.includes("3 kill streak"))).toBe(false);
+    expect(afterStreak.some((r) => r.message === "🏅 Alice unlocked an achievement: First Blood!")).toBe(true);
 
     await pollAndPersistSnapshot(db, client, server.id); // closes + reopens the Match
 

@@ -33,12 +33,17 @@ export interface AchievementContext {
   // Achievements can be added/retuned without a deploy - see xp-engine.ts's
   // xpRewards for the same convention.
   definitions: AchievementDefinitionConfig[];
-  // steamId -> total PlayerKilled GameEvents ever recorded for them on this
-  // Server, as of after this batch's own PlayerKilled events were persisted -
-  // so a brand-new player's very first kill already reads as 1, not 0.
-  totalKillsBySteamId: Map<string, number>;
+  // GameEvent id -> that PlayerKilled event's 1-indexed ordinal among every
+  // PlayerKilled event recorded in its own Match (across every player, not
+  // just the scorer) - so "first_kill"'s threshold means "whoever lands the
+  // Match's Nth kill", matching what "First Blood" (threshold 1) actually
+  // means: the game's opening kill, not any one player's own first-ever
+  // kill. Only carries entries for events this batch could plausibly match
+  // a first_kill definition against.
+  matchKillOrdinalByEventId: Map<number, number>;
   // `${matchId}:${steamId}` -> that player's PlayerKilled count within that
-  // one Match, same as-of-after-this-batch timing as totalKillsBySteamId.
+  // one Match, as of after this batch's own PlayerKilled events were
+  // persisted.
   matchKillsByPlayerMatch: Map<string, number>;
   // matchId -> per-participant stats for a Match this same batch closed -
   // present only for a MatchEnded event whose Match this batch actually
@@ -63,9 +68,12 @@ function firstKillDrafts(event: RecordedGameEvent, context: AchievementContext):
   if (!event.steamId) {
     return [];
   }
-  const totalKills = context.totalKillsBySteamId.get(event.steamId) ?? 0;
+  const ordinal = context.matchKillOrdinalByEventId.get(event.id);
+  if (ordinal === undefined) {
+    return [];
+  }
   return definitionsFor("first_kill", context)
-    .filter((definition) => totalKills === definition.threshold)
+    .filter((definition) => ordinal === definition.threshold)
     .map((definition) => unlockDraft(context, event.steamId!, definition, event.id));
 }
 

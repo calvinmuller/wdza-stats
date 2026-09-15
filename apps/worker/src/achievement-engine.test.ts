@@ -34,7 +34,7 @@ function context(overrides: Partial<AchievementContext> = {}): AchievementContex
   return {
     serverId: 1,
     definitions: DEFINITIONS,
-    totalKillsBySteamId: new Map(),
+    matchKillOrdinalByEventId: new Map(),
     matchKillsByPlayerMatch: new Map(),
     matchCompletions: new Map(),
     ...overrides,
@@ -43,19 +43,19 @@ function context(overrides: Partial<AchievementContext> = {}): AchievementContex
 
 describe("computeAchievementUnlockDrafts", () => {
   describe("First Blood (first_kill)", () => {
-    it("unlocks on a player's first-ever PlayerKilled event on this Server", () => {
+    it("unlocks for the player who lands a Match's earliest-recorded PlayerKilled event", () => {
       const drafts = computeAchievementUnlockDrafts(
-        [event({ id: 5, steamId: "1" })],
-        context({ totalKillsBySteamId: new Map([["1", 1]]) }),
+        [event({ id: 5, matchId: 1, steamId: "1" })],
+        context({ matchKillOrdinalByEventId: new Map([[5, 1]]) }),
       );
 
       expect(drafts).toEqual([{ serverId: 1, steamId: "1", achievementId: "first_blood", eventId: 5 }]);
     });
 
-    it("does not unlock again for a later kill", () => {
+    it("does not unlock for a later kill in the same Match", () => {
       const drafts = computeAchievementUnlockDrafts(
-        [event({ id: 9, steamId: "1" })],
-        context({ totalKillsBySteamId: new Map([["1", 4]]) }),
+        [event({ id: 9, matchId: 1, steamId: "1" })],
+        context({ matchKillOrdinalByEventId: new Map([[9, 2]]) }),
       );
 
       expect(drafts).toEqual([]);

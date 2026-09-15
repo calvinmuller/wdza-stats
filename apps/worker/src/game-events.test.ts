@@ -20,7 +20,7 @@ import {
   diffKillStreakGameEvents,
   diffRosterGameEvents,
   matchLifecycleEvent,
-  type RosterDiffContext,
+  type GameEventContext,
 } from "./game-events";
 import { playersFixture, scriptedRconClient, statusFixture } from "./rcon-fixture";
 import { pollAndPersistSnapshot } from "./snapshot-poller";
@@ -38,7 +38,7 @@ function player(overrides: Partial<SnapshotPlayer> = {}): SnapshotPlayer {
   };
 }
 
-function context(overrides: Partial<RosterDiffContext> = {}): RosterDiffContext {
+function context(overrides: Partial<GameEventContext> = {}): GameEventContext {
   return {
     serverId: 1,
     matchId: 1,

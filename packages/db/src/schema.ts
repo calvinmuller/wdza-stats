@@ -208,3 +208,15 @@ export const xpTransactions = pgTable(
   },
   (table) => [unique().on(table.eventId, table.reason, table.steamId)],
 );
+
+// The level curve config table: the cumulative XP required to reach each
+// level, seeded in this table's own migration with the spec's stated
+// defaults (0/1,000/2,500/4,500 for levels 1-4) extended further by the same
+// quadratic pattern - see the migration's own comment for the formula. Read
+// by the Progression Engine (packages/db/src/level.ts) instead of a
+// hardcoded per-level formula/switch in application code, so the curve can
+// be retuned or extended (raising the level cap) without a deploy.
+export const levelThresholds = pgTable("level_thresholds", {
+  level: integer("level").primaryKey(),
+  xpRequired: integer("xp_required").notNull(),
+});

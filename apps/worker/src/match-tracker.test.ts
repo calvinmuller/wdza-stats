@@ -878,3 +878,144 @@ describe("XP ledger and awards (integration)", () => {
     expect(career.xp).toBe(100);
   });
 });
+
+// Exercises applyLevelUps end-to-end via ingestSnapshot (through
+// pollAndPersistSnapshot) against a real Postgres database, asserting on the
+// resulting PlayerLevelUp GameEvents and playerCareerStats.level - see
+// ticket 06. Relies on the migration-seeded xp_rewards/level_thresholds
+// defaults (kill +100, first_blood +100, streak3/5/10 +150/+250/+500; level
+// 2 at 1,000 XP, level 3 at 2,500, level 4 at 4,500).
+describe("Levels and level-up events (integration)", () => {
+  const db: Database = createDb(process.env.DATABASE_URL!);
+
+  async function seedServer() {
+    const [server] = await db
+      .insert(servers)
+      .values({
+        name: "Test Server",
+        baseUrl: `http://rcon-level-engine-${crypto.randomUUID()}.test:9006`,
+      })
+      .returning();
+    return server;
+  }
+
+  async function levelUpEventsFor(steamId: string) {
+    const rows = await db
+      .select()
+      .from(gameEvents)
+      .where(and(eq(gameEvents.steamId, steamId), eq(gameEvents.type, "PlayerLevelUp")))
+      .orderBy(gameEvents.id);
+    return rows;
+  }
+
+  async function careerStatsFor(serverId: number, steamId: string) {
+    const [row] = await db
+      .select()
+      .from(playerCareerStats)
+      .where(and(eq(playerCareerStats.serverId, serverId), eq(playerCareerStats.steamId, steamId)));
+    return row;
+  }
+
+  afterEach(async () => {
+    await db.delete(xpTransactions);
+    await db.delete(gameEvents);
+    await db.delete(playerMatchStats);
+    await db.delete(playerCareerStats);
+    await db.delete(matchSnapshots);
+    await db.delete(matches);
+    await db.delete(latestSnapshots);
+    await db.delete(servers);
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("does not fire PlayerLevelUp when an award doesn't cross a threshold", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // 1 kill: 100 (kill) + 100 (first_blood) = 200 XP - well short of level 2's 1,000.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    expect(await levelUpEventsFor("1")).toEqual([]);
+    const career = await careerStatsFor(server.id, "1");
+    expect(career.xp).toBe(200);
+    expect(career.level).toBe(1);
+  });
+
+  it("fires PlayerLevelUp exactly once when an award crosses exactly one threshold", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // 5 kills: 500 (kill) + 100 (first_blood) + 150 (streak3) + 250 (streak5) = 1,000 XP,
+        // landing exactly on level 2's threshold.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 5, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const levelUps = await levelUpEventsFor("1");
+    expect(levelUps).toHaveLength(1);
+    expect(levelUps[0].metadata).toEqual({ level: 2 });
+
+    const career = await careerStatsFor(server.id, "1");
+    expect(career.xp).toBe(1000);
+    expect(career.level).toBe(2);
+  });
+
+  it("fires one PlayerLevelUp per level when a single award crosses two thresholds at once", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // 25 kills: 2,500 (kill) + 100 (first_blood) + 150+250+500 (streak3/5/10) =
+        // 3,500 XP, crossing both level 2 (1,000) and level 3 (2,500) in one batch.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 25, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const levelUps = await levelUpEventsFor("1");
+    expect(levelUps.map((event) => event.metadata)).toEqual([{ level: 2 }, { level: 3 }]);
+
+    const career = await careerStatsFor(server.id, "1");
+    expect(career.xp).toBe(3500);
+    expect(career.level).toBe(3);
+  });
+});

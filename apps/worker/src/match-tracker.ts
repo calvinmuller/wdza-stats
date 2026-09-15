@@ -1,6 +1,8 @@
 import {
   gameEvents,
   latestSnapshots,
+  levelForXp,
+  levelThresholds,
   matchSnapshots,
   matches,
   playerCareerStats,
@@ -21,8 +23,11 @@ import {
   diffRosterGameEvents,
   matchLifecycleEvent,
   soleLeader,
+  type GameEventDraft,
   type KillStreakUpdate,
+  type GameEventContext,
 } from "./game-events";
+import { levelUpEvents } from "./level-engine";
 import {
   computeXpTransactionDrafts,
   type RecordedGameEvent,
@@ -105,6 +110,31 @@ export function computePlayerDeltas(snapshots: Snapshot[]): PlayerDelta[] {
 }
 
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+/**
+ * Persists a batch of GameEventDrafts and returns the slice of each actually
+ * inserted row that computeXpTransactionDrafts/logging need. Shared by
+ * ingestSnapshot's two insertion points - the Snapshot-diff batch and the
+ * PlayerLevelUp batch computed afterward from that batch's resulting XP -
+ * since both rely on the same onConflictDoNothing(idempotencyKey) dedupe and
+ * the same returning() shape.
+ */
+async function insertGameEventDrafts(tx: Tx, drafts: GameEventDraft[]): Promise<RecordedGameEvent[]> {
+  if (drafts.length === 0) {
+    return [];
+  }
+  return tx
+    .insert(gameEvents)
+    .values(drafts)
+    .onConflictDoNothing({ target: gameEvents.idempotencyKey })
+    .returning({
+      id: gameEvents.id,
+      type: gameEvents.type,
+      steamId: gameEvents.steamId,
+      matchId: gameEvents.matchId,
+      metadata: gameEvents.metadata,
+    });
+}
 
 /**
  * The Faction with the highest score in a Match's final Snapshot - "first to
@@ -318,6 +348,56 @@ export async function applyXpTransactionDrafts(
 }
 
 /**
+ * For every steamId in `steamIds` (the players who just received new XP this
+ * poll - see ingestSnapshot's recordedXpTransactions), checks whether their
+ * resulting cached playerCareerStats.xp now maps to a higher level (per
+ * level_thresholds) than what's currently persisted in that row's `level`
+ * column, and if so persists the new level and returns one PlayerLevelUp
+ * GameEvent draft per level gained (see level-engine.ts's levelUpEvents) - so
+ * a single award crossing two thresholds at once still emits one event per
+ * level, not one for the whole jump. Reads the pre-update `level` column as
+ * each crossing's baseline rather than recomputing it from a "previous xp"
+ * value, since that column is kept in sync with xp after every prior award
+ * (this function's own postcondition) - so it's always already correct going
+ * into this call. `context.matchId` attributes every resulting draft to
+ * whichever Match is open at the moment this batch is processed - level is a
+ * Server-scoped total, not a Match-scoped one, so the required `matchId`
+ * column just needs *a* value (see level-engine.ts's own doc comment).
+ */
+async function applyLevelUps(
+  tx: Tx,
+  context: GameEventContext,
+  steamIds: string[],
+): Promise<GameEventDraft[]> {
+  if (steamIds.length === 0) {
+    return [];
+  }
+
+  const thresholds = await tx.select().from(levelThresholds);
+  const careerRows = await tx
+    .select({ steamId: playerCareerStats.steamId, xp: playerCareerStats.xp, level: playerCareerStats.level })
+    .from(playerCareerStats)
+    .where(and(eq(playerCareerStats.serverId, context.serverId), inArray(playerCareerStats.steamId, steamIds)));
+
+  const drafts: GameEventDraft[] = [];
+  for (const row of careerRows) {
+    const newLevel = levelForXp(row.xp, thresholds);
+    if (newLevel === row.level) {
+      continue;
+    }
+
+    await tx
+      .update(playerCareerStats)
+      .set({ level: newLevel })
+      .where(and(eq(playerCareerStats.serverId, context.serverId), eq(playerCareerStats.steamId, row.steamId)));
+
+    drafts.push(...levelUpEvents(row.steamId, row.level, newLevel, context));
+  }
+
+  return drafts;
+}
+
+/**
  * Ingests one freshly-polled Snapshot for a Server: detects whether it
  * starts a new Match (comparing it to the Server's last-persisted
  * Snapshot), closing and rolling up the previous Match if so, then
@@ -354,6 +434,12 @@ export async function applyXpTransactionDrafts(
  * Duplicate drafts (e.g. from a retried write of the same transition) are
  * silently dropped via their idempotencyKey unique constraint rather than
  * erroring.
+ *
+ * Whenever this batch's GameEvents earn XP (via computeXpTransactionDrafts/
+ * applyXpTransactionDrafts), every player who actually gained XP is then
+ * checked against the level curve - see applyLevelUps - and a PlayerLevelUp
+ * GameEvent is emitted per level gained, persisted in a second insert into
+ * gameEvents once the resulting playerCareerStats.xp is known.
  *
  * Logs a line for each Match opened and/or closed, and each GameEvent
  * actually inserted - the things a poll can meaningfully change from an
@@ -509,24 +595,24 @@ export async function ingestSnapshot(
       await applyKillStreakUpdates(tx, serverId, killStreakDiff.updates);
     }
 
-    if (eventDrafts.length > 0) {
-      recordedEvents = await tx
-        .insert(gameEvents)
-        .values(eventDrafts)
-        .onConflictDoNothing({ target: gameEvents.idempotencyKey })
-        .returning({
-          id: gameEvents.id,
-          type: gameEvents.type,
-          steamId: gameEvents.steamId,
-          matchId: gameEvents.matchId,
-          metadata: gameEvents.metadata,
-        });
-    }
+    recordedEvents = await insertGameEventDrafts(tx, eventDrafts);
 
     if (recordedEvents.length > 0) {
       const xpTransactionContext = await buildXpTransactionContext(tx, serverId, recordedEvents, closedMatch);
       const xpTransactionDrafts = computeXpTransactionDrafts(recordedEvents, xpTransactionContext);
       recordedXpTransactions = await applyXpTransactionDrafts(tx, xpTransactionDrafts);
+    }
+
+    if (recordedXpTransactions.length > 0) {
+      const gainedSteamIds = [...new Set(recordedXpTransactions.map((transaction) => transaction.steamId))];
+      const levelUpDrafts = await applyLevelUps(
+        tx,
+        { serverId, matchId: currentMatchId, timestamp: capturedAt, sourceSnapshotId: insertedSnapshot.id },
+        gainedSteamIds,
+      );
+
+      const recordedLevelUps = await insertGameEventDrafts(tx, levelUpDrafts);
+      recordedEvents = recordedEvents.concat(recordedLevelUps);
     }
 
     await tx

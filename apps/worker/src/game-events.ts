@@ -1,7 +1,7 @@
 import type { GameEventType, SnapshotFaction, SnapshotPlayer } from "@wdza-stats/db";
 
-/** Everything a poll's roster diff needs to attribute and dedupe its events, gathered before diffing so the diff function stays pure. */
-export interface RosterDiffContext {
+/** Everything a batch of GameEvent drafts needs to attribute and dedupe its events, gathered by the caller before building them so the draft-building functions stay pure - shared by this file's own Snapshot-diffing functions and by level-engine.ts's PlayerLevelUp drafts. */
+export interface GameEventContext {
   serverId: number;
   matchId: number;
   timestamp: Date;
@@ -38,15 +38,18 @@ export interface GameEventDraft {
  * of the *same* kill could otherwise disagree on `type` and dodge the
  * unique constraint entirely - keying both under one shared label closes
  * that gap.
+ *
+ * Exported for level-engine.ts, whose PlayerLevelUp drafts are built outside
+ * this file's Snapshot-diffing functions but still need the same scheme.
  */
-function buildIdempotencyKey(context: RosterDiffContext, keyType: string, ...parts: string[]): string {
+export function buildIdempotencyKey(context: GameEventContext, keyType: string, ...parts: string[]): string {
   return [context.serverId, context.matchId, keyType, ...parts].join(":");
 }
 
 function joinLeaveEvent(
   type: GameEventType,
   player: SnapshotPlayer,
-  context: RosterDiffContext,
+  context: GameEventContext,
 ): GameEventDraft {
   return {
     serverId: context.serverId,
@@ -79,7 +82,7 @@ function joinLeaveEvent(
 export function diffRosterGameEvents(
   previousPlayers: SnapshotPlayer[] | undefined,
   currentPlayers: SnapshotPlayer[],
-  context: RosterDiffContext,
+  context: GameEventContext,
 ): GameEventDraft[] {
   const previous = previousPlayers ?? [];
   const previousSteamIds = new Set(previous.map((player) => player.steamId));
@@ -109,7 +112,7 @@ export function diffRosterGameEvents(
  */
 export function matchLifecycleEvent(
   type: "MatchStarted" | "MatchEnded",
-  context: RosterDiffContext,
+  context: GameEventContext,
 ): GameEventDraft {
   return {
     serverId: context.serverId,
@@ -140,7 +143,7 @@ function counterDeltaEvents(
   player: SnapshotPlayer,
   previousCount: number,
   currentCount: number,
-  context: RosterDiffContext,
+  context: GameEventContext,
 ): GameEventDraft[] {
   const events: GameEventDraft[] = [];
   for (let count = previousCount + 1; count <= currentCount; count++) {
@@ -175,7 +178,7 @@ function counterDeltaEvents(
 export function diffKillDeathGameEvents(
   previousPlayers: SnapshotPlayer[],
   currentPlayers: SnapshotPlayer[],
-  context: RosterDiffContext,
+  context: GameEventContext,
 ): GameEventDraft[] {
   const previousBySteamId = new Map(previousPlayers.map((player) => [player.steamId, player]));
 
@@ -194,7 +197,7 @@ export function diffKillDeathGameEvents(
 function factionScoreChangedEvent(
   faction: SnapshotFaction,
   previousScore: number,
-  context: RosterDiffContext,
+  context: GameEventContext,
 ): GameEventDraft {
   return {
     serverId: context.serverId,
@@ -210,7 +213,7 @@ function factionScoreChangedEvent(
   };
 }
 
-function factionTookLeadEvent(faction: SnapshotFaction, context: RosterDiffContext): GameEventDraft {
+function factionTookLeadEvent(faction: SnapshotFaction, context: GameEventContext): GameEventDraft {
   return {
     serverId: context.serverId,
     matchId: context.matchId,
@@ -276,7 +279,7 @@ function killStreakEvent(
   counterValue: number,
   streak: number,
   player: SnapshotPlayer,
-  context: RosterDiffContext,
+  context: GameEventContext,
 ): GameEventDraft {
   return {
     serverId: context.serverId,
@@ -330,7 +333,7 @@ export function diffKillStreakGameEvents(
   previousPlayers: SnapshotPlayer[],
   currentPlayers: SnapshotPlayer[],
   currentStreaks: Map<string, number>,
-  context: RosterDiffContext,
+  context: GameEventContext,
 ): KillStreakDiff {
   const previousBySteamId = new Map(previousPlayers.map((player) => [player.steamId, player]));
   const events: GameEventDraft[] = [];
@@ -394,7 +397,7 @@ export function diffFactionScoreGameEvents(
   previousFactions: SnapshotFaction[],
   currentFactions: SnapshotFaction[],
   previousLeader: string | null,
-  context: RosterDiffContext,
+  context: GameEventContext,
 ): GameEventDraft[] {
   const previousByName = new Map(previousFactions.map((faction) => [faction.name, faction.score]));
 

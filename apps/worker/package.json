@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "backfill:steam": "tsx src/backfill-steam-profiles.ts",
     "backfill:playtime": "tsx src/backfill-playtime.ts",
+    "revoke:first-blood": "tsx src/revoke-first-blood.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

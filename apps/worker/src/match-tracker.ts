@@ -5,6 +5,7 @@ import {
   levelThresholds,
   matchSnapshots,
   matches,
+  mvpFormulaWeights,
   playerCareerStats,
   playerMatchStats,
   xpRewards,
@@ -28,6 +29,7 @@ import {
   type GameEventContext,
 } from "./game-events";
 import { levelUpEvents } from "./level-engine";
+import { computeMvp, type MvpFormulaWeights } from "./mvp-engine";
 import {
   computeXpTransactionDrafts,
   type RecordedGameEvent,
@@ -139,29 +141,76 @@ async function insertGameEventDrafts(tx: Tx, drafts: GameEventDraft[]): Promise<
 /**
  * The Faction with the highest score in a Match's final Snapshot - "first to
  * 100" is enforced server-side, so whoever leads when the Match ends is the
- * winner. Returns null when the final Snapshot recorded no Factions.
+ * winner. Delegates to soleLeader for the actual strict-overtake comparison
+ * (see game-events.ts), matching FactionTookLead's own semantics (ticket
+ * 07): a tied final score has no winner, not an arbitrary pick. Returns null
+ * when the final Snapshot recorded no Factions, or when the top score is
+ * tied.
  */
 export function winningFaction(finalSnapshot: Snapshot): string | null {
-  if (finalSnapshot.factions.length === 0) {
-    return null;
-  }
-  return finalSnapshot.factions.reduce((leader, faction) =>
-    faction.score > leader.score ? faction : leader,
-  ).name;
+  return soleLeader(finalSnapshot.factions)?.name ?? null;
+}
+
+/**
+ * The current MVP_FORMULA_WEIGHTS config, read fresh on every Match close so
+ * the formula can be retuned without a deploy (see schema.ts's
+ * mvpFormulaWeights). A component missing from the table contributes 0
+ * rather than falling back to a hardcoded default, matching xpRewards'
+ * missing-reason handling in xp-engine.ts.
+ */
+async function fetchMvpFormulaWeights(tx: Tx): Promise<MvpFormulaWeights> {
+  const rows = await tx.select().from(mvpFormulaWeights);
+  const byComponent = new Map(rows.map((row) => [row.component, row.weight]));
+  return {
+    killWeight: byComponent.get("kills") ?? 0,
+    deathWeight: byComponent.get("deaths") ?? 0,
+  };
+}
+
+export interface MatchCloseSummary {
+  winner: string | null;
+  mvpPlayerSteamId: string | null;
+  mvpScore: number | null;
+  playerCount: number;
 }
 
 /**
  * Closes an open Match: computes each observed player's delta from its
  * retained matchSnapshots, writes PlayerMatchStat rows, rolls those deltas
- * into PlayerCareerStat, stamps endedAt and the winning Faction, and drops
- * the now-redundant raw Snapshots for that Match. Returns a summary for the
- * caller to log once the enclosing transaction has actually committed.
+ * into PlayerCareerStat (kills/deaths/cash/matchesPlayed, plus
+ * matchesWon/matchesLost/mvpCount per ticket 07), stamps endedAt/
+ * winningFaction/mvpPlayerSteamId/mvpScore, and drops the now-redundant raw
+ * Snapshots for that Match. Returns a summary for the caller to log once the
+ * enclosing transaction has actually committed.
+ *
+ * Idempotent under reprocessing (ticket 07): the very first write is a
+ * conditional claim of `endedAt` (`WHERE endedAt IS NULL`), so a second call
+ * for the same already-closed Match finds no row to claim and returns early
+ * without touching PlayerMatchStat/PlayerCareerStat again - every increment
+ * below only ever runs once per Match, no matter how many times this
+ * function itself is invoked for it.
  */
-async function closeMatch(
+export async function closeMatch(
   tx: Tx,
   match: { id: number; serverId: number },
   endedAt: Date,
-): Promise<{ winner: string | null; playerCount: number }> {
+): Promise<MatchCloseSummary> {
+  const [claimed] = await tx
+    .update(matches)
+    .set({ endedAt })
+    .where(and(eq(matches.id, match.id), isNull(matches.endedAt)))
+    .returning({ id: matches.id });
+
+  if (!claimed) {
+    const [existing] = await tx.select().from(matches).where(eq(matches.id, match.id));
+    return {
+      winner: existing.winningFaction,
+      mvpPlayerSteamId: existing.mvpPlayerSteamId,
+      mvpScore: existing.mvpScore,
+      playerCount: 0,
+    };
+  }
+
   const rows = await tx
     .select()
     .from(matchSnapshots)
@@ -170,8 +219,14 @@ async function closeMatch(
 
   const deltas = computePlayerDeltas(rows.map((row) => row.payload));
   const winner = winningFaction(rows[rows.length - 1].payload);
+  const weights = await fetchMvpFormulaWeights(tx);
+  const mvp = computeMvp(deltas, weights);
 
   for (const delta of deltas) {
+    const won = winner !== null && delta.faction === winner;
+    const lost = winner !== null && delta.faction !== winner;
+    const isMvp = mvp !== null && delta.steamId === mvp.steamId;
+
     await tx.insert(playerMatchStats).values({
       matchId: match.id,
       steamId: delta.steamId,
@@ -191,6 +246,9 @@ async function closeMatch(
         deaths: delta.deaths,
         cash: delta.cash,
         matchesPlayed: 1,
+        matchesWon: won ? 1 : 0,
+        matchesLost: lost ? 1 : 0,
+        mvpCount: isMvp ? 1 : 0,
       })
       .onConflictDoUpdate({
         target: [playerCareerStats.serverId, playerCareerStats.steamId],
@@ -200,17 +258,25 @@ async function closeMatch(
           deaths: sql`${playerCareerStats.deaths} + ${delta.deaths}`,
           cash: sql`${playerCareerStats.cash} + ${delta.cash}`,
           matchesPlayed: sql`${playerCareerStats.matchesPlayed} + 1`,
+          matchesWon: sql`${playerCareerStats.matchesWon} + ${won ? 1 : 0}`,
+          matchesLost: sql`${playerCareerStats.matchesLost} + ${lost ? 1 : 0}`,
+          mvpCount: sql`${playerCareerStats.mvpCount} + ${isMvp ? 1 : 0}`,
         },
       });
   }
 
   await tx
     .update(matches)
-    .set({ endedAt, winningFaction: winner })
+    .set({ winningFaction: winner, mvpPlayerSteamId: mvp?.steamId ?? null, mvpScore: mvp?.score ?? null })
     .where(eq(matches.id, match.id));
   await tx.delete(matchSnapshots).where(eq(matchSnapshots.matchId, match.id));
 
-  return { winner, playerCount: deltas.length };
+  return {
+    winner,
+    mvpPlayerSteamId: mvp?.steamId ?? null,
+    mvpScore: mvp?.score ?? null,
+    playerCount: deltas.length,
+  };
 }
 
 /**
@@ -454,7 +520,7 @@ export async function ingestSnapshot(
   snapshot: Snapshot,
   capturedAt: Date,
 ): Promise<void> {
-  let closedMatch: { id: number; winner: string | null; playerCount: number; endedAt: Date } | undefined;
+  let closedMatch: (MatchCloseSummary & { id: number; endedAt: Date }) | undefined;
   let openedMatch: { id: number; map: string } | undefined;
   let recordedEvents: RecordedGameEvent[] = [];
   let recordedXpTransactions: XpTransactionDraft[] = [];
@@ -626,7 +692,7 @@ export async function ingestSnapshot(
 
   if (closedMatch) {
     console.log(
-      `[worker] match closed: matchId=${closedMatch.id}, winner=${closedMatch.winner ?? "none"}, ${closedMatch.playerCount} player(s)`,
+      `[worker] match closed: matchId=${closedMatch.id}, winner=${closedMatch.winner ?? "none"}, mvp=${closedMatch.mvpPlayerSteamId ?? "none"}, ${closedMatch.playerCount} player(s)`,
     );
   }
   if (openedMatch) {

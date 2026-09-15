@@ -71,6 +71,13 @@
       "when": 1789446982023,
       "tag": "0009_left_blob",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789448216907,
+      "tag": "0010_spooky_fantastic_four",
+      "breakpoints": true
     }
   ]
 }

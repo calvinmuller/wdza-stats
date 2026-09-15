@@ -16,6 +16,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyXpTransactionDrafts,
+  closeMatch,
   computePlayerDeltas,
   detectMatchBoundary,
   winningFaction,
@@ -129,6 +130,17 @@ describe("winningFaction", () => {
 
   it("is null when the final Snapshot recorded no Factions", () => {
     expect(winningFaction(snapshot({ factions: [] }))).toBeNull();
+  });
+
+  it("is null when the top score is tied - a tie never wins, matching FactionTookLead's strict-overtake rule", () => {
+    const finalSnapshot = snapshot({
+      factions: [
+        { name: "Lonestar", color: "#ff0000", score: 50 },
+        { name: "Valkyra", color: "#0000ff", score: 50 },
+      ],
+    });
+
+    expect(winningFaction(finalSnapshot)).toBeNull();
   });
 });
 
@@ -1017,5 +1029,182 @@ describe("Levels and level-up events (integration)", () => {
     const career = await careerStatsFor(server.id, "1");
     expect(career.xp).toBe(3500);
     expect(career.level).toBe(3);
+  });
+});
+
+// Exercises closeMatch's MVP/win-loss rollup end-to-end (via
+// pollAndPersistSnapshot) and directly (for the reprocessing-safety test,
+// mirroring the XP ledger's own "never double-awards" test above) against a
+// real Postgres database - see ticket 07. Relies on mvp_formula_weights'
+// migration-seeded defaults (kills x10, deaths x-5).
+describe("Match finalization: MVP + win/loss rollup (integration)", () => {
+  const db: Database = createDb(process.env.DATABASE_URL!);
+
+  async function seedServer() {
+    const [server] = await db
+      .insert(servers)
+      .values({
+        name: "Test Server",
+        baseUrl: `http://rcon-match-finalization-${crypto.randomUUID()}.test:9006`,
+      })
+      .returning();
+    return server;
+  }
+
+  async function closedMatchesFor(serverId: number) {
+    return db
+      .select()
+      .from(matches)
+      .where(and(eq(matches.serverId, serverId), isNotNull(matches.endedAt)));
+  }
+
+  async function careerStatsFor(serverId: number, steamId: string) {
+    const [row] = await db
+      .select()
+      .from(playerCareerStats)
+      .where(and(eq(playerCareerStats.serverId, serverId), eq(playerCareerStats.steamId, steamId)));
+    return row;
+  }
+
+  afterEach(async () => {
+    await db.delete(xpTransactions);
+    await db.delete(gameEvents);
+    await db.delete(playerMatchStats);
+    await db.delete(playerCareerStats);
+    await db.delete(matchSnapshots);
+    await db.delete(matches);
+    await db.delete(latestSnapshots);
+    await db.delete(servers);
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("increments matchesWon for the winning Faction's players, matchesLost for the rest, and stamps the MVP", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          { steamId: "2", name: "Bob", faction: "Valkyra", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([
+          // Alice: 5 kills, 0 deaths -> score 50.
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 5, deaths: 0, cash: 0, pingMs: 40 },
+          // Bob: 1 kill, 3 deaths -> score 10 - 15 = -5.
+          { steamId: "2", name: "Bob", faction: "Valkyra", kills: 1, deaths: 3, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // map change closes the Match - statusFixture()'s default scores lead with Lonestar 10-8.
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const [closed] = await closedMatchesFor(server.id);
+    expect(closed.winningFaction).toBe("Lonestar");
+    expect(closed.mvpPlayerSteamId).toBe("1");
+    expect(closed.mvpScore).toBe(50);
+
+    const alice = await careerStatsFor(server.id, "1");
+    expect(alice).toMatchObject({ matchesWon: 1, matchesLost: 0, mvpCount: 1 });
+
+    const bob = await careerStatsFor(server.id, "2");
+    expect(bob).toMatchObject({ matchesWon: 0, matchesLost: 1, mvpCount: 0 });
+  });
+
+  it("breaks a tied MVP score using the documented tie-break rule (more kills wins)", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          { steamId: "2", name: "Bob", faction: "Valkyra", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture({ map: "Sandstorm" }),
+        players: playersFixture([
+          // Alice: 10 kills, 0 deaths -> score 100.
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 10, deaths: 0, cash: 0, pingMs: 40 },
+          // Bob: 15 kills, 10 deaths -> score 150 - 50 = 100, tied with Alice;
+          // wins the tie-break on more kills (see mvp-engine.ts's `beats`).
+          { steamId: "2", name: "Bob", faction: "Valkyra", kills: 15, deaths: 10, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const [closed] = await closedMatchesFor(server.id);
+    expect(closed.mvpPlayerSteamId).toBe("2");
+    expect(closed.mvpScore).toBe(100);
+
+    const bob = await careerStatsFor(server.id, "2");
+    expect(bob.mvpCount).toBe(1);
+    const alice = await careerStatsFor(server.id, "1");
+    expect(alice.mvpCount).toBe(0);
+  });
+
+  it("never double-counts matchesWon/matchesLost/mvpCount when closeMatch reprocesses an already-closed Match", async () => {
+    const server = await seedServer();
+    const [match] = await db
+      .insert(matches)
+      .values({ serverId: server.id, map: "Sandstorm", experiences: ["TeamDeathmatch"], startedAt: new Date() })
+      .returning();
+
+    await db.insert(matchSnapshots).values([
+      {
+        matchId: match.id,
+        capturedAt: new Date(Date.now() - 1000),
+        payload: snapshot({
+          factions: [
+            { name: "Lonestar", color: "#ff0000", score: 0 },
+            { name: "Valkyra", color: "#0000ff", score: 0 },
+          ],
+          players: [player({ steamId: "1", faction: "Lonestar", kills: 0, deaths: 0, cash: 0 })],
+        }),
+      },
+      {
+        matchId: match.id,
+        capturedAt: new Date(),
+        payload: snapshot({
+          factions: [
+            { name: "Lonestar", color: "#ff0000", score: 10 },
+            { name: "Valkyra", color: "#0000ff", score: 5 },
+          ],
+          players: [player({ steamId: "1", faction: "Lonestar", kills: 5, deaths: 0, cash: 0 })],
+        }),
+      },
+    ]);
+
+    const endedAt = new Date();
+    await db.transaction((tx) => closeMatch(tx, { id: match.id, serverId: server.id }, endedAt));
+    await db.transaction((tx) => closeMatch(tx, { id: match.id, serverId: server.id }, endedAt));
+
+    const career = await careerStatsFor(server.id, "1");
+    expect(career).toMatchObject({ matchesWon: 1, matchesLost: 0, mvpCount: 1 });
+
+    const [closedRow] = await db.select().from(matches).where(eq(matches.id, match.id));
+    expect(closedRow.winningFaction).toBe("Lonestar");
+    expect(closedRow.mvpPlayerSteamId).toBe("1");
+    expect(closedRow.mvpScore).toBe(50);
   });
 });

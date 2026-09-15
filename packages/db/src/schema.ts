@@ -32,9 +32,16 @@ export const latestSnapshots = pgTable("latest_snapshots", {
 });
 
 // endedAt is null while the Match is still open. winningFaction is set only
-// when the Match closes (the Faction with the highest score in its final
-// Snapshot) - null for a still-open Match, and for any Match closed before
-// this column existed.
+// when the Match closes (the sole Faction with a strictly-higher score than
+// every other in its final Snapshot, per the same strict-overtake rule as
+// FactionTookLead - see match-tracker.ts's winningFaction) - null for a
+// still-open Match, a Match that closed tied, and any Match closed before
+// this column existed. mvpPlayerSteamId/mvpScore are likewise set only on
+// close, from the config-driven formula in mvpFormulaWeights - null under
+// the same conditions plus a Match that closed with no participants.
+// steamId isn't a foreign key here (nor anywhere else a GameEvent or
+// PlayerMatchStat references one): playerCareerStats' key is a
+// (serverId, steamId) pair, not steamId alone.
 export const matches = pgTable("matches", {
   id: serial("id").primaryKey(),
   serverId: integer("server_id")
@@ -45,6 +52,8 @@ export const matches = pgTable("matches", {
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   endedAt: timestamp("ended_at", { withTimezone: true }),
   winningFaction: text("winning_faction"),
+  mvpPlayerSteamId: text("mvp_player_steam_id"),
+  mvpScore: integer("mvp_score"),
 });
 
 // Raw Snapshots belonging to the currently-open Match, kept only long enough
@@ -219,4 +228,16 @@ export const xpTransactions = pgTable(
 export const levelThresholds = pgTable("level_thresholds", {
   level: integer("level").primaryKey(),
   xpRequired: integer("xp_required").notNull(),
+});
+
+// The MVP formula config table: the per-kill/per-death weight the Match
+// Finalization step (apps/worker/src/mvp-engine.ts) sums to score each of a
+// closed Match's participants, seeded with the spec's stated default
+// (kills x10 - deaths x5, i.e. ("kills", 10) and ("deaths", -5)) - see
+// ticket 07 and spec.md's Domain Decisions. Read fresh on every Match close
+// rather than hardcoded, so the formula can be retuned without a deploy,
+// matching xpRewards/levelThresholds' own config-table precedent.
+export const mvpFormulaWeights = pgTable("mvp_formula_weights", {
+  component: text("component").primaryKey().$type<"kills" | "deaths">(),
+  weight: integer("weight").notNull(),
 });

@@ -7,7 +7,7 @@ import {
   type Database,
 } from "@wdza-stats/db";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { getRecentNotifications } from "./recent-notifications";
+import { getPlayerNotifications, getRecentNotifications } from "./recent-notifications";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
@@ -22,7 +22,7 @@ afterAll(async () => {
   await db.$client.end();
 });
 
-async function seedEvent(serverId: number) {
+async function seedEvent(serverId: number, steamId?: string) {
   const [match] = await db
     .insert(matches)
     .values({ serverId, map: "Sandstorm", experiences: ["TeamDeathmatch"], startedAt: new Date() })
@@ -32,7 +32,8 @@ async function seedEvent(serverId: number) {
     .values({
       serverId,
       matchId: match.id,
-      type: "MatchStarted",
+      type: steamId ? "PlayerLevelUp" : "MatchStarted",
+      steamId,
       timestamp: new Date(),
       idempotencyKey: `recent-notifications-test-${crypto.randomUUID()}`,
       sourceSnapshotId: 0,
@@ -128,6 +129,92 @@ describe("getRecentNotifications", () => {
     );
 
     const result = await getRecentNotifications(db, server.id, 2);
+
+    expect(result).toHaveLength(2);
+  });
+});
+
+describe("getPlayerNotifications", () => {
+  it("returns nothing when the player has no Notifications", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: "http://rcon.test:9006" })
+      .returning();
+
+    const result = await getPlayerNotifications(db, server.id, "1");
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns only this player's own Notifications, most recent first, excluding Match-scoped and other players' rows", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: "http://rcon.test:9006" })
+      .returning();
+    const matchEventId = await seedEvent(server.id);
+    const playerEventId = await seedEvent(server.id, "1");
+    const otherPlayerEventId = await seedEvent(server.id, "2");
+
+    await db.insert(notifications).values({
+      serverId: server.id,
+      priority: "high",
+      message: "Match started on Sandstorm",
+      eventId: matchEventId,
+      timestamp: new Date("2026-03-05T12:00:00Z"),
+    });
+    const [otherPlayerNotification] = await db
+      .insert(notifications)
+      .values({
+        serverId: server.id,
+        priority: "normal",
+        message: "Bob leveled up",
+        eventId: otherPlayerEventId,
+        timestamp: new Date("2026-03-05T12:02:00Z"),
+      })
+      .returning();
+    const [levelUp] = await db
+      .insert(notifications)
+      .values({
+        serverId: server.id,
+        priority: "normal",
+        message: "Alice leveled up",
+        eventId: playerEventId,
+        timestamp: new Date("2026-03-05T12:05:00Z"),
+      })
+      .returning();
+
+    expect(otherPlayerNotification).toBeDefined();
+
+    const result = await getPlayerNotifications(db, server.id, "1");
+
+    expect(result).toEqual([
+      {
+        id: levelUp.id,
+        priority: "normal",
+        message: "Alice leveled up",
+        timestamp: levelUp.timestamp.toISOString(),
+      },
+    ]);
+  });
+
+  it("caps the result at the given limit", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: "http://rcon.test:9006" })
+      .returning();
+
+    for (let index = 0; index < 5; index += 1) {
+      const eventId = await seedEvent(server.id, "1");
+      await db.insert(notifications).values({
+        serverId: server.id,
+        priority: "normal",
+        message: `Event ${index}`,
+        eventId,
+        timestamp: new Date(2026, 2, 5, 12, index),
+      });
+    }
+
+    const result = await getPlayerNotifications(db, server.id, "1", 2);
 
     expect(result).toHaveLength(2);
   });

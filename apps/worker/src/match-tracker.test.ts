@@ -7,6 +7,8 @@ import {
   latestSnapshots,
   matchSnapshots,
   matches,
+  notifications,
+  notificationSettings,
   playerAchievements,
   playerCareerStats,
   playerChallengeProgress,
@@ -236,6 +238,7 @@ describe("Match-boundary detection and persistence (integration)", () => {
     await db.delete(playerChallengeProgress);
     await db.delete(playerAchievements);
     await db.delete(xpTransactions);
+    await db.delete(notifications);
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
@@ -713,6 +716,7 @@ describe("XP ledger and awards (integration)", () => {
     await db.delete(playerChallengeProgress);
     await db.delete(playerAchievements);
     await db.delete(xpTransactions);
+    await db.delete(notifications);
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
@@ -953,6 +957,7 @@ describe("Levels and level-up events (integration)", () => {
     await db.delete(playerChallengeProgress);
     await db.delete(playerAchievements);
     await db.delete(xpTransactions);
+    await db.delete(notifications);
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
@@ -1102,6 +1107,7 @@ describe("Match finalization: MVP + win/loss rollup (integration)", () => {
     await db.delete(playerChallengeProgress);
     await db.delete(playerAchievements);
     await db.delete(xpTransactions);
+    await db.delete(notifications);
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
@@ -1401,6 +1407,7 @@ describe("Daily challenges (integration)", () => {
     await db.delete(playerChallengeProgress);
     await db.delete(xpTransactions);
     await db.delete(playerAchievements);
+    await db.delete(notifications);
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
@@ -1585,5 +1592,175 @@ describe("Daily challenges (integration)", () => {
     const killsWithoutDying = await instanceForType(server.id, "kills_without_dying");
     expect(await progressFor(killsWithoutDying.id, "1")).toMatchObject({ progress: 8 });
     expect(await completionsFor(killsWithoutDying.id)).toHaveLength(1);
+  });
+});
+
+// Exercises the Notification Engine end to end (via pollAndPersistSnapshot ->
+// ingestSnapshot) against a real Postgres database - see ticket 10. Relies on
+// the migration-seeded notification_rules/notification_settings defaults
+// (MatchStarted/MatchEnded/AchievementUnlocked/KillStreak10/ChallengeCompleted
+// at "high" priority, KillStreak5/PlayerLevelUp at "normal", KillStreak3 at
+// "low", max 20 low/normal per minute) alongside every other config table's
+// own migration-seeded defaults.
+describe("Notification engine (integration)", () => {
+  const db: Database = createDb(process.env.DATABASE_URL!);
+
+  async function seedServer() {
+    const [server] = await db
+      .insert(servers)
+      .values({
+        name: "Test Server",
+        baseUrl: `http://rcon-notification-engine-${crypto.randomUUID()}.test:9006`,
+      })
+      .returning();
+    return server;
+  }
+
+  async function notificationsFor(serverId: number) {
+    return db.select().from(notifications).where(eq(notifications.serverId, serverId));
+  }
+
+  afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
+    await db.delete(playerAchievements);
+    await db.delete(xpTransactions);
+    await db.delete(notifications);
+    await db.delete(gameEvents);
+    await db.delete(challengeInstances);
+    await db.delete(playerMatchStats);
+    await db.delete(playerCareerStats);
+    await db.delete(matchSnapshots);
+    await db.delete(matches);
+    await db.delete(latestSnapshots);
+    await db.delete(servers);
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("records a small set of high-priority Notifications for a full Match, never one per kill", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // 10 kills in one poll: streak climbs 1 through 10 (crossing the
+        // 3/5/10 Notification milestones once each), unlocks
+        // killing_spree/rampage/survivor, and completes three daily
+        // Challenges - the same scenario as the XP ledger's "fires each
+        // kill-streak milestone..." test above.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 10, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // map change closes the Match (Lonestar leads 10-8 by default) and opens a second one.
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const rows = await notificationsFor(server.id);
+
+    // Far fewer Notifications than GameEvents this run produced (10
+    // PlayerKilled events, a PlayerJoined/PlayerLeft pair, etc.) - none of
+    // those routine events ever reach this table at all.
+    expect(rows).toHaveLength(14);
+    expect(rows.filter((r) => r.priority === "high")).toHaveLength(10);
+    expect(rows.filter((r) => r.priority === "normal")).toHaveLength(3);
+    expect(rows.filter((r) => r.priority === "low")).toHaveLength(1);
+
+    const messages = rows.map((r) => r.message);
+    expect(messages).toContain("🏁 Match started on Sandstorm!");
+    expect(messages).toContain("🏆 Match ended - Lonestar wins!");
+    expect(messages).toContain("🔥 1 is on a 10 kill streak!");
+    expect(messages).toContain("⚡ 1 hit a 5 kill streak!");
+    expect(messages).toContain("🔫 1 is on a 3 kill streak!");
+    expect(messages).toContain("🏅 1 unlocked an achievement: Killing Spree!");
+    expect(messages).toContain("🏅 1 unlocked an achievement: Rampage!");
+    expect(messages).toContain("🏅 1 unlocked an achievement: Survivor!");
+    expect(messages).toContain("⬆️ 1 leveled up to level 2!");
+    expect(messages).toContain("⬆️ 1 leveled up to level 3!");
+    expect(messages.filter((m) => m.startsWith("✅"))).toHaveLength(3);
+  });
+
+  it("suppresses excess low/normal-priority Notifications once the per-minute cap is reached, without ever dropping a high-priority one", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // A 3 kill streak alone - normally a "low" priority Notification.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 3, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // map change closes the Match and opens a second one - both "high" priority.
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id); // opens the Match
+
+    const [settings] = await db.select().from(notificationSettings);
+    const cap = settings.maxLowNormalPerMinute;
+
+    const [matchStarted] = await db
+      .select({ id: gameEvents.id })
+      .from(gameEvents)
+      .where(and(eq(gameEvents.serverId, server.id), eq(gameEvents.type, "MatchStarted")));
+
+    // Pre-fill this Server's trailing-minute low/normal budget, as if `cap`
+    // other low/normal Notifications had already fired moments ago.
+    await db.insert(notifications).values(
+      Array.from({ length: cap }, () => ({
+        serverId: server.id,
+        priority: "low" as const,
+        message: "pre-filled",
+        eventId: matchStarted.id,
+        timestamp: new Date(Date.now() - 5_000),
+      })),
+    );
+
+    await pollAndPersistSnapshot(db, client, server.id); // the 3 kill streak
+
+    const afterStreak = await notificationsFor(server.id);
+    // 1 (the opening poll's "high" priority MatchStarted) + the pre-filled
+    // cap - the new KillStreak3 draft found no budget left and was dropped,
+    // not cap + 2.
+    expect(afterStreak).toHaveLength(cap + 1);
+    expect(afterStreak.some((r) => r.message.includes("3 kill streak"))).toBe(false);
+
+    await pollAndPersistSnapshot(db, client, server.id); // closes + reopens the Match
+
+    const afterMatchBoundary = await notificationsFor(server.id);
+    // MatchEnded, the new MatchStarted, and an AchievementUnlocked
+    // ("Survivor" - Alice closed the Match without dying) are all "high"
+    // priority and are never subject to the cap, even though the
+    // low/normal budget is still fully consumed.
+    const previousIds = new Set(afterStreak.map((r) => r.id));
+    const newRows = afterMatchBoundary.filter((r) => !previousIds.has(r.id));
+    expect(newRows.every((r) => r.priority === "high")).toBe(true);
+    const newMessages = newRows.map((r) => r.message);
+    expect(newMessages).toContain("🏆 Match ended - Lonestar wins!");
+    expect(newMessages).toContain("🏁 Match started on Deadcity!");
   });
 });

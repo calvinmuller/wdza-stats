@@ -13,6 +13,7 @@ import {
 import type { AchievementTrigger } from "./achievement";
 import type { ChallengeScope, ChallengeType } from "./challenge";
 import type { GameEventType } from "./game-event";
+import type { NotificationKind, NotificationPriority } from "./notification";
 import type { Snapshot } from "./snapshot";
 import type { SteamAchievementUnlock, SteamProfileStatus } from "./steam-profile";
 import type { XpReason } from "./xp";
@@ -387,3 +388,59 @@ export const challengeCompletions = pgTable(
   },
   (table) => [primaryKey({ columns: [table.instanceId, table.steamId] })],
 );
+
+// The NOTIFICATION_RULES config table: which priority tier and message
+// template each NotificationKind (notification.ts) renders under, seeded
+// with this table's own migration's defaults - see CONTEXT.md's Notification
+// entry and ticket 10. Read fresh by the Notification Engine
+// (apps/worker/src/notification-engine.ts) rather than hardcoded, matching
+// xpRewards/achievementDefinitions/challengeDefinitions' own config-table
+// precedent. `template` uses `{{placeholder}}` substitution - see
+// notification-engine.ts's renderTemplate.
+export const notificationRules = pgTable("notification_rules", {
+  kind: text("kind").primaryKey().$type<NotificationKind>(),
+  priority: text("priority").notNull().$type<NotificationPriority>(),
+  template: text("template").notNull(),
+});
+
+// The NOTIFICATION_SETTINGS config table: a singleton row (id always 1)
+// holding the configured max-per-minute cap on low/normal-priority
+// Notifications - see ticket 10 and notification-engine.ts's
+// applyNotificationThrottle. High-priority Notifications are never subject to
+// this cap.
+export const notificationSettings = pgTable("notification_settings", {
+  id: integer("id").primaryKey(),
+  maxLowNormalPerMinute: integer("max_low_normal_per_minute").notNull(),
+});
+
+// Notification: a throttled, recorded representation of a noteworthy
+// GameEvent or milestone - see CONTEXT.md and notification.ts. `eventId` is a
+// real foreign key into gameEvents (mirroring xpTransactions.eventId): for a
+// Notification produced by a GameEvent this is that event's own id, and for
+// a ChallengeCompleted Notification (which has no GameEventType of its own -
+// see notification.ts) it's the triggering GameEvent that completed the
+// Challenge, matching xp_transactions' own "challenge_completed" attribution.
+// serverId is duplicated from that same GameEvent (also mirroring
+// xpTransactions) so the dashboard's recent-events feed can query this table
+// directly without a join. `timestamp` is the originating poll's capturedAt
+// (context.timestamp, not DB insertion time), so throttling and the feed's
+// ordering stay driven by the same clock as every other GameEvent - see
+// notification-engine.ts. No uniqueness constraint is needed here: every
+// input this table's caller reacts to (a genuinely newly-inserted GameEvent,
+// or a genuinely new ChallengeCompletion row) is already deduplicated
+// upstream by its own idempotency mechanism, so reprocessing the same poll
+// never reaches this insert with the same event twice - mirroring how
+// AchievementUnlocked/PlayerLevelUp events themselves rely on
+// insertGameEventDrafts' own dedupe rather than a second guard.
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  serverId: integer("server_id")
+    .notNull()
+    .references(() => servers.id),
+  priority: text("priority").notNull().$type<NotificationPriority>(),
+  message: text("message").notNull(),
+  eventId: integer("event_id")
+    .notNull()
+    .references(() => gameEvents.id),
+  timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+});

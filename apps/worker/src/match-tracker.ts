@@ -10,6 +10,9 @@ import {
   matchSnapshots,
   matches,
   mvpFormulaWeights,
+  notificationRules,
+  notificationSettings,
+  notifications,
   playerAchievements,
   playerCareerStats,
   playerChallengeProgress,
@@ -19,11 +22,12 @@ import {
   type ChallengeType,
   type Database,
   type GameEventType,
+  type NotificationKind,
   type Snapshot,
   type SnapshotPlayer,
   type XpReason,
 } from "@wdza-stats/db";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
 import {
   achievementUnlockedEvents,
   computeAchievementUnlockDrafts,
@@ -53,6 +57,14 @@ import {
 } from "./game-events";
 import { levelUpEvents } from "./level-engine";
 import { computeMvp, type MvpFormulaWeights } from "./mvp-engine";
+import {
+  applyNotificationThrottle,
+  computeNotificationDrafts,
+  type ChallengeCompletionNotificationInfo,
+  type NotificationContext,
+  type NotificationDraft,
+  type NotificationRuleConfig,
+} from "./notification-engine";
 import {
   computeXpTransactionDrafts,
   type MatchCompletionInfo,
@@ -889,6 +901,132 @@ async function applyLevelUps(
 }
 
 /**
+ * Gathers the extra state computeNotificationDrafts needs beyond the
+ * recorded events/Challenge completions themselves: the current
+ * NOTIFICATION_RULES config, the display name of every Achievement this
+ * batch's AchievementUnlocked events actually unlocked, and - when this poll
+ * opened and/or closed a Match - that Match's map/winning Faction, for the
+ * MatchStarted/MatchEnded templates. Queried fresh every call rather than
+ * cached, matching buildXpTransactionContext's own precedent.
+ */
+async function buildNotificationContext(
+  tx: Tx,
+  serverId: number,
+  timestamp: Date,
+  recordedEvents: RecordedGameEvent[],
+  openedMatch: { map: string } | undefined,
+  closedMatch: { winner: string | null } | undefined,
+): Promise<NotificationContext> {
+  const ruleRows = await tx.select().from(notificationRules);
+  const rules = new Map<NotificationKind, NotificationRuleConfig>(
+    ruleRows.map((row) => [row.kind, { priority: row.priority, template: row.template }]),
+  );
+
+  const achievementIds = [
+    ...new Set(
+      recordedEvents
+        .filter((event) => event.type === "AchievementUnlocked")
+        .map((event) => event.metadata?.achievementId)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  ];
+  const achievementNameById = new Map<string, string>();
+  if (achievementIds.length > 0) {
+    const rows = await tx
+      .select({ id: achievementDefinitions.id, name: achievementDefinitions.name })
+      .from(achievementDefinitions)
+      .where(inArray(achievementDefinitions.id, achievementIds));
+    for (const row of rows) {
+      achievementNameById.set(row.id, row.name);
+    }
+  }
+
+  return {
+    serverId,
+    timestamp,
+    rules,
+    achievementNameById,
+    openedMatchMap: openedMatch?.map,
+    closedMatchWinner: closedMatch?.winner,
+  };
+}
+
+/**
+ * Looks up each completed daily Challenge's own type (challenge-engine.ts's
+ * ChallengeType), for the ChallengeCompleted Notification template - see
+ * notification-engine.ts's ChallengeCompletionNotificationInfo. A Challenge
+ * completion carries no GameEventType of its own (see notification.ts), so
+ * this is gathered independently of buildNotificationContext's recordedEvents
+ * diff.
+ */
+async function buildChallengeCompletionNotificationInfo(
+  tx: Tx,
+  completions: ChallengeCompletionResult[],
+): Promise<ChallengeCompletionNotificationInfo[]> {
+  if (completions.length === 0) {
+    return [];
+  }
+
+  const instanceIds = [...new Set(completions.map((completion) => completion.instanceId))];
+  const rows = await tx
+    .select({ instanceId: challengeInstances.id, type: challengeDefinitions.type })
+    .from(challengeInstances)
+    .innerJoin(challengeDefinitions, eq(challengeInstances.definitionId, challengeDefinitions.id))
+    .where(inArray(challengeInstances.id, instanceIds));
+  const typeByInstanceId = new Map(rows.map((row) => [row.instanceId, row.type]));
+
+  return completions.map((completion) => ({
+    steamId: completion.steamId,
+    eventId: completion.eventId,
+    challengeType: typeByInstanceId.get(completion.instanceId) ?? "unknown",
+  }));
+}
+
+/**
+ * The current NOTIFICATION_SETTINGS cap plus this Server's low/normal
+ * Notification count already recorded within the trailing 60s window ending
+ * at `timestamp` - everything applyNotificationThrottle needs beyond the
+ * batch's own drafts. The window is driven by `timestamp` (the originating
+ * poll's capturedAt), not wall-clock time, matching every Notification's own
+ * `timestamp` column - see schema.ts's notifications doc comment.
+ */
+async function fetchNotificationThrottleState(
+  tx: Tx,
+  serverId: number,
+  timestamp: Date,
+): Promise<{ maxPerMinute: number; recentLowNormalCount: number }> {
+  const [settings] = await tx.select().from(notificationSettings).where(eq(notificationSettings.id, 1));
+  const maxPerMinute = settings?.maxLowNormalPerMinute ?? 0;
+
+  const windowStart = new Date(timestamp.getTime() - 60_000);
+  const [row] = await tx
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.serverId, serverId),
+        inArray(notifications.priority, ["low", "normal"]),
+        gt(notifications.timestamp, windowStart),
+        lte(notifications.timestamp, timestamp),
+      ),
+    );
+
+  return { maxPerMinute, recentLowNormalCount: Number(row?.count ?? 0) };
+}
+
+/**
+ * Persists a batch of NotificationDrafts (already throttled by the caller
+ * via applyNotificationThrottle) to the notifications table - see schema.ts's
+ * notifications doc comment for why no dedupe guard is needed here.
+ */
+async function applyNotificationDrafts(tx: Tx, drafts: NotificationDraft[]): Promise<void> {
+  if (drafts.length === 0) {
+    return;
+  }
+  await tx.insert(notifications).values(drafts);
+}
+
+/**
  * Ingests one freshly-polled Snapshot for a Server: detects whether it
  * starts a new Match (comparing it to the Server's last-persisted
  * Snapshot), closing and rolling up the previous Match if so, then
@@ -953,6 +1091,17 @@ async function applyLevelUps(
  * same xp_transactions ledger as every other XP reason (see
  * applyXpTransactionDrafts), reason "challenge_completed".
  *
+ * Finally, this same batch of recordedEvents (achievement unlocks and level
+ * ups included) plus this poll's Challenge completions are diffed against
+ * the NOTIFICATION_RULES config (see buildNotificationContext/
+ * notification-engine.ts's computeNotificationDrafts) into Notification
+ * drafts - MatchStarted/MatchEnded/AchievementUnlocked/a 10+ kill streak/a
+ * Challenge completion always produce one; routine events (an individual
+ * kill, a small XP gain) never do, structurally rather than via throttling
+ * (ticket 10). The configured NOTIFICATION_SETTINGS max-per-minute cap (see
+ * fetchNotificationThrottleState/applyNotificationThrottle) then suppresses
+ * excess low/normal-priority drafts - high-priority ones are never dropped.
+ *
  * Logs a line for each Match opened and/or closed, and each GameEvent
  * actually inserted - the things a poll can meaningfully change from an
  * operator's point of view, versus the ~15s poll cadence itself which is too
@@ -970,6 +1119,8 @@ export async function ingestSnapshot(
   let openedMatch: { id: number; map: string } | undefined;
   let recordedEvents: RecordedGameEvent[] = [];
   let recordedXpTransactions: XpTransactionDraft[] = [];
+  let challengeCompletionResults: ChallengeCompletionResult[] = [];
+  let recordedNotifications: NotificationDraft[] = [];
 
   await db.transaction(async (tx) => {
     const [previousRow] = await tx
@@ -1139,7 +1290,7 @@ export async function ingestSnapshot(
         xpTransactionContext.matchCompletions,
       );
       const challengeProgressUpdates = computeChallengeProgressUpdates(recordedEvents, challengeProgressContext);
-      const challengeCompletionResults = await applyChallengeProgressUpdates(tx, challengeProgressUpdates);
+      challengeCompletionResults = await applyChallengeProgressUpdates(tx, challengeProgressUpdates);
 
       if (challengeCompletionResults.length > 0) {
         const challengeXpDrafts: XpTransactionDraft[] = challengeCompletionResults.map((completion) => ({
@@ -1165,6 +1316,25 @@ export async function ingestSnapshot(
 
       const recordedLevelUps = await insertGameEventDrafts(tx, levelUpDrafts);
       recordedEvents = recordedEvents.concat(recordedLevelUps);
+    }
+
+    if (recordedEvents.length > 0 || challengeCompletionResults.length > 0) {
+      const challengeCompletionInfos = await buildChallengeCompletionNotificationInfo(tx, challengeCompletionResults);
+      const notificationContext = await buildNotificationContext(
+        tx,
+        serverId,
+        capturedAt,
+        recordedEvents,
+        openedMatch,
+        closedMatch,
+      );
+      const notificationDrafts = computeNotificationDrafts(recordedEvents, challengeCompletionInfos, notificationContext);
+
+      if (notificationDrafts.length > 0) {
+        const { maxPerMinute, recentLowNormalCount } = await fetchNotificationThrottleState(tx, serverId, capturedAt);
+        recordedNotifications = applyNotificationThrottle(notificationDrafts, recentLowNormalCount, maxPerMinute);
+        await applyNotificationDrafts(tx, recordedNotifications);
+      }
     }
 
     await tx
@@ -1193,6 +1363,11 @@ export async function ingestSnapshot(
   for (const transaction of recordedXpTransactions) {
     console.log(
       `[worker] xp transaction: reason=${transaction.reason}, amount=${transaction.amount}, serverId=${serverId}, steamId=${transaction.steamId}, eventId=${transaction.eventId}`,
+    );
+  }
+  for (const notification of recordedNotifications) {
+    console.log(
+      `[worker] notification: priority=${notification.priority}, serverId=${serverId}, eventId=${notification.eventId}, message=${notification.message}`,
     );
   }
 }

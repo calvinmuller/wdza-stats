@@ -6,6 +6,7 @@ import {
   latestSnapshots,
   matchSnapshots,
   matches,
+  notifications,
   playerAchievements,
   playerCareerStats,
   playerChallengeProgress,
@@ -47,6 +48,7 @@ afterEach(async () => {
   await db.delete(playerChallengeProgress);
   await db.delete(playerAchievements);
   await db.delete(xpTransactions);
+  await db.delete(notifications);
   await db.delete(gameEvents);
   await db.delete(challengeInstances);
   await db.delete(playerMatchStats);

@@ -14,7 +14,7 @@ import type { LiveSnapshotPlayer, LiveSnapshotView } from "@/lib/live-snapshot";
 import type { RecentNotificationView } from "@/lib/recent-notifications";
 
 const NOTIFICATION_PRIORITY_CLASSNAME: Record<RecentNotificationView["priority"], string> = {
-  high: "text-amber-400",
+  high: "text-brand-gold-400",
   normal: "text-zinc-200",
   low: "text-zinc-400",
 };
@@ -161,7 +161,7 @@ export function LiveServerView({
                 <path d="M10 18.5a2 2 0 0 0 4 0" />
               </svg>
               {recentNotifications.length > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-medium leading-none text-zinc-900">
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-medium leading-none text-neutral-900">
                   {recentNotifications.length}
                 </span>
               )}

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  index,
   integer,
   jsonb,
   pgTable,
@@ -112,7 +113,18 @@ export const playerCareerStats = pgTable(
     currentKillStreak: integer("current_kill_streak").notNull().default(0),
     mvpCount: integer("mvp_count").notNull().default(0),
   },
-  (table) => [primaryKey({ columns: [table.serverId, table.steamId] })],
+  (table) => [
+    primaryKey({ columns: [table.serverId, table.steamId] }),
+    // One index per gamification rankings sort column (ticket 11) so
+    // paginated ORDER BY ... LIMIT queries don't degrade as rows grow.
+    index("player_career_stats_server_xp_idx").on(table.serverId, table.xp),
+    index("player_career_stats_server_kills_idx").on(table.serverId, table.kills),
+    index("player_career_stats_server_wins_idx").on(table.serverId, table.matchesWon),
+    index("player_career_stats_server_streak_idx").on(
+      table.serverId,
+      table.highestKillStreak,
+    ),
+  ],
 );
 
 // A player's Steam Web API identity/achievement data, keyed by steamId

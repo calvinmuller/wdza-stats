@@ -99,6 +99,13 @@
       "when": 1789465255769,
       "tag": "0013_fluffy_fantastic_four",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789467473555,
+      "tag": "0014_skinny_turbo",
+      "breakpoints": true
     }
   ]
 }

@@ -1,12 +1,15 @@
 import {
+  achievementDefinitions,
   challengeCompletions,
   challengeDefinitions,
   challengeInstances,
   createDb,
   gameEvents,
   latestSnapshots,
+  levelThresholds,
   matchSnapshots,
   matches,
+  notificationRules,
   notifications,
   notificationSettings,
   playerAchievements,
@@ -14,13 +17,14 @@ import {
   playerChallengeProgress,
   playerMatchStats,
   servers,
+  xpRewards,
   xpTransactions,
   type ChallengeType,
   type Database,
   type Snapshot,
   type SnapshotPlayer,
 } from "@wdza-stats/db";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyAchievementUnlockDrafts,
@@ -1762,5 +1766,343 @@ describe("Notification engine (integration)", () => {
     const newMessages = newRows.map((r) => r.message);
     expect(newMessages).toContain("🏆 Match ended - Lonestar wins!");
     expect(newMessages).toContain("🏁 Match started on Deadcity!");
+  });
+});
+
+// Ticket 15 (Admin config area): every engine above already reads its config
+// table fresh on each ingestSnapshot call rather than caching it (see e.g.
+// this file's own "select from xpRewards"/"select from levelThresholds"
+// etc.), so editing a row - however that edit is made, including through the
+// Admin area's Server Actions in apps/web - takes effect on the very next
+// poll with no redeploy. This suite proves that end to end for each config
+// category the Admin area exposes, by editing one row directly (mirroring
+// what apps/web/src/lib/admin-config.ts's update functions do) and asserting
+// the change lands in the relevant engine's output. Every test restores the
+// row it changed (even on failure) so later tests/files keep seeing the
+// migration-seeded defaults the rest of this file assumes.
+describe("Admin-configurable settings take effect without a redeploy (ticket 15 integration)", () => {
+  const db: Database = createDb(process.env.DATABASE_URL!);
+
+  async function seedServer() {
+    const [server] = await db
+      .insert(servers)
+      .values({
+        name: "Test Server",
+        baseUrl: `http://rcon-admin-config-${crypto.randomUUID()}.test:9006`,
+      })
+      .returning();
+    return server;
+  }
+
+  // Definitions inserted by the "Challenge definitions" test below, deleted
+  // only after challengeInstances is cleared (its definitionId FK would
+  // otherwise reject deleting a still-referenced definition).
+  const insertedChallengeDefinitionIds: number[] = [];
+
+  afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
+    await db.delete(playerAchievements);
+    await db.delete(xpTransactions);
+    await db.delete(notifications);
+    await db.delete(gameEvents);
+    await db.delete(challengeInstances);
+    if (insertedChallengeDefinitionIds.length > 0) {
+      await db.delete(challengeDefinitions).where(inArray(challengeDefinitions.id, insertedChallengeDefinitionIds));
+      insertedChallengeDefinitionIds.length = 0;
+    }
+    await db.delete(playerMatchStats);
+    await db.delete(playerCareerStats);
+    await db.delete(matchSnapshots);
+    await db.delete(matches);
+    await db.delete(latestSnapshots);
+    await db.delete(servers);
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("XP rewards: a freshly configured kill amount is used for the very next kill", async () => {
+    const server = await seedServer();
+    const [original] = await db.select().from(xpRewards).where(eq(xpRewards.reason, "kill"));
+
+    try {
+      await db.update(xpRewards).set({ amount: 777 }).where(eq(xpRewards.reason, "kill"));
+
+      const client = scriptedRconClient([
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+      ]);
+
+      await pollAndPersistSnapshot(db, client, server.id);
+      await pollAndPersistSnapshot(db, client, server.id);
+
+      const [killAward] = await db
+        .select()
+        .from(xpTransactions)
+        .where(and(eq(xpTransactions.steamId, "1"), eq(xpTransactions.reason, "kill")));
+      expect(killAward.amount).toBe(777);
+    } finally {
+      await db.update(xpRewards).set({ amount: original.amount }).where(eq(xpRewards.reason, "kill"));
+    }
+  });
+
+  it("Level curve: a freshly configured threshold changes when a level-up fires", async () => {
+    const server = await seedServer();
+    const [original] = await db.select().from(levelThresholds).where(eq(levelThresholds.level, 2));
+
+    try {
+      // The seeded "kill" reward is 100 XP - well short of level 2's default
+      // 1,000 XP threshold. Lowering it below 100 means this single kill
+      // must now cross into level 2.
+      await db.update(levelThresholds).set({ xpRequired: 50 }).where(eq(levelThresholds.level, 2));
+
+      const client = scriptedRconClient([
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+      ]);
+
+      await pollAndPersistSnapshot(db, client, server.id);
+      await pollAndPersistSnapshot(db, client, server.id);
+
+      const [career] = await db
+        .select()
+        .from(playerCareerStats)
+        .where(and(eq(playerCareerStats.serverId, server.id), eq(playerCareerStats.steamId, "1")));
+      expect(career.level).toBe(2);
+
+      const levelUps = await db
+        .select()
+        .from(gameEvents)
+        .where(and(eq(gameEvents.serverId, server.id), eq(gameEvents.type, "PlayerLevelUp")));
+      expect(levelUps).toHaveLength(1);
+    } finally {
+      await db.update(levelThresholds).set({ xpRequired: original.xpRequired }).where(eq(levelThresholds.level, 2));
+    }
+  });
+
+  it("Challenge definitions: a freshly configured target and xpReward change when a daily Challenge completes", async () => {
+    const server = await seedServer();
+    // Inserted fresh rather than mutating a seeded row: challengeDefinitions
+    // has no unique constraint on `type`, and several other suites reset it
+    // wholesale between tests, so a seeded row can't be relied on to still
+    // exist here - this generates its own independent ChallengeInstance
+    // alongside whatever the seeded definitions produce.
+    const [definition] = await db
+      .insert(challengeDefinitions)
+      .values({ type: "kills", scope: "daily", target: 2, xpReward: 999 })
+      .returning();
+
+    try {
+      const client = scriptedRconClient([
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+        {
+          // Only 2 kills - matches this freshly configured target, far short
+          // of the seeded "kills" definition's own default target of 15.
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 2, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+      ]);
+
+      await pollAndPersistSnapshot(db, client, server.id);
+      await pollAndPersistSnapshot(db, client, server.id);
+
+      const [instance] = await db
+        .select({ id: challengeInstances.id })
+        .from(challengeInstances)
+        .where(and(eq(challengeInstances.serverId, server.id), eq(challengeInstances.definitionId, definition.id)));
+
+      const completions = await db
+        .select()
+        .from(challengeCompletions)
+        .where(eq(challengeCompletions.instanceId, instance.id));
+      expect(completions).toHaveLength(1);
+
+      const [award] = await db
+        .select()
+        .from(xpTransactions)
+        .where(and(eq(xpTransactions.reason, "challenge_completed"), eq(xpTransactions.challengeInstanceId, instance.id)));
+      expect(award.amount).toBe(999);
+    } finally {
+      // Deleted in this describe block's own afterEach (not here): the FK
+      // from challengeInstances.definitionId means this row can only be
+      // deleted after afterEach's own challengeInstances cleanup runs.
+      insertedChallengeDefinitionIds.push(definition.id);
+    }
+  });
+
+  it("Achievement definitions: a freshly configured threshold changes when the achievement unlocks", async () => {
+    const server = await seedServer();
+    const [original] = await db
+      .select()
+      .from(achievementDefinitions)
+      .where(eq(achievementDefinitions.id, "first_blood"));
+
+    try {
+      // The seeded default threshold (1) unlocks on the very first kill;
+      // raising it to 2 means that first kill must no longer unlock it.
+      await db.update(achievementDefinitions).set({ threshold: 2 }).where(eq(achievementDefinitions.id, "first_blood"));
+
+      const client = scriptedRconClient([
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 2, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+      ]);
+
+      await pollAndPersistSnapshot(db, client, server.id);
+      await pollAndPersistSnapshot(db, client, server.id);
+
+      const unlocksAfterFirstKill = await db
+        .select()
+        .from(playerAchievements)
+        .where(
+          and(
+            eq(playerAchievements.serverId, server.id),
+            eq(playerAchievements.steamId, "1"),
+            eq(playerAchievements.achievementId, "first_blood"),
+          ),
+        );
+      expect(unlocksAfterFirstKill).toHaveLength(0);
+
+      await pollAndPersistSnapshot(db, client, server.id);
+
+      const unlocksAfterSecondKill = await db
+        .select()
+        .from(playerAchievements)
+        .where(
+          and(
+            eq(playerAchievements.serverId, server.id),
+            eq(playerAchievements.steamId, "1"),
+            eq(playerAchievements.achievementId, "first_blood"),
+          ),
+        );
+      expect(unlocksAfterSecondKill).toHaveLength(1);
+    } finally {
+      await db
+        .update(achievementDefinitions)
+        .set({ threshold: original.threshold })
+        .where(eq(achievementDefinitions.id, "first_blood"));
+    }
+  });
+
+  it("Notification rules: a freshly configured template renders in the recorded message", async () => {
+    const server = await seedServer();
+    const [original] = await db.select().from(notificationRules).where(eq(notificationRules.kind, "KillStreak3"));
+
+    try {
+      await db
+        .update(notificationRules)
+        .set({ template: "{{steamId}} is warming up!" })
+        .where(eq(notificationRules.kind, "KillStreak3"));
+
+      const client = scriptedRconClient([
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 3, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+      ]);
+
+      await pollAndPersistSnapshot(db, client, server.id);
+      await pollAndPersistSnapshot(db, client, server.id);
+
+      const rows = await db.select().from(notifications).where(eq(notifications.serverId, server.id));
+      expect(rows.map((row) => row.message)).toContain("1 is warming up!");
+    } finally {
+      await db
+        .update(notificationRules)
+        .set({ template: original.template })
+        .where(eq(notificationRules.kind, "KillStreak3"));
+    }
+  });
+
+  it("Notification settings: a freshly configured per-minute cap drops low-priority Notifications once exceeded", async () => {
+    const server = await seedServer();
+    const [original] = await db.select().from(notificationSettings).where(eq(notificationSettings.id, 1));
+
+    try {
+      // A cap of 0 means even the very first low-priority Notification this
+      // Server would otherwise record must be dropped.
+      await db.update(notificationSettings).set({ maxLowNormalPerMinute: 0 }).where(eq(notificationSettings.id, 1));
+
+      const client = scriptedRconClient([
+        {
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+        {
+          // A 3 kill streak alone - "low" priority per the seeded default.
+          status: statusFixture(),
+          players: playersFixture([
+            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 3, deaths: 0, cash: 0, pingMs: 40 },
+          ]),
+        },
+      ]);
+
+      await pollAndPersistSnapshot(db, client, server.id); // MatchStarted - "high", never capped
+
+      await pollAndPersistSnapshot(db, client, server.id); // the 3 kill streak
+
+      const rows = await db.select().from(notifications).where(eq(notifications.serverId, server.id));
+      expect(rows.some((row) => row.message.includes("3 kill streak"))).toBe(false);
+      expect(rows.every((row) => row.priority === "high")).toBe(true);
+    } finally {
+      await db
+        .update(notificationSettings)
+        .set({ maxLowNormalPerMinute: original.maxLowNormalPerMinute })
+        .where(eq(notificationSettings.id, 1));
+    }
   });
 });

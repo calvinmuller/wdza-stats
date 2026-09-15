@@ -9,6 +9,7 @@ import {
   servers,
   type Database,
 } from "@wdza-stats/db";
+import { inArray } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { snapshotFixture } from "@/lib/live-snapshot-fixture";
@@ -18,12 +19,21 @@ const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = process.env.RCON_BASE_URL!;
 
+// challengeDefinitions is shared, migration-seeded config (see schema.ts) -
+// other suites rely on those default rows staying in place, so this file's
+// own throwaway definition is tracked here and deleted by id rather than
+// blanket-deleting the whole table.
+const insertedDefinitionIds: number[] = [];
+
 afterEach(async () => {
   await db.delete(notifications);
   await db.delete(gameEvents);
   await db.delete(matches);
   await db.delete(challengeInstances);
-  await db.delete(challengeDefinitions);
+  if (insertedDefinitionIds.length > 0) {
+    await db.delete(challengeDefinitions).where(inArray(challengeDefinitions.id, insertedDefinitionIds));
+    insertedDefinitionIds.length = 0;
+  }
   await db.delete(latestSnapshots);
   await db.delete(servers);
 });
@@ -127,6 +137,7 @@ describe("HomePage", () => {
       .insert(challengeDefinitions)
       .values({ type: "kills", scope: "daily", target: 20, xpReward: 150 })
       .returning();
+    insertedDefinitionIds.push(definition.id);
     await db
       .insert(challengeInstances)
       .values({ definitionId: definition.id, serverId: server.id, periodKey: "2026-03-05" });

@@ -3,20 +3,44 @@ import {
   challengeDefinitions,
   challengeInstances,
   createDb,
+  type ChallengeScope,
+  type ChallengeType,
+  type Database,
   playerChallengeProgress,
   servers,
-  type Database,
 } from "@wdza-stats/db";
+import { inArray } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { describeChallenge, getActiveChallenges } from "./active-challenges";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
+// challengeDefinitions is shared, migration-seeded config (see schema.ts) -
+// other suites (e.g. apps/worker's match-tracker.test.ts) rely on those
+// default rows staying in place, so this file's own throwaway definitions
+// are tracked here and deleted by id rather than blanket-deleting the whole
+// table.
+const insertedDefinitionIds: number[] = [];
+
+async function insertChallengeDefinition(values: {
+  type: ChallengeType;
+  scope: ChallengeScope;
+  target: number;
+  xpReward: number;
+}) {
+  const [row] = await db.insert(challengeDefinitions).values(values).returning();
+  insertedDefinitionIds.push(row.id);
+  return row;
+}
+
 afterEach(async () => {
   await db.delete(challengeCompletions);
   await db.delete(playerChallengeProgress);
   await db.delete(challengeInstances);
-  await db.delete(challengeDefinitions);
+  if (insertedDefinitionIds.length > 0) {
+    await db.delete(challengeDefinitions).where(inArray(challengeDefinitions.id, insertedDefinitionIds));
+    insertedDefinitionIds.length = 0;
+  }
   await db.delete(servers);
 });
 
@@ -57,14 +81,8 @@ describe("getActiveChallenges", () => {
       .values({ name: "Other Server", baseUrl: "http://other.test:9006" })
       .returning();
 
-    const [killsDefinition] = await db
-      .insert(challengeDefinitions)
-      .values({ type: "kills", scope: "daily", target: 20, xpReward: 150 })
-      .returning();
-    const [winsDefinition] = await db
-      .insert(challengeDefinitions)
-      .values({ type: "wins", scope: "daily", target: 3, xpReward: 300 })
-      .returning();
+    const killsDefinition = await insertChallengeDefinition({ type: "kills", scope: "daily", target: 20, xpReward: 150 });
+    const winsDefinition = await insertChallengeDefinition({ type: "wins", scope: "daily", target: 3, xpReward: 300 });
 
     const [killsInstance] = await db
       .insert(challengeInstances)
@@ -104,10 +122,7 @@ describe("getActiveChallenges", () => {
       .insert(servers)
       .values({ name: "WDZA Test", baseUrl: "http://rcon.test:9006" })
       .returning();
-    const [definition] = await db
-      .insert(challengeDefinitions)
-      .values({ type: "kill_streak", scope: "daily", target: 10, xpReward: 500 })
-      .returning();
+    const definition = await insertChallengeDefinition({ type: "kill_streak", scope: "daily", target: 10, xpReward: 500 });
     const [instance] = await db
       .insert(challengeInstances)
       .values({ definitionId: definition.id, serverId: server.id, periodKey: "2026-03-05" })

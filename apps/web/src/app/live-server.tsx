@@ -4,7 +4,7 @@
 // which pulls in the `postgres` driver (Node-only, uses `fs`/`tls`/etc.) -
 // that can't go in this Client Component's browser bundle.
 import { getRotationPreview, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { LightingBadge } from "@/components/lighting-badge";
 import { PlayerAvatar } from "@/components/player-avatar";
@@ -43,6 +43,8 @@ export function LiveServerView({
   initial: LiveSnapshotView | null;
 }) {
   const [data, setData] = useState(initial);
+  const [isActivityOpen, setIsActivityOpen] = useState(true);
+  const [showAllPlayers, setShowAllPlayers] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -59,9 +61,23 @@ export function LiveServerView({
     return () => clearInterval(interval);
   }, []);
 
-  const factionColorByName = useMemo(
-    () => new Map(data?.snapshot.factions.map((faction) => [faction.name, faction.color]) ?? []),
-    [data],
+  const TOP_PLAYERS_COUNT = 10;
+
+  if (!data) {
+    return (
+      <p className="text-zinc-400">
+        No live data yet - waiting for the Worker&apos;s first poll.
+      </p>
+    );
+  }
+
+  const { serverName, capturedAt, snapshot, activeChallenges, recentNotifications } = data;
+  const rotation = getRotationPreview(snapshot.rotation);
+  const playerCount = snapshot.players.length;
+  const maxPlayers = snapshot.playerSlots.max;
+
+  const factionColorByName = new Map(
+    snapshot.factions.map((faction) => [faction.name, faction.color]),
   );
 
   const playerColumns: SortableColumn<LiveSnapshotPlayer>[] = [
@@ -103,30 +119,54 @@ export function LiveServerView({
     },
   ];
 
-  if (!data) {
-    return (
-      <p className="text-zinc-400">
-        No live data yet - waiting for the Worker&apos;s first poll.
-      </p>
-    );
-  }
-
-  const { serverName, capturedAt, snapshot, activeChallenges, recentNotifications } = data;
-  const rotation = getRotationPreview(snapshot.rotation);
-  const playerCount = snapshot.players.length;
-  const maxPlayers = snapshot.playerSlots.max;
+  const sortedPlayers = [...snapshot.players].sort((a, b) => b.kills - a.kills);
+  const visiblePlayers = showAllPlayers
+    ? sortedPlayers
+    : sortedPlayers.slice(0, TOP_PLAYERS_COUNT);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col items-start gap-6 lg:flex-row">
+      <div className="flex min-w-0 flex-1 flex-col gap-8">
       <section className="rounded-xl border border-white/10 bg-zinc-900/60 p-6">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-3xl">{serverName}</h1>
-          <p className="whitespace-nowrap text-sm text-zinc-400">
-            <span className="font-display text-lg text-zinc-50">
-              {playerCount}/{maxPlayers}
-            </span>{" "}
-            players online
-          </p>
+          <div className="flex items-center gap-4">
+            <p className="whitespace-nowrap text-sm text-zinc-400">
+              <span className="font-display text-lg text-zinc-50">
+                {playerCount}/{maxPlayers}
+              </span>{" "}
+              players online
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsActivityOpen((open) => !open)}
+              title={isActivityOpen ? "Hide recent activity" : "Show recent activity"}
+              aria-label={isActivityOpen ? "Hide recent activity" : "Show recent activity"}
+              aria-pressed={isActivityOpen}
+              className={`relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-zinc-200 hover:bg-zinc-800 ${
+                isActivityOpen ? "bg-zinc-800" : "bg-zinc-800/60"
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.75}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="size-5"
+                aria-hidden="true"
+              >
+                <path d="M6 8a6 6 0 0 1 12 0c0 4 1.5 6 2 6.5H4c.5-.5 2-2.5 2-6.5Z" />
+                <path d="M10 18.5a2 2 0 0 0 4 0" />
+              </svg>
+              {recentNotifications.length > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-medium leading-none text-zinc-900">
+                  {recentNotifications.length}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
         <p className="mt-1 text-sm text-zinc-400">
           Map: <span className="text-zinc-200">{snapshot.map}</span>
@@ -180,11 +220,22 @@ export function LiveServerView({
         </h2>
         <SortableTable
           columns={playerColumns}
-          rows={snapshot.players}
+          rows={visiblePlayers}
           rowKey={(player) => player.steamId}
           defaultSort={{ column: "kills", direction: "desc" }}
           emptyMessage="No players online right now."
         />
+        {playerCount > TOP_PLAYERS_COUNT && (
+          <button
+            type="button"
+            onClick={() => setShowAllPlayers((open) => !open)}
+            className="mt-3 text-sm text-zinc-400 underline decoration-dotted hover:text-zinc-200"
+          >
+            {showAllPlayers
+              ? `Show top ${TOP_PLAYERS_COUNT}`
+              : `Show all ${playerCount} players`}
+          </button>
+        )}
       </section>
 
       <section>
@@ -212,34 +263,49 @@ export function LiveServerView({
           </ul>
         )}
       </section>
+      </div>
 
-      <section>
-        <h2 className="mb-3 text-xl">Recent activity</h2>
-        {recentNotifications.length === 0 ? (
-          <p className="text-sm text-zinc-400">Nothing noteworthy has happened yet.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {recentNotifications.map((notification) => (
-              <li
-                key={notification.id}
-                className="flex items-baseline justify-between gap-4 rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-2"
-              >
-                <span
-                  className={`text-sm ${NOTIFICATION_PRIORITY_CLASSNAME[notification.priority]}`}
-                >
-                  {notification.message}
-                </span>
-                <time
-                  dateTime={notification.timestamp}
-                  className="whitespace-nowrap text-xs text-zinc-500"
-                >
-                  {formatDateTime(notification.timestamp)}
-                </time>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {isActivityOpen && (
+        <aside className="w-full shrink-0 rounded-xl border border-white/10 bg-zinc-950 lg:sticky lg:top-6 lg:w-80">
+          <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3">
+            <h2 className="text-lg">Recent activity</h2>
+            <button
+              type="button"
+              onClick={() => setIsActivityOpen(false)}
+              aria-label="Close recent activity"
+              className="rounded-lg px-2 py-1 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            >
+              &times;
+            </button>
+          </div>
+          <div className="max-h-[70vh] overflow-y-auto p-4">
+            {recentNotifications.length === 0 ? (
+              <p className="text-sm text-zinc-400">Nothing noteworthy has happened yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {recentNotifications.map((notification) => (
+                  <li
+                    key={notification.id}
+                    className="flex flex-col gap-1 rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-2"
+                  >
+                    <span
+                      className={`text-sm ${NOTIFICATION_PRIORITY_CLASSNAME[notification.priority]}`}
+                    >
+                      {notification.message}
+                    </span>
+                    <time
+                      dateTime={notification.timestamp}
+                      className="whitespace-nowrap text-xs text-zinc-500"
+                    >
+                      {formatDateTime(notification.timestamp)}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

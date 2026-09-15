@@ -101,12 +101,14 @@ describe("getRecentNotifications", () => {
         priority: "normal",
         message: "Alice reached a 5-kill streak",
         timestamp: newer.timestamp.toISOString(),
+        steamId: null,
       },
       {
         id: older.id,
         priority: "high",
         message: "Match started on Sandstorm",
         timestamp: older.timestamp.toISOString(),
+        steamId: null,
       },
     ]);
   });
@@ -193,6 +195,7 @@ describe("getPlayerNotifications", () => {
         priority: "normal",
         message: "Alice leveled up",
         timestamp: levelUp.timestamp.toISOString(),
+        steamId: "1",
       },
     ]);
   });

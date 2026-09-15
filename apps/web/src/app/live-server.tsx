@@ -4,6 +4,7 @@
 // which pulls in the `postgres` driver (Node-only, uses `fs`/`tls`/etc.) -
 // that can't go in this Client Component's browser bundle.
 import { getRotationPreview, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { LightingBadge } from "@/components/lighting-badge";
@@ -87,10 +88,13 @@ export function LiveServerView({
       value: (player) => player.displayName,
       cellClassName: "font-medium text-zinc-100",
       render: (player) => (
-        <span className="flex items-center gap-2">
+        <Link
+          href={`/players/${player.steamId}`}
+          className="flex items-center gap-2 hover:underline"
+        >
           <PlayerAvatar avatarUrl={player.avatarUrl} size={24} />
           {player.displayName}
-        </span>
+        </Link>
       ),
     },
     {
@@ -288,11 +292,20 @@ export function LiveServerView({
                     key={notification.id}
                     className="flex flex-col gap-1 rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-2"
                   >
-                    <span
-                      className={`text-sm ${NOTIFICATION_PRIORITY_CLASSNAME[notification.priority]}`}
-                    >
-                      {notification.message}
-                    </span>
+                    {notification.steamId ? (
+                      <Link
+                        href={`/players/${notification.steamId}`}
+                        className={`text-sm hover:underline ${NOTIFICATION_PRIORITY_CLASSNAME[notification.priority]}`}
+                      >
+                        {notification.message}
+                      </Link>
+                    ) : (
+                      <span
+                        className={`text-sm ${NOTIFICATION_PRIORITY_CLASSNAME[notification.priority]}`}
+                      >
+                        {notification.message}
+                      </span>
+                    )}
                     <time
                       dateTime={notification.timestamp}
                       className="whitespace-nowrap text-xs text-zinc-500"

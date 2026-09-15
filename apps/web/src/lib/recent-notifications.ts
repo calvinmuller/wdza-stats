@@ -15,13 +15,19 @@ export interface RecentNotificationView {
   priority: NotificationPriority;
   message: string;
   timestamp: string;
+  // Null for match-scoped Notifications (MatchStarted/MatchEnded), whose
+  // triggering GameEvent carries no player. Lets the UI link the player's
+  // name in the feed back to their profile when one exists.
+  steamId: string | null;
 }
 
 /**
  * The Server's most recent Notification rows (ticket 10), most recent first -
  * the dashboard's recent-events feed. Reads the already-throttled/curated
  * `Notification` table rather than the raw GameEvent log, per ticket 14's
- * spec, so this never floods the page with every kill.
+ * spec, so this never floods the page with every kill. Left-joins through to
+ * the triggering GameEvent to surface its steamId, since Notification itself
+ * carries no player column (see schema.ts's notifications doc comment).
  */
 export async function getRecentNotifications(
   db: Database,
@@ -34,8 +40,10 @@ export async function getRecentNotifications(
       priority: notifications.priority,
       message: notifications.message,
       timestamp: notifications.timestamp,
+      steamId: gameEvents.steamId,
     })
     .from(notifications)
+    .leftJoin(gameEvents, eq(gameEvents.id, notifications.eventId))
     .where(eq(notifications.serverId, serverId))
     .orderBy(desc(notifications.timestamp), desc(notifications.id))
     .limit(limit);
@@ -65,6 +73,7 @@ export async function getPlayerNotifications(
       priority: notifications.priority,
       message: notifications.message,
       timestamp: notifications.timestamp,
+      steamId: gameEvents.steamId,
     })
     .from(notifications)
     .innerJoin(gameEvents, eq(gameEvents.id, notifications.eventId))

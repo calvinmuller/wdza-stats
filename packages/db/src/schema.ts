@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   integer,
   jsonb,
@@ -7,7 +8,10 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { AchievementTrigger } from "./achievement";
+import type { ChallengeScope, ChallengeType } from "./challenge";
 import type { GameEventType } from "./game-event";
 import type { Snapshot } from "./snapshot";
 import type { SteamAchievementUnlock, SteamProfileStatus } from "./steam-profile";
@@ -189,17 +193,33 @@ export const xpRewards = pgTable("xp_rewards", {
 
 // XpTransaction: an immutable ledger entry recording one award of XP to a
 // player for one GameEvent - see CONTEXT.md. The unique (event_id, reason,
-// steam_id) triple is what makes an award idempotent: reprocessing the same
-// GameEvent (e.g. after a retry) can never insert a second row for the same
-// reason to the same player, so playerCareerStats.xp - a cached sum of this
-// ledger, kept only for fast leaderboard reads - never double-counts.
-// steam_id is part of the key (not just event_id+reason) because a single
-// Match-scoped event - MatchEnded - fans out match_completed/match_win to
-// every participant under that one eventId, so eventId+reason alone would
-// collide across players. eventId is a real foreign key (unlike
-// gameEvents.sourceSnapshotId's pointer into the ephemeral matchSnapshots
-// table): a GameEvent row is permanent, so an XpTransaction can safely
-// outlive it by reference.
+// steam_id) index is what makes every non-Challenge award idempotent:
+// reprocessing the same GameEvent (e.g. after a retry) can never insert a
+// second row for the same reason to the same player, so
+// playerCareerStats.xp - a cached sum of this ledger, kept only for fast
+// leaderboard reads - never double-counts. steam_id is part of the key (not
+// just event_id+reason) because a single Match-scoped event - MatchEnded -
+// fans out match_completed/match_win to every participant under that one
+// eventId, so eventId+reason alone would collide across players. eventId is
+// a real foreign key (unlike gameEvents.sourceSnapshotId's pointer into the
+// ephemeral matchSnapshots table): a GameEvent row is permanent, so an
+// XpTransaction can safely outlive it by reference.
+//
+// "challenge_completed" (see xp.ts) is carved out into its own *partial*
+// unique index on (event_id, steam_id, challenge_instance_id), rather than
+// folded into the index above, for two reasons: challenge_instance_id is
+// null for every other reason, and Postgres never treats two nulls as equal
+// for uniqueness - so a shared index would silently let the same non-Challenge
+// GameEvent+reason+player combination be inserted twice (defeating the very
+// idempotency this index exists for), which is exactly what a bare extra
+// nullable column in one shared constraint would cause. Scoping the second
+// index to `reason = 'challenge_completed'` (where challenge_instance_id is
+// always populated - see applyChallengeProgressUpdates in match-tracker.ts)
+// is what lets a single qualifying GameEvent complete *two* different
+// ChallengeInstances for the same player at once (e.g. one PlayerKilled
+// event crossing both a "kills" and a "kills_in_match" target) and award XP
+// for both, while every other reason keeps the exact idempotency behavior it
+// had before Challenges existed.
 export const xpTransactions = pgTable(
   "xp_transactions",
   {
@@ -213,9 +233,17 @@ export const xpTransactions = pgTable(
     eventId: integer("event_id")
       .notNull()
       .references(() => gameEvents.id),
+    challengeInstanceId: integer("challenge_instance_id").references(() => challengeInstances.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [unique().on(table.eventId, table.reason, table.steamId)],
+  (table) => [
+    uniqueIndex("xp_transactions_event_reason_steam_idx")
+      .on(table.eventId, table.reason, table.steamId)
+      .where(sql`${table.reason} <> 'challenge_completed'`),
+    uniqueIndex("xp_transactions_challenge_completion_idx")
+      .on(table.eventId, table.steamId, table.challengeInstanceId)
+      .where(sql`${table.reason} = 'challenge_completed'`),
+  ],
 );
 
 // The level curve config table: the cumulative XP required to reach each
@@ -241,3 +269,121 @@ export const mvpFormulaWeights = pgTable("mvp_formula_weights", {
   component: text("component").primaryKey().$type<"kills" | "deaths">(),
   weight: integer("weight").notNull(),
 });
+
+// The 7 initial Achievements' data - name/description plus the
+// trigger/threshold pair apps/worker/src/achievement-engine.ts checks each
+// relevant GameEvent's observed counter against, seeded in this table's own
+// migration - see CONTEXT.md's Achievement entry and ticket 08. Config-driven
+// rather than one-off per-achievement conditionals scattered through event
+// handlers, matching xpRewards/levelThresholds/mvpFormulaWeights' own
+// config-table precedent.
+export const achievementDefinitions = pgTable("achievement_definitions", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  trigger: text("trigger").notNull().$type<AchievementTrigger>(),
+  threshold: integer("threshold").notNull(),
+});
+
+// PlayerAchievement: an Achievement a player has unlocked - see CONTEXT.md.
+// The (server_id, steam_id, achievement_id) primary key is what makes an
+// unlock idempotent: a player meeting the same qualifying condition again
+// later, or the same triggering GameEvent being reprocessed, can never insert
+// a second row, so AchievementUnlocked fires at most once per triple -
+// mirroring xpTransactions' own uniqueness role for XP awards.
+export const playerAchievements = pgTable(
+  "player_achievements",
+  {
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => servers.id),
+    steamId: text("steam_id").notNull(),
+    achievementId: text("achievement_id")
+      .notNull()
+      .references(() => achievementDefinitions.id),
+    unlockedAt: timestamp("unlocked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.serverId, table.steamId, table.achievementId] })],
+);
+
+// ChallengeDefinition: static configuration for one kind of Challenge - see
+// CONTEXT.md's Challenge entry and challenge.ts's ChallengeType doc comment
+// for what each `type` measures. `scope` supports "daily" today, with room
+// for "weekly"/"season"/"server" later without a schema change (ticket 09).
+// `xpReward` is this definition's own configured award, read directly by
+// apps/worker/src/challenge-engine.ts rather than through the xp_rewards
+// table - a Challenge's payout is part of its own definition, unlike the
+// fixed-per-GameEvent-type rewards in xp_rewards.
+export const challengeDefinitions = pgTable("challenge_definitions", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull().$type<ChallengeType>(),
+  scope: text("scope").notNull().$type<ChallengeScope>(),
+  target: integer("target").notNull(),
+  xpReward: integer("xp_reward").notNull(),
+});
+
+// ChallengeInstance: one active occurrence of a ChallengeDefinition for a
+// given Server and period - e.g. today's "get 15 kills" instance on Server 1.
+// `periodKey` is a deterministic string identifying the instance's period
+// (today's UTC date as YYYY-MM-DD for the "daily" scope - see
+// apps/worker/src/challenge-engine.ts's dailyPeriodKey) rather than a
+// startAt/endAt pair, so generation can be checked idempotently: the unique
+// (definition_id, server_id, period_key) triple is what makes generating
+// today's instances safe to run more than once (even concurrently from a
+// future second worker instance) - a duplicate generation attempt simply
+// finds nothing new to insert, mirroring gameEvents.idempotencyKey's role.
+export const challengeInstances = pgTable(
+  "challenge_instances",
+  {
+    id: serial("id").primaryKey(),
+    definitionId: integer("definition_id")
+      .notNull()
+      .references(() => challengeDefinitions.id),
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => servers.id),
+    periodKey: text("period_key").notNull(),
+  },
+  (table) => [unique().on(table.definitionId, table.serverId, table.periodKey)],
+);
+
+// PlayerChallengeProgress: one player's running progress toward one active
+// ChallengeInstance, tracked separately per player per instance so
+// concurrent Challenges never interfere with each other's counts (see
+// CONTEXT.md's Challenge entry). `progress` is always the instance's current
+// absolute measurement (not a delta) - for an "increment" type
+// (kills/wins/matches_played) that's a running total; for a "watermark" type
+// (kill_streak/kills_in_match/kills_without_dying) it's the highest value
+// reached so far, which never decreases even after the underlying live value
+// (e.g. a kill streak) resets - see challenge-engine.ts.
+export const playerChallengeProgress = pgTable(
+  "player_challenge_progress",
+  {
+    instanceId: integer("instance_id")
+      .notNull()
+      .references(() => challengeInstances.id),
+    steamId: text("steam_id").notNull(),
+    progress: integer("progress").notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.instanceId, table.steamId] })],
+);
+
+// ChallengeCompletion: records that a player reached one ChallengeInstance's
+// target - see CONTEXT.md's Challenge entry. The (instance_id, steam_id)
+// primary key is what makes completion idempotent: reaching (or re-crossing)
+// the target again later, or the same triggering GameEvent being
+// reprocessed, can never insert a second row, so the XP award it triggers
+// (an xp_transactions row with reason "challenge_completed") only ever fires
+// once per player per instance - mirroring playerAchievements' own
+// uniqueness role for Achievement unlocks.
+export const challengeCompletions = pgTable(
+  "challenge_completions",
+  {
+    instanceId: integer("instance_id")
+      .notNull()
+      .references(() => challengeInstances.id),
+    steamId: text("steam_id").notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.instanceId, table.steamId] })],
+);

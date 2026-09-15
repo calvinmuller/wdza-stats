@@ -15,6 +15,10 @@ export interface XpTransactionDraft {
   amount: number;
   reason: XpReason;
   eventId: number;
+  // Set only for reason "challenge_completed" - see schema.ts's
+  // xpTransactions doc comment for why it's part of that reason's own
+  // idempotency key rather than left implicit.
+  challengeInstanceId?: number;
 }
 
 export interface MatchCompletionInfo {

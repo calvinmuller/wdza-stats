@@ -1,4 +1,6 @@
 export * from "./schema";
+export * from "./achievement";
+export * from "./challenge";
 export * from "./client";
 export * from "./env";
 export * from "./game-event";

@@ -1,13 +1,19 @@
 import {
+  challengeCompletions,
+  challengeDefinitions,
+  challengeInstances,
   createDb,
   gameEvents,
   latestSnapshots,
   matchSnapshots,
   matches,
+  playerAchievements,
   playerCareerStats,
+  playerChallengeProgress,
   playerMatchStats,
   servers,
   xpTransactions,
+  type ChallengeType,
   type Database,
   type Snapshot,
   type SnapshotPlayer,
@@ -15,6 +21,7 @@ import {
 import { and, eq, isNotNull } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
+  applyAchievementUnlockDrafts,
   applyXpTransactionDrafts,
   closeMatch,
   computePlayerDeltas,
@@ -225,8 +232,12 @@ describe("Match-boundary detection and persistence (integration)", () => {
   }
 
   afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
+    await db.delete(playerAchievements);
     await db.delete(xpTransactions);
     await db.delete(gameEvents);
+    await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
@@ -698,8 +709,12 @@ describe("XP ledger and awards (integration)", () => {
   }
 
   afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
+    await db.delete(playerAchievements);
     await db.delete(xpTransactions);
     await db.delete(gameEvents);
+    await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
@@ -813,8 +828,11 @@ describe("XP ledger and awards (integration)", () => {
     const career = await careerStatsFor(server.id, "1");
     const ledgerTotal = transactions.reduce((sum, t) => sum + t.amount, 0);
     expect(career.xp).toBe(ledgerTotal);
-    // 10 kills (1000) + first_blood (100) + streak3/5/10 (150+250+500=900)
-    expect(career.xp).toBe(2000);
+    // 10 kills (1000) + first_blood (100) + streak3/5/10 (150+250+500=900) =
+    // 2000, plus the seeded daily Challenges this same streak also completes:
+    // kill_streak (target 5, +350), kills_without_dying (target 8, +400), and
+    // kills_in_match (target 10, +400) - see ticket 09.
+    expect(career.xp).toBe(3150);
   });
 
   it("awards match_completed to every participant and match_win only to the winning Faction, when a Match closes", async () => {
@@ -896,7 +914,9 @@ describe("XP ledger and awards (integration)", () => {
 // resulting PlayerLevelUp GameEvents and playerCareerStats.level - see
 // ticket 06. Relies on the migration-seeded xp_rewards/level_thresholds
 // defaults (kill +100, first_blood +100, streak3/5/10 +150/+250/+500; level
-// 2 at 1,000 XP, level 3 at 2,500, level 4 at 4,500).
+// 2 at 1,000 XP, level 3 at 2,500, level 4 at 4,500), plus (ticket 09) the
+// migration-seeded daily challenge_definitions defaults, which a sustained
+// kill streak also completes alongside the level-up scenarios below.
 describe("Levels and level-up events (integration)", () => {
   const db: Database = createDb(process.env.DATABASE_URL!);
 
@@ -929,8 +949,12 @@ describe("Levels and level-up events (integration)", () => {
   }
 
   afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
+    await db.delete(playerAchievements);
     await db.delete(xpTransactions);
     await db.delete(gameEvents);
+    await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
@@ -981,7 +1005,10 @@ describe("Levels and level-up events (integration)", () => {
       },
       {
         // 5 kills: 500 (kill) + 100 (first_blood) + 150 (streak3) + 250 (streak5) = 1,000 XP,
-        // landing exactly on level 2's threshold.
+        // landing exactly on level 2's threshold, plus the seeded daily
+        // "kill_streak" Challenge (target 5, +350) this same streak also
+        // completes - see ticket 09. 1,350 total, still short of level 3's
+        // 2,500 threshold.
         status: statusFixture(),
         players: playersFixture([
           { steamId: "1", name: "Alice", faction: "Lonestar", kills: 5, deaths: 0, cash: 0, pingMs: 40 },
@@ -997,7 +1024,7 @@ describe("Levels and level-up events (integration)", () => {
     expect(levelUps[0].metadata).toEqual({ level: 2 });
 
     const career = await careerStatsFor(server.id, "1");
-    expect(career.xp).toBe(1000);
+    expect(career.xp).toBe(1350);
     expect(career.level).toBe(2);
   });
 
@@ -1012,7 +1039,11 @@ describe("Levels and level-up events (integration)", () => {
       },
       {
         // 25 kills: 2,500 (kill) + 100 (first_blood) + 150+250+500 (streak3/5/10) =
-        // 3,500 XP, crossing both level 2 (1,000) and level 3 (2,500) in one batch.
+        // 3,500 XP, plus every seeded daily Challenge this same streak
+        // completes (ticket 09): kills (target 15, +300), kill_streak
+        // (target 5, +350), kills_without_dying (target 8, +400), and
+        // kills_in_match (target 10, +400) = 1,450 more. 4,950 total, crossing
+        // level 2 (1,000), level 3 (2,500), and level 4 (4,500) in one batch.
         status: statusFixture(),
         players: playersFixture([
           { steamId: "1", name: "Alice", faction: "Lonestar", kills: 25, deaths: 0, cash: 0, pingMs: 40 },
@@ -1024,11 +1055,11 @@ describe("Levels and level-up events (integration)", () => {
     await pollAndPersistSnapshot(db, client, server.id);
 
     const levelUps = await levelUpEventsFor("1");
-    expect(levelUps.map((event) => event.metadata)).toEqual([{ level: 2 }, { level: 3 }]);
+    expect(levelUps.map((event) => event.metadata)).toEqual([{ level: 2 }, { level: 3 }, { level: 4 }]);
 
     const career = await careerStatsFor(server.id, "1");
-    expect(career.xp).toBe(3500);
-    expect(career.level).toBe(3);
+    expect(career.xp).toBe(4950);
+    expect(career.level).toBe(4);
   });
 });
 
@@ -1067,8 +1098,12 @@ describe("Match finalization: MVP + win/loss rollup (integration)", () => {
   }
 
   afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
+    await db.delete(playerAchievements);
     await db.delete(xpTransactions);
     await db.delete(gameEvents);
+    await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
@@ -1206,5 +1241,349 @@ describe("Match finalization: MVP + win/loss rollup (integration)", () => {
     expect(closedRow.winningFaction).toBe("Lonestar");
     expect(closedRow.mvpPlayerSteamId).toBe("1");
     expect(closedRow.mvpScore).toBe(50);
+  });
+});
+
+// Exercises applyAchievementUnlockDrafts' persistence directly against a real
+// Postgres database - see ticket 08. Deliberately bypasses
+// pollAndPersistSnapshot/ingestSnapshot (achievement-engine.test.ts already
+// covers computeAchievementUnlockDrafts/achievementUnlockedEvents as pure
+// unit tests): what a real database is actually needed for here is proving
+// the (server_id, steam_id, achievement_id) unique constraint - not
+// application logic - is what makes an unlock idempotent, matching the XP
+// ledger's own "never double-awards" test above. Relies on the
+// migration-seeded achievement_definitions rows (first_blood, killing_spree,
+// survivor, etc. - see migration 0011).
+describe("Achievement engine (integration)", () => {
+  const db: Database = createDb(process.env.DATABASE_URL!);
+
+  async function seedServer() {
+    const [server] = await db
+      .insert(servers)
+      .values({
+        name: "Test Server",
+        baseUrl: `http://rcon-achievement-engine-${crypto.randomUUID()}.test:9006`,
+      })
+      .returning();
+    return server;
+  }
+
+  async function unlocksFor(serverId: number, steamId: string) {
+    return db
+      .select()
+      .from(playerAchievements)
+      .where(and(eq(playerAchievements.serverId, serverId), eq(playerAchievements.steamId, steamId)));
+  }
+
+  afterEach(async () => {
+    await db.delete(playerAchievements);
+    await db.delete(servers);
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("writes a PlayerAchievement row for a genuinely new unlock, returning it as newly recorded", async () => {
+    const server = await seedServer();
+
+    const recorded = await db.transaction((tx) =>
+      applyAchievementUnlockDrafts(tx, [
+        { serverId: server.id, steamId: "1", achievementId: "first_blood", eventId: 1 },
+      ]),
+    );
+
+    expect(recorded).toEqual([{ steamId: "1", achievementId: "first_blood" }]);
+
+    const rows = await unlocksFor(server.id, "1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ serverId: server.id, steamId: "1", achievementId: "first_blood" });
+  });
+
+  it("unlocks distinct Achievements for the same player independently", async () => {
+    const server = await seedServer();
+
+    await db.transaction((tx) =>
+      applyAchievementUnlockDrafts(tx, [
+        { serverId: server.id, steamId: "1", achievementId: "first_blood", eventId: 1 },
+        { serverId: server.id, steamId: "1", achievementId: "killing_spree", eventId: 2 },
+      ]),
+    );
+
+    const rows = await unlocksFor(server.id, "1");
+    expect(rows.map((row) => row.achievementId).sort()).toEqual(["first_blood", "killing_spree"]);
+  });
+
+  it("never double-unlocks the same Achievement, even if a recurring condition or a reprocessed event proposes it again", async () => {
+    const server = await seedServer();
+    const draft = { serverId: server.id, steamId: "1", achievementId: "killing_spree", eventId: 1 };
+
+    const firstApply = await db.transaction((tx) => applyAchievementUnlockDrafts(tx, [draft]));
+    // A second proposal for the exact same (server, player, Achievement) -
+    // e.g. the streak reaching 5 again later in the same Match, or the same
+    // GameEvent reprocessed - must insert nothing.
+    const secondApply = await db.transaction((tx) => applyAchievementUnlockDrafts(tx, [{ ...draft, eventId: 99 }]));
+
+    expect(firstApply).toEqual([{ steamId: "1", achievementId: "killing_spree" }]);
+    expect(secondApply).toEqual([]);
+
+    const rows = await unlocksFor(server.id, "1");
+    expect(rows).toHaveLength(1);
+  });
+});
+
+// Exercises daily Challenge generation/progress/completion end to end (via
+// pollAndPersistSnapshot -> ingestSnapshot) against a real Postgres database -
+// see ticket 09. Relies on the migration-seeded challenge_definitions
+// defaults (kills target 15/+300 XP, kill_streak target 5/+350,
+// kills_without_dying target 8/+400, kills_in_match target 10/+400, wins
+// target 2/+400, matches_played target 3/+200) alongside xp_rewards' own
+// migration-seeded defaults (kill +100, first_blood +100, streak3/5/10
+// +150/+250/+500).
+describe("Daily challenges (integration)", () => {
+  const db: Database = createDb(process.env.DATABASE_URL!);
+
+  async function seedServer() {
+    const [server] = await db
+      .insert(servers)
+      .values({
+        name: "Test Server",
+        baseUrl: `http://rcon-challenge-engine-${crypto.randomUUID()}.test:9006`,
+      })
+      .returning();
+    return server;
+  }
+
+  async function dailyDefinitionCount() {
+    const rows = await db.select().from(challengeDefinitions).where(eq(challengeDefinitions.scope, "daily"));
+    return rows.length;
+  }
+
+  async function instancesFor(serverId: number) {
+    return db.select().from(challengeInstances).where(eq(challengeInstances.serverId, serverId));
+  }
+
+  async function instanceForType(serverId: number, type: ChallengeType) {
+    const [row] = await db
+      .select({
+        id: challengeInstances.id,
+        target: challengeDefinitions.target,
+        xpReward: challengeDefinitions.xpReward,
+      })
+      .from(challengeInstances)
+      .innerJoin(challengeDefinitions, eq(challengeInstances.definitionId, challengeDefinitions.id))
+      .where(and(eq(challengeInstances.serverId, serverId), eq(challengeDefinitions.type, type)));
+    return row;
+  }
+
+  async function progressFor(instanceId: number, steamId: string) {
+    const [row] = await db
+      .select()
+      .from(playerChallengeProgress)
+      .where(and(eq(playerChallengeProgress.instanceId, instanceId), eq(playerChallengeProgress.steamId, steamId)));
+    return row;
+  }
+
+  async function completionsFor(instanceId: number) {
+    return db.select().from(challengeCompletions).where(eq(challengeCompletions.instanceId, instanceId));
+  }
+
+  async function careerStatsFor(serverId: number, steamId: string) {
+    const [row] = await db
+      .select()
+      .from(playerCareerStats)
+      .where(and(eq(playerCareerStats.serverId, serverId), eq(playerCareerStats.steamId, steamId)));
+    return row;
+  }
+
+  afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
+    await db.delete(xpTransactions);
+    await db.delete(playerAchievements);
+    await db.delete(gameEvents);
+    await db.delete(challengeInstances);
+    await db.delete(playerMatchStats);
+    await db.delete(playerCareerStats);
+    await db.delete(matchSnapshots);
+    await db.delete(matches);
+    await db.delete(latestSnapshots);
+    await db.delete(servers);
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("generates one ChallengeInstance per daily definition, and never duplicates across polls", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      { status: statusFixture(), players: playersFixture([]) },
+      { status: statusFixture({ lighting: "Night" }), players: playersFixture([]) },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    const afterFirstPoll = await instancesFor(server.id);
+    expect(afterFirstPoll).toHaveLength(await dailyDefinitionCount());
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    const afterSecondPoll = await instancesFor(server.id);
+    expect(afterSecondPoll.map((row) => row.id).sort()).toEqual(afterFirstPoll.map((row) => row.id).sort());
+  });
+
+  it("increments kills progress per PlayerKilled event and completes exactly once at target", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // 15 kills reaches the seeded "kills" definition's target exactly.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 15, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // One further kill must not award "kills" a second time.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 16, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const kills = await instanceForType(server.id, "kills");
+    expect(await progressFor(kills.id, "1")).toMatchObject({ progress: 15 });
+    expect(await completionsFor(kills.id)).toHaveLength(1);
+
+    let killAwards = await db
+      .select()
+      .from(xpTransactions)
+      .where(and(eq(xpTransactions.reason, "challenge_completed"), eq(xpTransactions.challengeInstanceId, kills.id)));
+    expect(killAwards).toHaveLength(1);
+    expect(killAwards[0].amount).toBe(kills.xpReward);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    expect(await progressFor(kills.id, "1")).toMatchObject({ progress: 16 });
+    expect(await completionsFor(kills.id)).toHaveLength(1);
+    killAwards = await db
+      .select()
+      .from(xpTransactions)
+      .where(and(eq(xpTransactions.reason, "challenge_completed"), eq(xpTransactions.challengeInstanceId, kills.id)));
+    expect(killAwards).toHaveLength(1);
+  });
+
+  it("also raises a kill_streak instance's watermark from the same kills, and folds every award into playerCareerStats.xp", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 15, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const killStreak = await instanceForType(server.id, "kill_streak");
+    expect(await progressFor(killStreak.id, "1")).toMatchObject({ progress: 15 });
+    expect(await completionsFor(killStreak.id)).toHaveLength(1);
+
+    const allAwards = await db.select().from(xpTransactions).where(eq(xpTransactions.steamId, "1"));
+    const totalAwarded = allAwards.reduce((sum, row) => sum + row.amount, 0);
+    const career = await careerStatsFor(server.id, "1");
+    expect(career.xp).toBe(totalAwarded);
+  });
+
+  it("increments matches_played from a MatchEnded event for every participant", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // map change closes the first Match.
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const matchesPlayed = await instanceForType(server.id, "matches_played");
+    expect(await progressFor(matchesPlayed.id, "1")).toMatchObject({ progress: 1 });
+  });
+
+  it("keeps kills_without_dying counting across a Match boundary, while kill_streak resets - see ticket 09", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // 3 kills in the first Match, no death.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 3, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // map change closes the first Match and opens a second one -
+        // currentKillStreak (and thus kill_streak's own metadata.streak
+        // events) resets to 0 here, but the player still hasn't died.
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // 5 more kills in the second Match, still no death: 8 total kills
+        // without dying (reaching kills_without_dying's seeded target of 8),
+        // but only a fresh 5-kill streak within this Match (reaching
+        // kill_streak's seeded target of 5, not 8).
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 5, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const killStreak = await instanceForType(server.id, "kill_streak");
+    expect(await progressFor(killStreak.id, "1")).toMatchObject({ progress: 5 });
+    expect(await completionsFor(killStreak.id)).toHaveLength(1);
+
+    const killsWithoutDying = await instanceForType(server.id, "kills_without_dying");
+    expect(await progressFor(killsWithoutDying.id, "1")).toMatchObject({ progress: 8 });
+    expect(await completionsFor(killsWithoutDying.id)).toHaveLength(1);
   });
 });

@@ -78,6 +78,20 @@
       "when": 1789448216907,
       "tag": "0010_spooky_fantastic_four",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789449322716,
+      "tag": "0011_old_human_torch",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789449952308,
+      "tag": "0012_opposite_mac_gargan",
+      "breakpoints": true
     }
   ]
 }

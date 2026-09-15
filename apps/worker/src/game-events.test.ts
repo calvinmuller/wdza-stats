@@ -1,10 +1,14 @@
 import {
+  challengeCompletions,
+  challengeInstances,
   createDb,
   gameEvents,
   latestSnapshots,
   matchSnapshots,
   matches,
+  playerAchievements,
   playerCareerStats,
+  playerChallengeProgress,
   playerMatchStats,
   servers,
   xpTransactions,
@@ -510,8 +514,12 @@ describe("GameEvent recording (integration)", () => {
   }
 
   afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
+    await db.delete(playerAchievements);
     await db.delete(xpTransactions);
     await db.delete(gameEvents);
+    await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);

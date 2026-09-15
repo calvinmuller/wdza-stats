@@ -3,8 +3,9 @@
 
 // Ticket 01 emits PlayerJoined/PlayerLeft; ticket 02 adds Match start/end and
 // kill/death; ticket 03 adds Faction score/lead changes; ticket 04 adds kill
-// streak changes; ticket 06 adds PlayerLevelUp. Later tickets extend this
-// union further as each is built.
+// streak changes; ticket 06 adds PlayerLevelUp; ticket 08 adds
+// AchievementUnlocked. Later tickets extend this union further as each is
+// built.
 export type GameEventType =
   | "PlayerJoined"
   | "PlayerLeft"
@@ -17,4 +18,5 @@ export type GameEventType =
   | "PlayerKillStreakStarted"
   | "PlayerKillStreakIncreased"
   | "PlayerKillStreakBroken"
-  | "PlayerLevelUp";
+  | "PlayerLevelUp"
+  | "AchievementUnlocked";

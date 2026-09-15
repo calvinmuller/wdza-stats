@@ -1,4 +1,8 @@
 import {
+  achievementDefinitions,
+  challengeCompletions,
+  challengeDefinitions,
+  challengeInstances,
   gameEvents,
   latestSnapshots,
   levelForXp,
@@ -6,10 +10,13 @@ import {
   matchSnapshots,
   matches,
   mvpFormulaWeights,
+  playerAchievements,
   playerCareerStats,
+  playerChallengeProgress,
   playerMatchStats,
   xpRewards,
   xpTransactions,
+  type ChallengeType,
   type Database,
   type GameEventType,
   type Snapshot,
@@ -17,6 +24,22 @@ import {
   type XpReason,
 } from "@wdza-stats/db";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+  achievementUnlockedEvents,
+  computeAchievementUnlockDrafts,
+  type AchievementContext,
+  type AchievementDefinitionConfig,
+  type AchievementUnlockDraft,
+  type RecordedAchievementUnlock,
+} from "./achievement-engine";
+import {
+  computeChallengeProgressUpdates,
+  dailyChallengeInstanceDrafts,
+  dailyPeriodKey,
+  type ActiveChallengeInstance,
+  type ChallengeProgressContext,
+  type ChallengeProgressUpdate,
+} from "./challenge-engine";
 import {
   diffFactionScoreGameEvents,
   diffKillDeathGameEvents,
@@ -32,6 +55,7 @@ import { levelUpEvents } from "./level-engine";
 import { computeMvp, type MvpFormulaWeights } from "./mvp-engine";
 import {
   computeXpTransactionDrafts,
+  type MatchCompletionInfo,
   type RecordedGameEvent,
   type XpTransactionContext,
   type XpTransactionDraft,
@@ -377,6 +401,14 @@ async function buildXpTransactionContext(
  * match_completed/match_win), unlike applyKillStreakUpdates itself. Returns
  * the actually-inserted transactions for the caller to log once the
  * enclosing transaction has committed.
+ *
+ * `drafts` must be homogeneous - every reason "challenge_completed" or every
+ * reason something else, never a mix - since which of xpTransactions' two
+ * partial unique indexes is the right ON CONFLICT arbiter depends on that
+ * (see schema.ts's xpTransactions doc comment). Both of this function's
+ * callers already satisfy this: computeXpTransactionDrafts never produces
+ * "challenge_completed", and the challenge completion batch built from
+ * applyChallengeProgressUpdates' results is that reason exclusively.
  */
 export async function applyXpTransactionDrafts(
   tx: Tx,
@@ -386,10 +418,22 @@ export async function applyXpTransactionDrafts(
     return [];
   }
 
+  const isChallengeCompletion = drafts[0].reason === "challenge_completed";
+
   const inserted = await tx
     .insert(xpTransactions)
     .values(drafts)
-    .onConflictDoNothing({ target: [xpTransactions.eventId, xpTransactions.reason, xpTransactions.steamId] })
+    .onConflictDoNothing(
+      isChallengeCompletion
+        ? {
+            target: [xpTransactions.eventId, xpTransactions.steamId, xpTransactions.challengeInstanceId],
+            where: sql`${xpTransactions.reason} = 'challenge_completed'`,
+          }
+        : {
+            target: [xpTransactions.eventId, xpTransactions.reason, xpTransactions.steamId],
+            where: sql`${xpTransactions.reason} <> 'challenge_completed'`,
+          },
+    )
     .returning({
       serverId: xpTransactions.serverId,
       steamId: xpTransactions.steamId,
@@ -411,6 +455,387 @@ export async function applyXpTransactionDrafts(
   }
 
   return inserted;
+}
+
+/**
+ * Generates today's ChallengeInstance rows for every "daily"-scoped
+ * ChallengeDefinition on `serverId`, if they don't already exist - see
+ * schema.ts's challengeInstances doc comment and challenge-engine.ts's
+ * dailyChallengeInstanceDrafts. Safe to call on every poll: the insert's own
+ * (definition_id, server_id, period_key) uniqueness makes a duplicate call
+ * for a day that's already generated a no-op, which is what makes this safe
+ * even if a future second worker instance calls it concurrently.
+ */
+async function ensureDailyChallengeInstances(tx: Tx, serverId: number, periodKey: string): Promise<void> {
+  const definitionRows = await tx
+    .select({ id: challengeDefinitions.id, scope: challengeDefinitions.scope })
+    .from(challengeDefinitions);
+  const drafts = dailyChallengeInstanceDrafts(definitionRows, serverId, periodKey);
+  if (drafts.length === 0) {
+    return;
+  }
+
+  await tx
+    .insert(challengeInstances)
+    .values(drafts)
+    .onConflictDoNothing({
+      target: [challengeInstances.definitionId, challengeInstances.serverId, challengeInstances.periodKey],
+    });
+}
+
+/**
+ * Gathers the extra state computeChallengeProgressUpdates needs beyond the
+ * recorded events themselves: this period's active ChallengeInstances
+ * (joined with their ChallengeDefinition for type/target/xpReward), each
+ * relevant player's current progress on each of them, and - for
+ * "kills_in_match" instances only - each relevant player's total kill count
+ * within the Match a qualifying PlayerKilled event belongs to. Queried fresh
+ * every call rather than cached, matching buildXpTransactionContext's own
+ * precedent. `matchCompletions` is passed in rather than requeried - it's the
+ * exact same participant roster/winning-Faction shape
+ * buildXpTransactionContext already computed this poll for
+ * match_completed/match_win.
+ */
+async function buildChallengeProgressContext(
+  tx: Tx,
+  periodKey: string,
+  serverId: number,
+  recordedEvents: RecordedGameEvent[],
+  matchCompletions: Map<number, MatchCompletionInfo>,
+): Promise<ChallengeProgressContext> {
+  const instanceRows = await tx
+    .select({
+      instanceId: challengeInstances.id,
+      type: challengeDefinitions.type,
+      target: challengeDefinitions.target,
+      xpReward: challengeDefinitions.xpReward,
+    })
+    .from(challengeInstances)
+    .innerJoin(challengeDefinitions, eq(challengeInstances.definitionId, challengeDefinitions.id))
+    .where(and(eq(challengeInstances.serverId, serverId), eq(challengeInstances.periodKey, periodKey)));
+
+  const instancesByType = new Map<ChallengeType, ActiveChallengeInstance[]>();
+  for (const row of instanceRows) {
+    const list = instancesByType.get(row.type) ?? [];
+    list.push({ instanceId: row.instanceId, target: row.target, xpReward: row.xpReward });
+    instancesByType.set(row.type, list);
+  }
+
+  if (instanceRows.length === 0) {
+    return {
+      instancesByType,
+      currentProgress: new Map(),
+      matchCompletions,
+      killCountInMatch: new Map(),
+      killsSinceDeath: new Map(),
+    };
+  }
+
+  const relevantSteamIds = [
+    ...new Set(
+      recordedEvents.map((event) => event.steamId).filter((steamId): steamId is string => steamId != null),
+    ),
+  ];
+  const instanceIds = instanceRows.map((row) => row.instanceId);
+  const currentProgress = new Map<string, number>();
+  if (relevantSteamIds.length > 0) {
+    const progressRows = await tx
+      .select()
+      .from(playerChallengeProgress)
+      .where(
+        and(
+          inArray(playerChallengeProgress.instanceId, instanceIds),
+          inArray(playerChallengeProgress.steamId, relevantSteamIds),
+        ),
+      );
+    for (const row of progressRows) {
+      currentProgress.set(`${row.instanceId}:${row.steamId}`, row.progress);
+    }
+  }
+
+  const killEvents = recordedEvents.filter(
+    (event): event is RecordedGameEvent & { steamId: string } => event.type === "PlayerKilled" && event.steamId != null,
+  );
+
+  const killCountInMatch = new Map<string, number>();
+  if (killEvents.length > 0 && instancesByType.has("kills_in_match")) {
+    const matchIds = [...new Set(killEvents.map((event) => event.matchId))];
+    const steamIds = [...new Set(killEvents.map((event) => event.steamId))];
+    const rows = await tx
+      .select({ matchId: gameEvents.matchId, steamId: gameEvents.steamId, count: sql<number>`COUNT(*)` })
+      .from(gameEvents)
+      .where(
+        and(
+          inArray(gameEvents.matchId, matchIds),
+          inArray(gameEvents.steamId, steamIds),
+          eq(gameEvents.type, "PlayerKilled" satisfies GameEventType),
+        ),
+      )
+      .groupBy(gameEvents.matchId, gameEvents.steamId);
+    for (const row of rows) {
+      if (row.steamId) {
+        killCountInMatch.set(`${row.matchId}:${row.steamId}`, Number(row.count));
+      }
+    }
+  }
+
+  // Match-independent, unlike killCountInMatch above (see challenge.ts's
+  // ChallengeType doc comment): counts each relevant player's PlayerKilled
+  // events since their most recent PlayerDeath on this Server, wherever that
+  // death fell. One small pair of queries per player rather than a single
+  // batched query, since "since their own last death" doesn't reduce to one
+  // shared GROUP BY the way killCountInMatch's flat per-Match count does.
+  const killsSinceDeath = new Map<string, number>();
+  if (instancesByType.has("kills_without_dying")) {
+    const steamIds = [...new Set(killEvents.map((event) => event.steamId))];
+    for (const steamId of steamIds) {
+      const [lastDeath] = await tx
+        .select({ id: sql<number>`MAX(${gameEvents.id})` })
+        .from(gameEvents)
+        .where(
+          and(
+            eq(gameEvents.serverId, serverId),
+            eq(gameEvents.steamId, steamId),
+            eq(gameEvents.type, "PlayerDeath" satisfies GameEventType),
+          ),
+        );
+      const sinceEventId = lastDeath?.id ?? 0;
+      const [killsSince] = await tx
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(gameEvents)
+        .where(
+          and(
+            eq(gameEvents.serverId, serverId),
+            eq(gameEvents.steamId, steamId),
+            eq(gameEvents.type, "PlayerKilled" satisfies GameEventType),
+            sql`${gameEvents.id} > ${sinceEventId}`,
+          ),
+        );
+      killsSinceDeath.set(steamId, Number(killsSince?.count ?? 0));
+    }
+  }
+
+  return { instancesByType, currentProgress, matchCompletions, killCountInMatch, killsSinceDeath };
+}
+
+interface ChallengeCompletionResult {
+  instanceId: number;
+  steamId: string;
+  eventId: number;
+  xpReward: number;
+}
+
+/**
+ * Persists a batch of ChallengeProgressUpdates to player_challenge_progress
+ * (an upsert, setting each instance's new absolute progress value directly -
+ * see challenge-engine.ts's ChallengeProgressUpdate doc comment for why it's
+ * always the resulting absolute value rather than a delta), then for every
+ * update that reaches or exceeds its instance's target, attempts to insert a
+ * ChallengeCompletion row. That insert's own (instance_id, steam_id) primary
+ * key is what makes completion idempotent: reaching the target again on a
+ * later poll, or the same triggering GameEvent being reprocessed, can never
+ * insert a second row, so only genuinely-new completions are returned -
+ * mirroring applyAchievementUnlockDrafts' own idempotency role for
+ * Achievement unlocks.
+ */
+async function applyChallengeProgressUpdates(
+  tx: Tx,
+  updates: ChallengeProgressUpdate[],
+): Promise<ChallengeCompletionResult[]> {
+  const completions: ChallengeCompletionResult[] = [];
+
+  for (const update of updates) {
+    await tx
+      .insert(playerChallengeProgress)
+      .values({ instanceId: update.instanceId, steamId: update.steamId, progress: update.progress })
+      .onConflictDoUpdate({
+        target: [playerChallengeProgress.instanceId, playerChallengeProgress.steamId],
+        set: { progress: update.progress },
+      });
+
+    if (update.progress < update.target) {
+      continue;
+    }
+
+    const [completed] = await tx
+      .insert(challengeCompletions)
+      .values({ instanceId: update.instanceId, steamId: update.steamId })
+      .onConflictDoNothing({ target: [challengeCompletions.instanceId, challengeCompletions.steamId] })
+      .returning({ instanceId: challengeCompletions.instanceId, steamId: challengeCompletions.steamId });
+
+    if (completed) {
+      completions.push({
+        instanceId: update.instanceId,
+        steamId: update.steamId,
+        eventId: update.eventId,
+        xpReward: update.xpReward,
+      });
+    }
+  }
+
+  return completions;
+}
+
+/**
+ * Gathers the extra per-Match/per-player state computeAchievementUnlockDrafts
+ * needs beyond the recorded events themselves: the current
+ * ACHIEVEMENT_DEFINITIONS config, each relevant player's total ever/
+ * within-Match PlayerKilled counts (for first_kill/match_kills), and - for a
+ * Match this same batch closed - its participants' resulting
+ * matchesPlayed/matchesWon/per-Match deaths (for matches_played/matches_won/
+ * survivor). Queried fresh every call rather than cached, matching
+ * buildXpTransactionContext's own precedent.
+ */
+async function buildAchievementContext(
+  tx: Tx,
+  serverId: number,
+  recordedEvents: RecordedGameEvent[],
+  closedMatch: { id: number } | undefined,
+): Promise<AchievementContext> {
+  const definitionRows = await tx.select().from(achievementDefinitions);
+  const definitions: AchievementDefinitionConfig[] = definitionRows.map((row) => ({
+    id: row.id,
+    trigger: row.trigger,
+    threshold: row.threshold,
+  }));
+
+  const killSteamIds = [
+    ...new Set(
+      recordedEvents
+        .filter((event): event is RecordedGameEvent & { steamId: string } => event.type === "PlayerKilled" && event.steamId != null)
+        .map((event) => event.steamId),
+    ),
+  ];
+  const totalKillsBySteamId = new Map<string, number>();
+  if (killSteamIds.length > 0) {
+    const rows = await tx
+      .select({ steamId: gameEvents.steamId, count: sql<number>`COUNT(*)` })
+      .from(gameEvents)
+      .where(
+        and(
+          eq(gameEvents.serverId, serverId),
+          eq(gameEvents.type, "PlayerKilled" satisfies GameEventType),
+          inArray(gameEvents.steamId, killSteamIds),
+        ),
+      )
+      .groupBy(gameEvents.steamId);
+    for (const row of rows) {
+      if (row.steamId) {
+        totalKillsBySteamId.set(row.steamId, Number(row.count));
+      }
+    }
+  }
+
+  const killMatchIds = [...new Set(
+    recordedEvents.filter((event) => event.type === "PlayerKilled").map((event) => event.matchId),
+  )];
+  const matchKillsByPlayerMatch = new Map<string, number>();
+  for (const matchId of killMatchIds) {
+    const rows = await tx
+      .select({ steamId: gameEvents.steamId, count: sql<number>`COUNT(*)` })
+      .from(gameEvents)
+      .where(and(eq(gameEvents.matchId, matchId), eq(gameEvents.type, "PlayerKilled" satisfies GameEventType)))
+      .groupBy(gameEvents.steamId);
+    for (const row of rows) {
+      if (row.steamId) {
+        matchKillsByPlayerMatch.set(`${matchId}:${row.steamId}`, Number(row.count));
+      }
+    }
+  }
+
+  const matchCompletions: AchievementContext["matchCompletions"] = new Map();
+  const hasMatchEnded = recordedEvents.some((event) => event.type === "MatchEnded");
+  if (hasMatchEnded && closedMatch) {
+    const matchStatRows = await tx
+      .select({ steamId: playerMatchStats.steamId, deaths: playerMatchStats.deaths })
+      .from(playerMatchStats)
+      .where(eq(playerMatchStats.matchId, closedMatch.id));
+
+    const participantSteamIds = matchStatRows.map((row) => row.steamId);
+    const careerRows =
+      participantSteamIds.length > 0
+        ? await tx
+            .select({
+              steamId: playerCareerStats.steamId,
+              matchesPlayed: playerCareerStats.matchesPlayed,
+              matchesWon: playerCareerStats.matchesWon,
+            })
+            .from(playerCareerStats)
+            .where(
+              and(eq(playerCareerStats.serverId, serverId), inArray(playerCareerStats.steamId, participantSteamIds)),
+            )
+        : [];
+    const careerBySteamId = new Map(careerRows.map((row) => [row.steamId, row]));
+
+    const participants = matchStatRows.map((stat) => {
+      const career = careerBySteamId.get(stat.steamId);
+      return {
+        steamId: stat.steamId,
+        deathsInMatch: stat.deaths,
+        matchesPlayed: career?.matchesPlayed ?? 0,
+        matchesWon: career?.matchesWon ?? 0,
+      };
+    });
+    matchCompletions.set(closedMatch.id, { participants });
+  }
+
+  return { serverId, definitions, totalKillsBySteamId, matchKillsByPlayerMatch, matchCompletions };
+}
+
+/**
+ * Persists a batch of AchievementUnlockDrafts to playerAchievements and
+ * returns only the rows actually inserted. The insert's (server_id,
+ * steam_id, achievement_id) uniqueness is what makes an unlock idempotent:
+ * persisting the same draft twice (e.g. a recurring qualifying condition, or
+ * a reprocessed GameEvent) inserts nothing the second time, via
+ * onConflictDoNothing, so an AchievementUnlocked GameEvent - built only from
+ * this function's return value, never from the drafts themselves - fires at
+ * most once per player per Achievement per Server, matching
+ * applyXpTransactionDrafts' own idempotency role for the XP ledger.
+ */
+export async function applyAchievementUnlockDrafts(
+  tx: Tx,
+  drafts: AchievementUnlockDraft[],
+): Promise<RecordedAchievementUnlock[]> {
+  if (drafts.length === 0) {
+    return [];
+  }
+
+  return tx
+    .insert(playerAchievements)
+    .values(
+      drafts.map((draft) => ({
+        serverId: draft.serverId,
+        steamId: draft.steamId,
+        achievementId: draft.achievementId,
+      })),
+    )
+    .onConflictDoNothing({
+      target: [playerAchievements.serverId, playerAchievements.steamId, playerAchievements.achievementId],
+    })
+    .returning({ steamId: playerAchievements.steamId, achievementId: playerAchievements.achievementId });
+}
+
+/**
+ * Computes this poll's AchievementUnlocked GameEvent drafts end to end:
+ * gathers the Achievement Engine's context, diffs it against `recordedEvents`
+ * for qualifying unlocks, persists the genuinely-new ones to
+ * playerAchievements, and builds one AchievementUnlocked draft per row
+ * actually inserted. Returns drafts (not yet inserted into gameEvents) so the
+ * caller can run them through the same insertGameEventDrafts/dedupe path as
+ * every other GameEvent batch.
+ */
+async function computeAchievementUnlockEventDrafts(
+  tx: Tx,
+  serverId: number,
+  recordedEvents: RecordedGameEvent[],
+  closedMatch: { id: number } | undefined,
+  context: GameEventContext,
+): Promise<GameEventDraft[]> {
+  const achievementContext = await buildAchievementContext(tx, serverId, recordedEvents, closedMatch);
+  const drafts = computeAchievementUnlockDrafts(recordedEvents, achievementContext);
+  const unlocked = await applyAchievementUnlockDrafts(tx, drafts);
+  return achievementUnlockedEvents(unlocked, context);
 }
 
 /**
@@ -507,6 +932,27 @@ async function applyLevelUps(
  * GameEvent is emitted per level gained, persisted in a second insert into
  * gameEvents once the resulting playerCareerStats.xp is known.
  *
+ * This same batch of recordedEvents is also diffed against the
+ * ACHIEVEMENT_DEFINITIONS config (see computeAchievementUnlockEventDrafts/
+ * achievement-engine.ts's computeAchievementUnlockDrafts): a qualifying
+ * PlayerKilled, PlayerKillStreakStarted/Increased, or MatchEnded event writes
+ * a PlayerAchievement row at most once per player per Achievement per
+ * Server, and an AchievementUnlocked GameEvent is emitted only for a row
+ * genuinely new to that insert - never for a recurring condition or a
+ * reprocessed event, both of which the insert's own uniqueness turns into a
+ * no-op.
+ *
+ * Every poll also ensures today's daily ChallengeInstances exist (see
+ * ensureDailyChallengeInstances), then diffs this same batch of
+ * recordedEvents against them (see buildChallengeProgressContext/
+ * challenge-engine.ts's computeChallengeProgressUpdates) to update each
+ * affected player's PlayerChallengeProgress. A player whose progress reaches
+ * an instance's target completes it via a ChallengeCompletion row - at most
+ * once per player per instance, mirroring PlayerAchievement's own
+ * idempotency - and is awarded that instance's configured XP through the
+ * same xp_transactions ledger as every other XP reason (see
+ * applyXpTransactionDrafts), reason "challenge_completed".
+ *
  * Logs a line for each Match opened and/or closed, and each GameEvent
  * actually inserted - the things a poll can meaningfully change from an
  * operator's point of view, versus the ~15s poll cadence itself which is too
@@ -537,6 +983,14 @@ export async function ingestSnapshot(
       .from(matches)
       .where(and(eq(matches.serverId, serverId), isNull(matches.endedAt)))
       .limit(1);
+
+    // Generating today's daily ChallengeInstances doesn't depend on anything
+    // else this poll computes, and is safe to attempt on every poll (see
+    // ensureDailyChallengeInstances) - done up front so periodKey is ready
+    // for the progress-tracking step below regardless of whether this poll
+    // also crosses a Match boundary.
+    const periodKey = dailyPeriodKey(capturedAt);
+    await ensureDailyChallengeInstances(tx, serverId, periodKey);
 
     const isBoundary =
       !previousRow || detectMatchBoundary(previousRow.payload, snapshot);
@@ -667,6 +1121,38 @@ export async function ingestSnapshot(
       const xpTransactionContext = await buildXpTransactionContext(tx, serverId, recordedEvents, closedMatch);
       const xpTransactionDrafts = computeXpTransactionDrafts(recordedEvents, xpTransactionContext);
       recordedXpTransactions = await applyXpTransactionDrafts(tx, xpTransactionDrafts);
+
+      const achievementEventDrafts = await computeAchievementUnlockEventDrafts(tx, serverId, recordedEvents, closedMatch, {
+        serverId,
+        matchId: currentMatchId,
+        timestamp: capturedAt,
+        sourceSnapshotId: insertedSnapshot.id,
+      });
+      const recordedAchievementUnlocks = await insertGameEventDrafts(tx, achievementEventDrafts);
+      recordedEvents = recordedEvents.concat(recordedAchievementUnlocks);
+
+      const challengeProgressContext = await buildChallengeProgressContext(
+        tx,
+        periodKey,
+        serverId,
+        recordedEvents,
+        xpTransactionContext.matchCompletions,
+      );
+      const challengeProgressUpdates = computeChallengeProgressUpdates(recordedEvents, challengeProgressContext);
+      const challengeCompletionResults = await applyChallengeProgressUpdates(tx, challengeProgressUpdates);
+
+      if (challengeCompletionResults.length > 0) {
+        const challengeXpDrafts: XpTransactionDraft[] = challengeCompletionResults.map((completion) => ({
+          serverId,
+          steamId: completion.steamId,
+          amount: completion.xpReward,
+          reason: "challenge_completed",
+          eventId: completion.eventId,
+          challengeInstanceId: completion.instanceId,
+        }));
+        const recordedChallengeXp = await applyXpTransactionDrafts(tx, challengeXpDrafts);
+        recordedXpTransactions = recordedXpTransactions.concat(recordedChallengeXp);
+      }
     }
 
     if (recordedXpTransactions.length > 0) {

@@ -32,6 +32,12 @@ export interface NotificationContext {
   // gathered by the caller from achievementDefinitions for only the
   // achievementIds this batch's AchievementUnlocked events actually name.
   achievementNameById: Map<string, string>;
+  // steamId -> playerCareerStats.displayName, for every steamId this batch's
+  // drafts might name - gathered by the caller so templates can reference
+  // {{playerName}} instead of the raw {{steamId}}. Falls back to the steamId
+  // itself when a player has no career stats row yet (see draft functions
+  // below), so this map is allowed to be missing an entry.
+  playerNameBySteamId: Map<string, string>;
   // This poll's newly-opened Match's map, present only when this batch
   // actually opened one - for the MatchStarted template.
   openedMatchMap?: string;
@@ -100,7 +106,8 @@ function achievementUnlockedDraft(event: RecordedGameEvent, context: Notificatio
     return null;
   }
   const achievementName = context.achievementNameById.get(achievementId) ?? achievementId;
-  return draftFor(context, "AchievementUnlocked", event.id, { steamId: event.steamId, achievementName });
+  const playerName = context.playerNameBySteamId.get(event.steamId) ?? event.steamId;
+  return draftFor(context, "AchievementUnlocked", event.id, { steamId: event.steamId, playerName, achievementName });
 }
 
 function killStreakDraft(event: RecordedGameEvent, context: NotificationContext): NotificationDraft | null {
@@ -112,7 +119,8 @@ function killStreakDraft(event: RecordedGameEvent, context: NotificationContext)
   if (!kind) {
     return null;
   }
-  return draftFor(context, kind, event.id, { steamId: event.steamId, streak: String(streak) });
+  const playerName = context.playerNameBySteamId.get(event.steamId) ?? event.steamId;
+  return draftFor(context, kind, event.id, { steamId: event.steamId, playerName, streak: String(streak) });
 }
 
 function levelUpDraft(event: RecordedGameEvent, context: NotificationContext): NotificationDraft | null {
@@ -120,7 +128,8 @@ function levelUpDraft(event: RecordedGameEvent, context: NotificationContext): N
   if (!event.steamId || typeof level !== "number") {
     return null;
   }
-  return draftFor(context, "PlayerLevelUp", event.id, { steamId: event.steamId, level: String(level) });
+  const playerName = context.playerNameBySteamId.get(event.steamId) ?? event.steamId;
+  return draftFor(context, "PlayerLevelUp", event.id, { steamId: event.steamId, playerName, level: String(level) });
 }
 
 function isDraft(draft: NotificationDraft | null): draft is NotificationDraft {
@@ -168,6 +177,7 @@ export function computeNotificationDrafts(
   const challengeDrafts = challengeCompletions.map((completion) =>
     draftFor(context, "ChallengeCompleted", completion.eventId, {
       steamId: completion.steamId,
+      playerName: context.playerNameBySteamId.get(completion.steamId) ?? completion.steamId,
       challengeType: completion.challengeType,
     }),
   );

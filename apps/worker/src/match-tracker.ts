@@ -904,16 +904,21 @@ async function applyLevelUps(
  * Gathers the extra state computeNotificationDrafts needs beyond the
  * recorded events/Challenge completions themselves: the current
  * NOTIFICATION_RULES config, the display name of every Achievement this
- * batch's AchievementUnlocked events actually unlocked, and - when this poll
- * opened and/or closed a Match - that Match's map/winning Faction, for the
- * MatchStarted/MatchEnded templates. Queried fresh every call rather than
- * cached, matching buildXpTransactionContext's own precedent.
+ * batch's AchievementUnlocked events actually unlocked, the playerCareerStats
+ * display name of every steamId this batch's drafts might name (for the
+ * {{playerName}} template var - falls back to the raw steamId in
+ * notification-engine.ts when a player has no career stats row yet), and -
+ * when this poll opened and/or closed a Match - that Match's map/winning
+ * Faction, for the MatchStarted/MatchEnded templates. Queried fresh every
+ * call rather than cached, matching buildXpTransactionContext's own
+ * precedent.
  */
 async function buildNotificationContext(
   tx: Tx,
   serverId: number,
   timestamp: Date,
   recordedEvents: RecordedGameEvent[],
+  challengeCompletionInfos: ChallengeCompletionNotificationInfo[],
   openedMatch: { map: string } | undefined,
   closedMatch: { winner: string | null } | undefined,
 ): Promise<NotificationContext> {
@@ -941,11 +946,31 @@ async function buildNotificationContext(
     }
   }
 
+  const notifiedSteamIds = [
+    ...new Set(
+      [
+        ...recordedEvents.map((event) => event.steamId).filter((steamId): steamId is string => steamId != null),
+        ...challengeCompletionInfos.map((completion) => completion.steamId),
+      ],
+    ),
+  ];
+  const playerNameBySteamId = new Map<string, string>();
+  if (notifiedSteamIds.length > 0) {
+    const rows = await tx
+      .select({ steamId: playerCareerStats.steamId, displayName: playerCareerStats.displayName })
+      .from(playerCareerStats)
+      .where(and(eq(playerCareerStats.serverId, serverId), inArray(playerCareerStats.steamId, notifiedSteamIds)));
+    for (const row of rows) {
+      playerNameBySteamId.set(row.steamId, row.displayName);
+    }
+  }
+
   return {
     serverId,
     timestamp,
     rules,
     achievementNameById,
+    playerNameBySteamId,
     openedMatchMap: openedMatch?.map,
     closedMatchWinner: closedMatch?.winner,
   };
@@ -1325,6 +1350,7 @@ export async function ingestSnapshot(
         serverId,
         capturedAt,
         recordedEvents,
+        challengeCompletionInfos,
         openedMatch,
         closedMatch,
       );

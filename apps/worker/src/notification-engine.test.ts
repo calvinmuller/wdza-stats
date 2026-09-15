@@ -39,6 +39,7 @@ function context(overrides: Partial<NotificationContext> = {}): NotificationCont
     timestamp: new Date("2026-01-01T00:00:00Z"),
     rules: new Map(RULES),
     achievementNameById: new Map([["killing_spree", "Killing Spree"]]),
+    playerNameBySteamId: new Map(),
     ...overrides,
   };
 }
@@ -157,6 +158,31 @@ describe("computeNotificationDrafts", () => {
     expect(drafts).toEqual([
       { serverId: 1, priority: "high", message: "1 completed kills", eventId: 42, timestamp: context().timestamp },
     ]);
+  });
+
+  it("resolves {{playerName}} from the context's playerNameBySteamId map", () => {
+    const drafts = computeNotificationDrafts(
+      [event({ id: 30, type: "PlayerKillStreakIncreased", steamId: "1", metadata: { streak: 5 } })],
+      [],
+      context({
+        rules: new Map([["KillStreak5", { priority: "normal", template: "{{playerName}} hit a {{streak}} streak" }]]),
+        playerNameBySteamId: new Map([["1", "Shadow"]]),
+      }),
+    );
+
+    expect(drafts).toMatchObject([{ message: "Shadow hit a 5 streak" }]);
+  });
+
+  it("falls back to the raw steamId for {{playerName}} when the context has no display name for it", () => {
+    const drafts = computeNotificationDrafts(
+      [event({ id: 31, type: "PlayerKillStreakIncreased", steamId: "1", metadata: { streak: 5 } })],
+      [],
+      context({
+        rules: new Map([["KillStreak5", { priority: "normal", template: "{{playerName}} hit a {{streak}} streak" }]]),
+      }),
+    );
+
+    expect(drafts).toMatchObject([{ message: "1 hit a 5 streak" }]);
   });
 
   it("produces nothing for a kind missing from the NOTIFICATION_RULES config", () => {

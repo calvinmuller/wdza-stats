@@ -1688,14 +1688,14 @@ describe("Notification engine (integration)", () => {
     const messages = rows.map((r) => r.message);
     expect(messages).toContain("🏁 Match started on Sandstorm!");
     expect(messages).toContain("🏆 Match ended - Lonestar wins!");
-    expect(messages).toContain("🔥 1 is on a 10 kill streak!");
-    expect(messages).toContain("⚡ 1 hit a 5 kill streak!");
-    expect(messages).toContain("🔫 1 is on a 3 kill streak!");
-    expect(messages).toContain("🏅 1 unlocked an achievement: Killing Spree!");
-    expect(messages).toContain("🏅 1 unlocked an achievement: Rampage!");
-    expect(messages).toContain("🏅 1 unlocked an achievement: Survivor!");
-    expect(messages).toContain("⬆️ 1 leveled up to level 2!");
-    expect(messages).toContain("⬆️ 1 leveled up to level 3!");
+    expect(messages).toContain("🔥 Alice is on a 10 kill streak!");
+    expect(messages).toContain("⚡ Alice hit a 5 kill streak!");
+    expect(messages).toContain("🔫 Alice is on a 3 kill streak!");
+    expect(messages).toContain("🏅 Alice unlocked an achievement: Killing Spree!");
+    expect(messages).toContain("🏅 Alice unlocked an achievement: Rampage!");
+    expect(messages).toContain("🏅 Alice unlocked an achievement: Survivor!");
+    expect(messages).toContain("⬆️ Alice leveled up to level 2!");
+    expect(messages).toContain("⬆️ Alice leveled up to level 3!");
     expect(messages.filter((m) => m.startsWith("✅"))).toHaveLength(3);
   });
 

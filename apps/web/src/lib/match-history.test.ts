@@ -9,8 +9,10 @@ import {
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
   getMatchDetail,
+  getMatchesPage,
   getPlayerMatchHistory,
-  getRecentMatches,
+  MATCHES_PAGE_SIZE,
+  parseMatchesPage,
 } from "./match-history";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
@@ -28,14 +30,14 @@ afterAll(async () => {
   await db.$client.end();
 });
 
-describe("getRecentMatches", () => {
-  it("returns an empty list when the Server isn't seeded", async () => {
-    const result = await getRecentMatches(db, BASE_URL);
+describe("getMatchesPage", () => {
+  it("returns an empty page when the Server isn't seeded", async () => {
+    const result = await getMatchesPage(db, BASE_URL);
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ page: 1, pageSize: MATCHES_PAGE_SIZE, totalCount: 0, totalPages: 0, rows: [] });
   });
 
-  it("returns an empty list when the Server has no closed Matches", async () => {
+  it("returns an empty page when the Server has no closed Matches", async () => {
     const [server] = await db
       .insert(servers)
       .values({ name: "WDZA Test", baseUrl: BASE_URL })
@@ -48,12 +50,12 @@ describe("getRecentMatches", () => {
       startedAt: new Date("2026-01-01T00:00:00.000Z"),
     });
 
-    const result = await getRecentMatches(db, BASE_URL);
+    const result = await getMatchesPage(db, BASE_URL);
 
-    expect(result).toEqual([]);
+    expect(result.rows).toEqual([]);
   });
 
-  it("lists closed Matches most recently ended first, with player counts", async () => {
+  it("lists closed Matches most recently ended first, with player counts, winner, and MVP", async () => {
     const [server] = await db
       .insert(servers)
       .values({ name: "WDZA Test", baseUrl: BASE_URL })
@@ -68,6 +70,9 @@ describe("getRecentMatches", () => {
           experiences: ["Frontline"],
           startedAt: new Date("2026-01-01T00:00:00.000Z"),
           endedAt: new Date("2026-01-01T00:30:00.000Z"),
+          winningFaction: "Lonestar",
+          mvpPlayerSteamId: "1",
+          mvpScore: 40,
         },
         {
           serverId: server.id,
@@ -78,6 +83,13 @@ describe("getRecentMatches", () => {
         },
       ])
       .returning();
+
+    await db.insert(playerCareerStats).values({
+      serverId: server.id,
+      steamId: "1",
+      displayName: "Alice",
+      matchesPlayed: 2,
+    });
 
     await db.insert(playerMatchStats).values([
       {
@@ -106,9 +118,12 @@ describe("getRecentMatches", () => {
       },
     ]);
 
-    const result = await getRecentMatches(db, BASE_URL);
+    const result = await getMatchesPage(db, BASE_URL);
 
-    expect(result).toEqual([
+    expect(result.page).toBe(1);
+    expect(result.totalCount).toBe(2);
+    expect(result.totalPages).toBe(1);
+    expect(result.rows).toEqual([
       {
         id: newer.id,
         map: "Sandstorm",
@@ -116,6 +131,9 @@ describe("getRecentMatches", () => {
         startedAt: "2026-01-02T00:00:00.000Z",
         endedAt: "2026-01-02T00:20:00.000Z",
         playerCount: 1,
+        winningFaction: null,
+        mvpPlayerSteamId: null,
+        mvpDisplayName: null,
       },
       {
         id: older.id,
@@ -124,6 +142,9 @@ describe("getRecentMatches", () => {
         startedAt: "2026-01-01T00:00:00.000Z",
         endedAt: "2026-01-01T00:30:00.000Z",
         playerCount: 2,
+        winningFaction: "Lonestar",
+        mvpPlayerSteamId: "1",
+        mvpDisplayName: "Alice",
       },
     ]);
   });
@@ -150,9 +171,82 @@ describe("getRecentMatches", () => {
       },
     ]);
 
-    const result = await getRecentMatches(db, BASE_URL);
+    const result = await getMatchesPage(db, BASE_URL);
 
-    expect(result.map((match) => match.map)).toEqual(["Foundry"]);
+    expect(result.rows.map((match) => match.map)).toEqual(["Foundry"]);
+  });
+
+  it("paginates correctly across pages", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    await db.insert(matches).values(
+      Array.from({ length: MATCHES_PAGE_SIZE + 5 }, (_, index) => ({
+        serverId: server.id,
+        map: `Map ${index}`,
+        experiences: ["Frontline"],
+        startedAt: new Date(Date.UTC(2026, 0, index + 1, 0, 0, 0)),
+        endedAt: new Date(Date.UTC(2026, 0, index + 1, 0, 30, 0)),
+      })),
+    );
+
+    const firstPage = await getMatchesPage(db, BASE_URL, 1);
+
+    expect(firstPage.totalCount).toBe(MATCHES_PAGE_SIZE + 5);
+    expect(firstPage.totalPages).toBe(2);
+    expect(firstPage.rows).toHaveLength(MATCHES_PAGE_SIZE);
+    // Most recently ended first, so page 1's last row is "Map 5", the 5th
+    // oldest of the 30 seeded Matches.
+    expect(firstPage.rows[0].map).toBe(`Map ${MATCHES_PAGE_SIZE + 4}`);
+    expect(firstPage.rows[MATCHES_PAGE_SIZE - 1].map).toBe("Map 5");
+
+    const secondPage = await getMatchesPage(db, BASE_URL, 2);
+
+    expect(secondPage.totalCount).toBe(MATCHES_PAGE_SIZE + 5);
+    expect(secondPage.totalPages).toBe(2);
+    expect(secondPage.rows).toHaveLength(5);
+    expect(secondPage.rows.map((match) => match.map)).toEqual([
+      "Map 4",
+      "Map 3",
+      "Map 2",
+      "Map 1",
+      "Map 0",
+    ]);
+  });
+
+  it("falls back to an empty page for a page number beyond the last", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    await db.insert(matches).values({
+      serverId: server.id,
+      map: "Foundry",
+      experiences: ["Frontline"],
+      startedAt: new Date("2026-01-01T00:00:00.000Z"),
+      endedAt: new Date("2026-01-01T00:30:00.000Z"),
+    });
+
+    const result = await getMatchesPage(db, BASE_URL, 5);
+
+    expect(result).toEqual({ page: 5, pageSize: MATCHES_PAGE_SIZE, totalCount: 1, totalPages: 1, rows: [] });
+  });
+});
+
+describe("parseMatchesPage", () => {
+  it("defaults to page 1 for missing, non-numeric, or non-positive input", () => {
+    expect(parseMatchesPage(null)).toBe(1);
+    expect(parseMatchesPage(undefined)).toBe(1);
+    expect(parseMatchesPage("bogus")).toBe(1);
+    expect(parseMatchesPage("0")).toBe(1);
+    expect(parseMatchesPage("-1")).toBe(1);
+  });
+
+  it("parses a valid page number", () => {
+    expect(parseMatchesPage("3")).toBe(3);
   });
 });
 
@@ -289,7 +383,7 @@ describe("getMatchDetail", () => {
     expect(result).toBeNull();
   });
 
-  it("returns the winning Faction, totals, and per-player stats, most kills first", async () => {
+  it("returns the winning Faction, MVP, totals, and per-player stats, most kills first", async () => {
     const [server] = await db
       .insert(servers)
       .values({ name: "WDZA Test", baseUrl: BASE_URL })
@@ -304,6 +398,8 @@ describe("getMatchDetail", () => {
         startedAt: new Date("2026-01-01T00:00:00.000Z"),
         endedAt: new Date("2026-01-01T00:30:00.000Z"),
         winningFaction: "Lonestar",
+        mvpPlayerSteamId: "1",
+        mvpScore: 40,
       })
       .returning();
 
@@ -356,6 +452,9 @@ describe("getMatchDetail", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       endedAt: "2026-01-01T00:30:00.000Z",
       winningFaction: "Lonestar",
+      mvpPlayerSteamId: "1",
+      mvpDisplayName: "Alice",
+      mvpScore: 40,
       totalKills: 8,
       totalDeaths: 6,
       totalCash: 150,
@@ -384,7 +483,7 @@ describe("getMatchDetail", () => {
     });
   });
 
-  it("falls back to the steamId when no displayName is known", async () => {
+  it("falls back to the steamId when no displayName is known, including for the MVP", async () => {
     const [server] = await db
       .insert(servers)
       .values({ name: "WDZA Test", baseUrl: BASE_URL })
@@ -398,6 +497,8 @@ describe("getMatchDetail", () => {
         experiences: ["Frontline"],
         startedAt: new Date("2026-01-01T00:00:00.000Z"),
         endedAt: new Date("2026-01-01T00:30:00.000Z"),
+        mvpPlayerSteamId: "99",
+        mvpScore: 10,
       })
       .returning();
 
@@ -414,5 +515,30 @@ describe("getMatchDetail", () => {
 
     expect(result?.players[0].displayName).toBe("99");
     expect(result?.winningFaction).toBeNull();
+    expect(result?.mvpDisplayName).toBe("99");
+  });
+
+  it("has no MVP when the Match closed without one", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    const [match] = await db
+      .insert(matches)
+      .values({
+        serverId: server.id,
+        map: "Foundry",
+        experiences: ["Frontline"],
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        endedAt: new Date("2026-01-01T00:30:00.000Z"),
+      })
+      .returning();
+
+    const result = await getMatchDetail(db, BASE_URL, match.id);
+
+    expect(result?.mvpPlayerSteamId).toBeNull();
+    expect(result?.mvpDisplayName).toBeNull();
+    expect(result?.mvpScore).toBeNull();
   });
 });

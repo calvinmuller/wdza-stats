@@ -4,10 +4,12 @@ import {
   playerMatchStats,
   type Database,
 } from "@wdza-stats/db";
-import { and, desc, eq, isNotNull, inArray } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, inArray } from "drizzle-orm";
 import { kdRatio } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
 import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
+
+export const MATCHES_PAGE_SIZE = 25;
 
 export interface MatchHistoryView {
   id: number;
@@ -16,6 +18,17 @@ export interface MatchHistoryView {
   startedAt: string;
   endedAt: string;
   playerCount: number;
+  winningFaction: string | null;
+  mvpPlayerSteamId: string | null;
+  mvpDisplayName: string | null;
+}
+
+export interface MatchesPageResult {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  rows: MatchHistoryView[];
 }
 
 export interface MatchPlayerStatView {
@@ -36,6 +49,9 @@ export interface MatchDetailView {
   startedAt: string;
   endedAt: string;
   winningFaction: string | null;
+  mvpPlayerSteamId: string | null;
+  mvpDisplayName: string | null;
+  mvpScore: number | null;
   totalKills: number;
   totalDeaths: number;
   totalCash: number;
@@ -56,31 +72,91 @@ export interface PlayerMatchHistoryView {
 }
 
 /**
- * Lists the given Server's closed Matches, most recently ended first.
- * Open Matches (endedAt still null) are excluded - a Match only belongs in
- * history once it's fully resolved. Returns an empty list when the Server
- * isn't seeded, or has no closed Matches yet.
+ * Batched displayName lookup for a list of steamIds on one Server -
+ * playerCareerStats is keyed by (serverId, steamId), not steamId alone, so
+ * this is scoped per-Server like getMatchDetail's own join. Omits any
+ * steamId with no PlayerCareerStat row on this Server, so callers fall
+ * back to the raw steamId the same way getMatchDetail does.
  */
-export async function getRecentMatches(
+async function getDisplayNamesBySteamId(
+  db: Database,
+  serverId: number,
+  steamIds: string[],
+): Promise<Map<string, string>> {
+  if (steamIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await db
+    .select({
+      steamId: playerCareerStats.steamId,
+      displayName: playerCareerStats.displayName,
+    })
+    .from(playerCareerStats)
+    .where(
+      and(
+        eq(playerCareerStats.serverId, serverId),
+        inArray(playerCareerStats.steamId, Array.from(new Set(steamIds))),
+      ),
+    );
+
+  return new Map(rows.map((row) => [row.steamId, row.displayName]));
+}
+
+function emptyMatchesPage(page: number): MatchesPageResult {
+  return { page, pageSize: MATCHES_PAGE_SIZE, totalCount: 0, totalPages: 0, rows: [] };
+}
+
+export function parseMatchesPage(value: string | null | undefined): number {
+  const page = Number.parseInt(value ?? "1", 10);
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
+/**
+ * Lists the given Server's closed Matches, most recently ended first, with
+ * map/date/winner/MVP/player count per Match. Open Matches (endedAt still
+ * null) are excluded - a Match only belongs in history once it's fully
+ * resolved. Pagination is computed here, server-side, mirroring
+ * rankings.ts's getRankings - the frontend only ever renders what this
+ * returns. Returns an empty page (rows: [], totalCount possibly > 0 for a
+ * page past the last one) when the Server isn't seeded, has no closed
+ * Matches yet, or the requested page is out of range.
+ */
+export async function getMatchesPage(
   db: Database,
   baseUrl: string,
-  limit = 25,
-): Promise<MatchHistoryView[]> {
+  page = 1,
+): Promise<MatchesPageResult> {
+  const safePage = Number.isInteger(page) && page > 0 ? page : 1;
   const server = await getServerByBaseUrl(db, baseUrl);
 
   if (!server) {
-    return [];
+    return emptyMatchesPage(safePage);
   }
+
+  const [{ value: totalCount }] = await db
+    .select({ value: count() })
+    .from(matches)
+    .where(and(eq(matches.serverId, server.id), isNotNull(matches.endedAt)));
+
+  if (totalCount === 0) {
+    return emptyMatchesPage(safePage);
+  }
+
+  const offset = (safePage - 1) * MATCHES_PAGE_SIZE;
 
   const matchRows = await db
     .select()
     .from(matches)
     .where(and(eq(matches.serverId, server.id), isNotNull(matches.endedAt)))
     .orderBy(desc(matches.endedAt))
-    .limit(limit);
+    .limit(MATCHES_PAGE_SIZE)
+    .offset(offset);
+
+  const totalPages = Math.ceil(totalCount / MATCHES_PAGE_SIZE);
 
   if (matchRows.length === 0) {
-    return [];
+    return { page: safePage, pageSize: MATCHES_PAGE_SIZE, totalCount, totalPages, rows: [] };
   }
 
   const statRows = await db
@@ -101,14 +177,26 @@ export async function getRecentMatches(
     );
   }
 
-  return matchRows.map((match) => ({
+  const mvpSteamIds = matchRows.flatMap((match) =>
+    match.mvpPlayerSteamId ? [match.mvpPlayerSteamId] : [],
+  );
+  const mvpDisplayNames = await getDisplayNamesBySteamId(db, server.id, mvpSteamIds);
+
+  const rows: MatchHistoryView[] = matchRows.map((match) => ({
     id: match.id,
     map: match.map,
     experiences: match.experiences,
     startedAt: match.startedAt.toISOString(),
     endedAt: match.endedAt!.toISOString(),
     playerCount: playerCountByMatchId.get(match.id) ?? 0,
+    winningFaction: match.winningFaction,
+    mvpPlayerSteamId: match.mvpPlayerSteamId,
+    mvpDisplayName: match.mvpPlayerSteamId
+      ? mvpDisplayNames.get(match.mvpPlayerSteamId) ?? match.mvpPlayerSteamId
+      : null,
   }));
+
+  return { page: safePage, pageSize: MATCHES_PAGE_SIZE, totalCount, totalPages, rows };
 }
 
 /**
@@ -169,9 +257,10 @@ export async function getPlayerMatchHistory(
 
 /**
  * Reads one closed Match's full detail on the given Server - the winning
- * Faction, server-wide totals, and every player's PlayerMatchStat, most
- * kills first. Returns null when the Server isn't seeded, the Match doesn't
- * belong to it, or the Match is still open.
+ * Faction, MVP, server-wide totals, and every player's PlayerMatchStat,
+ * most kills first (so callers get "top players by kills" for free).
+ * Returns null when the Server isn't seeded, the Match doesn't belong to
+ * it, or the Match is still open.
  */
 export async function getMatchDetail(
   db: Database,
@@ -233,6 +322,10 @@ export async function getMatchDetail(
     avatarUrl: avatarUrls.get(row.steamId) ?? null,
   }));
 
+  const mvpPlayer = match.mvpPlayerSteamId
+    ? players.find((player) => player.steamId === match.mvpPlayerSteamId)
+    : undefined;
+
   return {
     id: match.id,
     map: match.map,
@@ -240,6 +333,9 @@ export async function getMatchDetail(
     startedAt: match.startedAt.toISOString(),
     endedAt: match.endedAt!.toISOString(),
     winningFaction: match.winningFaction,
+    mvpPlayerSteamId: match.mvpPlayerSteamId,
+    mvpDisplayName: mvpPlayer?.displayName ?? match.mvpPlayerSteamId,
+    mvpScore: match.mvpScore,
     totalKills: players.reduce((sum, player) => sum + player.kills, 0),
     totalDeaths: players.reduce((sum, player) => sum + player.deaths, 0),
     totalCash: players.reduce((sum, player) => sum + player.cash, 0),

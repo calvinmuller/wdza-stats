@@ -32,6 +32,7 @@ export default async function MatchDetailPage({
 
   const summary = [
     { label: "Winning faction", value: match.winningFaction ?? "Unknown" },
+    { label: "MVP", value: match.mvpDisplayName ?? "Unknown" },
     { label: "Total kills", value: match.totalKills },
     { label: "Total deaths", value: match.totalDeaths },
     { label: "Total cash", value: match.totalCash },
@@ -54,7 +55,7 @@ export default async function MatchDetailPage({
         </p>
       </div>
 
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {summary.map((stat) => (
           <div
             key={stat.label}

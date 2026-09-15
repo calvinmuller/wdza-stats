@@ -40,6 +40,32 @@ const COLUMNS: SortableColumn<MatchHistoryView>[] = [
     ),
   },
   {
+    key: "winningFaction",
+    label: "Winner",
+    value: (match) => match.winningFaction ?? "",
+    render: (match) => (
+      <Link href={`/matches/${match.id}`} className="block">
+        {match.winningFaction ?? "—"}
+      </Link>
+    ),
+  },
+  {
+    key: "mvp",
+    label: "MVP",
+    value: (match) => match.mvpDisplayName ?? "",
+    render: (match) =>
+      match.mvpPlayerSteamId ? (
+        <Link
+          href={`/players/${match.mvpPlayerSteamId}`}
+          className="block hover:underline"
+        >
+          {match.mvpDisplayName}
+        </Link>
+      ) : (
+        <span className="block">—</span>
+      ),
+  },
+  {
     key: "duration",
     label: "Duration",
     value: (match) => new Date(match.endedAt).getTime() - new Date(match.startedAt).getTime(),
@@ -70,7 +96,7 @@ export function RecentMatchesTable({ matches }: { matches: MatchHistoryView[] })
       rows={matches}
       rowKey={(match) => match.id}
       defaultSort={{ column: "endedAt", direction: "desc" }}
-      minWidthClassName="min-w-[560px]"
+      minWidthClassName="min-w-[720px]"
     />
   );
 }

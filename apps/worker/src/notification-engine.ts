@@ -45,6 +45,13 @@ export interface NotificationContext {
   // Factions), present only when this batch actually closed one - for the
   // MatchEnded template.
   closedMatchWinner?: string | null;
+  // matchId -> the id of that Match's earliest-recorded PlayerKilled
+  // GameEvent, if any - mirrors xp-engine.ts's XpTransactionContext field of
+  // the same name/shape (both answer "is this PlayerKilled event the
+  // Match's first kill?"). A PlayerKilled event drafts a FirstBlood
+  // Notification only when its own id is the one this map names for its
+  // matchId.
+  firstKillEventIdByMatch: Map<number, number>;
 }
 
 export interface NotificationDraft {
@@ -123,6 +130,14 @@ function killStreakDraft(event: RecordedGameEvent, context: NotificationContext)
   return draftFor(context, kind, event.id, { steamId: event.steamId, playerName, streak: String(streak) });
 }
 
+function firstBloodDraft(event: RecordedGameEvent, context: NotificationContext): NotificationDraft | null {
+  if (!event.steamId || context.firstKillEventIdByMatch.get(event.matchId) !== event.id) {
+    return null;
+  }
+  const playerName = context.playerNameBySteamId.get(event.steamId) ?? event.steamId;
+  return draftFor(context, "FirstBlood", event.id, { steamId: event.steamId, playerName });
+}
+
 function levelUpDraft(event: RecordedGameEvent, context: NotificationContext): NotificationDraft | null {
   const level = event.metadata?.level;
   if (!event.steamId || typeof level !== "number") {
@@ -145,11 +160,13 @@ function isDraft(draft: NotificationDraft | null): draft is NotificationDraft {
  * the result (see applyNotificationThrottle) and persisting what survives.
  *
  * Every GameEventType not switched on below - PlayerJoined/Left,
- * PlayerKilled/Death, FactionScoreChanged, FactionTookLead,
+ * PlayerDeath, FactionScoreChanged, FactionTookLead,
  * PlayerKillStreakBroken - never produces a Notification at all, regardless
  * of NOTIFICATION_RULES' contents: this is what makes "one notification per
  * kill" structurally impossible rather than merely throttled away (see
- * ticket 10's routine-events requirement).
+ * ticket 10's routine-events requirement). PlayerKilled is the one
+ * exception, and only barely: firstBloodDraft still no-ops for every
+ * PlayerKilled event except the single one that is its Match's first kill.
  */
 export function computeNotificationDrafts(
   events: RecordedGameEvent[],
@@ -164,6 +181,8 @@ export function computeNotificationDrafts(
         return [matchEndedDraft(event, context)];
       case "AchievementUnlocked":
         return [achievementUnlockedDraft(event, context)];
+      case "PlayerKilled":
+        return [firstBloodDraft(event, context)];
       case "PlayerKillStreakStarted":
       case "PlayerKillStreakIncreased":
         return [killStreakDraft(event, context)];

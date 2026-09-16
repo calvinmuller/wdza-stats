@@ -1,10 +1,12 @@
 import {
+  gameEvents,
   matches,
   playerCareerStats,
   playerMatchStats,
   type Database,
+  type GameEventType,
 } from "@wdza-stats/db";
-import { and, count, desc, eq, isNotNull, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, inArray } from "drizzle-orm";
 import { kdRatio } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
 import { getAvatarUrlsBySteamId, getCountryCodesBySteamId } from "./steam-profile-lookup";
@@ -43,6 +45,13 @@ export interface MatchPlayerStatView {
   countryCode: string | null;
 }
 
+export interface MatchFirstBloodView {
+  killerSteamId: string;
+  killerDisplayName: string;
+  victimSteamId: string | null;
+  victimDisplayName: string | null;
+}
+
 export interface MatchDetailView {
   id: number;
   map: string;
@@ -57,6 +66,72 @@ export interface MatchDetailView {
   totalDeaths: number;
   totalCash: number;
   players: MatchPlayerStatView[];
+  firstBlood: MatchFirstBloodView | null;
+}
+
+// Kill/death GameEvents are inferred from ~15s RCON snapshot polls (see
+// game-events.ts's diffKillDeathGameEvents), not a real kill feed: every
+// event from the same poll shares one timestamp, and PlayerKilled never
+// carries a victim (targetSteamId is always null - there's no safe
+// killer/victim attribution within a poll window). So "first blood" here is
+// necessarily a best-effort read of that same data: the match's earliest
+// PlayerKilled event names a killer only when that poll's earliest kills all
+// belong to one player (otherwise we can't tell who was truly first), and
+// names a victim only when that same poll's earliest deaths all belong to
+// one player. Ambiguous cases return null/no victim rather than guessing.
+const FIRST_BLOOD_CANDIDATE_LIMIT = 20;
+
+async function getFirstBloodView(
+  db: Database,
+  matchId: number,
+  displayNameBySteamId: Map<string, string>,
+): Promise<MatchFirstBloodView | null> {
+  const [killRows, deathRows] = await Promise.all([
+    db
+      .select({ steamId: gameEvents.steamId, timestamp: gameEvents.timestamp })
+      .from(gameEvents)
+      .where(and(eq(gameEvents.matchId, matchId), eq(gameEvents.type, "PlayerKilled" satisfies GameEventType)))
+      .orderBy(asc(gameEvents.id))
+      .limit(FIRST_BLOOD_CANDIDATE_LIMIT),
+    db
+      .select({ steamId: gameEvents.steamId, timestamp: gameEvents.timestamp })
+      .from(gameEvents)
+      .where(and(eq(gameEvents.matchId, matchId), eq(gameEvents.type, "PlayerDeath" satisfies GameEventType)))
+      .orderBy(asc(gameEvents.id))
+      .limit(FIRST_BLOOD_CANDIDATE_LIMIT),
+  ]);
+
+  if (killRows.length === 0) {
+    return null;
+  }
+
+  const earliestKillTimestamp = killRows[0].timestamp.getTime();
+  const killersAtEarliest = new Set(
+    killRows
+      .filter((row) => row.timestamp.getTime() === earliestKillTimestamp)
+      .flatMap((row) => (row.steamId ? [row.steamId] : [])),
+  );
+
+  if (killersAtEarliest.size !== 1) {
+    return null;
+  }
+  const killerSteamId = [...killersAtEarliest][0];
+
+  const victimsAtEarliest = new Set(
+    deathRows
+      .filter((row) => row.timestamp.getTime() === earliestKillTimestamp)
+      .flatMap((row) => (row.steamId ? [row.steamId] : [])),
+  );
+  const victimSteamId = victimsAtEarliest.size === 1 ? [...victimsAtEarliest][0] : null;
+
+  return {
+    killerSteamId,
+    killerDisplayName: displayNameBySteamId.get(killerSteamId) ?? killerSteamId,
+    victimSteamId,
+    victimDisplayName: victimSteamId
+      ? displayNameBySteamId.get(victimSteamId) ?? victimSteamId
+      : null,
+  };
 }
 
 export interface PlayerMatchHistoryView {
@@ -331,6 +406,9 @@ export async function getMatchDetail(
     ? players.find((player) => player.steamId === match.mvpPlayerSteamId)
     : undefined;
 
+  const displayNameBySteamId = new Map(players.map((player) => [player.steamId, player.displayName]));
+  const firstBlood = await getFirstBloodView(db, matchId, displayNameBySteamId);
+
   return {
     id: match.id,
     map: match.map,
@@ -345,5 +423,6 @@ export async function getMatchDetail(
     totalDeaths: players.reduce((sum, player) => sum + player.deaths, 0),
     totalCash: players.reduce((sum, player) => sum + player.cash, 0),
     players,
+    firstBlood,
   };
 }

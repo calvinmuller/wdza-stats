@@ -26,6 +26,7 @@ const RULES: [NotificationKind, NotificationRuleConfig][] = [
   ["MatchStarted", { priority: "high", template: "Match started on {{map}}" }],
   ["MatchEnded", { priority: "high", template: "Match ended - {{winner}} wins" }],
   ["AchievementUnlocked", { priority: "high", template: "{{steamId}} unlocked {{achievementName}}" }],
+  ["FirstBlood", { priority: "high", template: "{{steamId}} drew first blood" }],
   ["KillStreak10", { priority: "high", template: "{{steamId}} hit a {{streak}} streak" }],
   ["ChallengeCompleted", { priority: "high", template: "{{steamId}} completed {{challengeType}}" }],
   ["KillStreak5", { priority: "normal", template: "{{steamId}} hit a {{streak}} streak" }],
@@ -40,6 +41,7 @@ function context(overrides: Partial<NotificationContext> = {}): NotificationCont
     rules: new Map(RULES),
     achievementNameById: new Map([["killing_spree", "Killing Spree"]]),
     playerNameBySteamId: new Map(),
+    firstKillEventIdByMatch: new Map(),
     ...overrides,
   };
 }
@@ -97,8 +99,18 @@ describe("computeNotificationDrafts", () => {
     expect(drafts).toMatchObject([{ priority: "high", message: "1 unlocked Killing Spree" }]);
   });
 
-  it("never produces a Notification for a routine PlayerKilled event", () => {
-    expect(computeNotificationDrafts([event({ id: 1, type: "PlayerKilled" })], [], context())).toEqual([]);
+  it("never produces a Notification for a PlayerKilled event that isn't its Match's first kill", () => {
+    expect(computeNotificationDrafts([event({ id: 2, type: "PlayerKilled" })], [], context())).toEqual([]);
+  });
+
+  it("produces a high-priority FirstBlood draft for the PlayerKilled event that is its Match's first kill", () => {
+    const drafts = computeNotificationDrafts(
+      [event({ id: 1, type: "PlayerKilled", steamId: "1", matchId: 1 })],
+      [],
+      context({ firstKillEventIdByMatch: new Map([[1, 1]]) }),
+    );
+
+    expect(drafts).toMatchObject([{ priority: "high", message: "1 drew first blood" }]);
   });
 
   it("never produces a Notification for PlayerJoined/PlayerLeft or FactionScoreChanged", () => {

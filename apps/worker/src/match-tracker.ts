@@ -926,9 +926,12 @@ async function applyLevelUps(
  * {{playerName}} template var - falls back to the raw steamId in
  * notification-engine.ts when a player has no career stats row yet), and -
  * when this poll opened and/or closed a Match - that Match's map/winning
- * Faction, for the MatchStarted/MatchEnded templates. Queried fresh every
- * call rather than cached, matching buildXpTransactionContext's own
- * precedent.
+ * Faction, for the MatchStarted/MatchEnded templates. firstKillEventIdByMatch
+ * (for the FirstBlood template) is passed in rather than queried here - it's
+ * the same map buildXpTransactionContext already computed this poll for
+ * first_blood XP, so this just reuses it instead of re-running the query.
+ * Everything else is queried fresh every call rather than cached, matching
+ * buildXpTransactionContext's own precedent.
  */
 async function buildNotificationContext(
   tx: Tx,
@@ -938,6 +941,7 @@ async function buildNotificationContext(
   challengeCompletionInfos: ChallengeCompletionNotificationInfo[],
   openedMatch: { map: string } | undefined,
   closedMatch: { winner: string | null } | undefined,
+  firstKillEventIdByMatch: Map<number, number>,
 ): Promise<NotificationContext> {
   const ruleRows = await tx.select().from(notificationRules);
   const rules = new Map<NotificationKind, NotificationRuleConfig>(
@@ -990,6 +994,7 @@ async function buildNotificationContext(
     playerNameBySteamId,
     openedMatchMap: openedMatch?.map,
     closedMatchWinner: closedMatch?.winner,
+    firstKillEventIdByMatch,
   };
 }
 
@@ -1164,6 +1169,7 @@ export async function ingestSnapshot(
   let recordedXpTransactions: XpTransactionDraft[] = [];
   let challengeCompletionResults: ChallengeCompletionResult[] = [];
   let recordedNotifications: NotificationDraft[] = [];
+  let firstKillEventIdByMatch: Map<number, number> = new Map();
 
   await db.transaction(async (tx) => {
     const bannedRows = await tx.select({ steamId: bannedPlayers.steamId }).from(bannedPlayers);
@@ -1317,6 +1323,7 @@ export async function ingestSnapshot(
 
     if (recordedEvents.length > 0) {
       const xpTransactionContext = await buildXpTransactionContext(tx, serverId, recordedEvents, closedMatch);
+      firstKillEventIdByMatch = xpTransactionContext.firstKillEventIdByMatch;
       const xpTransactionDrafts = computeXpTransactionDrafts(recordedEvents, xpTransactionContext);
       recordedXpTransactions = await applyXpTransactionDrafts(tx, xpTransactionDrafts);
 
@@ -1375,6 +1382,7 @@ export async function ingestSnapshot(
         challengeCompletionInfos,
         openedMatch,
         closedMatch,
+        firstKillEventIdByMatch,
       );
       const notificationDrafts = computeNotificationDrafts(recordedEvents, challengeCompletionInfos, notificationContext);
 

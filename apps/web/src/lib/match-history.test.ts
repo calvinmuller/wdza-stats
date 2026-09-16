@@ -1,5 +1,6 @@
 import {
   createDb,
+  gameEvents,
   matches,
   playerCareerStats,
   playerMatchStats,
@@ -20,6 +21,7 @@ const db: Database = createDb(process.env.DATABASE_URL!);
 const BASE_URL = "http://match-history.test:9006";
 
 afterEach(async () => {
+  await db.delete(gameEvents);
   await db.delete(playerMatchStats);
   await db.delete(playerCareerStats);
   await db.delete(matches);
@@ -468,6 +470,7 @@ describe("getMatchDetail", () => {
           kd: 2.5,
           cash: 100,
           avatarUrl: null,
+          countryCode: null,
         },
         {
           steamId: "2",
@@ -478,8 +481,10 @@ describe("getMatchDetail", () => {
           kd: 0.75,
           cash: 50,
           avatarUrl: null,
+          countryCode: null,
         },
       ],
+      firstBlood: null,
     });
   });
 
@@ -540,5 +545,183 @@ describe("getMatchDetail", () => {
     expect(result?.mvpPlayerSteamId).toBeNull();
     expect(result?.mvpDisplayName).toBeNull();
     expect(result?.mvpScore).toBeNull();
+  });
+
+  it("names the killer and victim of the Match's first kill when the earliest poll has exactly one of each", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    const [match] = await db
+      .insert(matches)
+      .values({
+        serverId: server.id,
+        map: "Foundry",
+        experiences: ["Frontline"],
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        endedAt: new Date("2026-01-01T00:30:00.000Z"),
+      })
+      .returning();
+
+    await db.insert(playerCareerStats).values([
+      { serverId: server.id, steamId: "1", displayName: "Alice", kills: 1, deaths: 0, cash: 0, matchesPlayed: 1 },
+      { serverId: server.id, steamId: "2", displayName: "Bob", kills: 0, deaths: 1, cash: 0, matchesPlayed: 1 },
+    ]);
+
+    await db.insert(playerMatchStats).values([
+      { matchId: match.id, steamId: "1", faction: "Lonestar", kills: 1, deaths: 0, cash: 0 },
+      { matchId: match.id, steamId: "2", faction: "Valkyra", kills: 0, deaths: 1, cash: 0 },
+    ]);
+
+    const firstPollAt = new Date("2026-01-01T00:00:15.000Z");
+    await db.insert(gameEvents).values([
+      {
+        serverId: server.id,
+        matchId: match.id,
+        type: "PlayerKilled",
+        timestamp: firstPollAt,
+        steamId: "1",
+        sourceSnapshotId: 1,
+        idempotencyKey: `${match.id}:PlayerKilled:1:1`,
+      },
+      {
+        serverId: server.id,
+        matchId: match.id,
+        type: "PlayerDeath",
+        timestamp: firstPollAt,
+        steamId: "2",
+        sourceSnapshotId: 1,
+        idempotencyKey: `${match.id}:PlayerDeath:2:1`,
+      },
+    ]);
+
+    const result = await getMatchDetail(db, BASE_URL, match.id);
+
+    expect(result?.firstBlood).toEqual({
+      killerSteamId: "1",
+      killerDisplayName: "Alice",
+      victimSteamId: "2",
+      victimDisplayName: "Bob",
+    });
+  });
+
+  it("names only the killer, with no victim, when the earliest poll has more than one death", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    const [match] = await db
+      .insert(matches)
+      .values({
+        serverId: server.id,
+        map: "Foundry",
+        experiences: ["Frontline"],
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        endedAt: new Date("2026-01-01T00:30:00.000Z"),
+      })
+      .returning();
+
+    await db.insert(playerCareerStats).values([
+      { serverId: server.id, steamId: "1", displayName: "Alice", kills: 2, deaths: 0, cash: 0, matchesPlayed: 1 },
+      { serverId: server.id, steamId: "2", displayName: "Bob", kills: 0, deaths: 1, cash: 0, matchesPlayed: 1 },
+      { serverId: server.id, steamId: "3", displayName: "Carol", kills: 0, deaths: 1, cash: 0, matchesPlayed: 1 },
+    ]);
+
+    await db.insert(playerMatchStats).values([
+      { matchId: match.id, steamId: "1", faction: "Lonestar", kills: 2, deaths: 0, cash: 0 },
+      { matchId: match.id, steamId: "2", faction: "Valkyra", kills: 0, deaths: 1, cash: 0 },
+      { matchId: match.id, steamId: "3", faction: "Valkyra", kills: 0, deaths: 1, cash: 0 },
+    ]);
+
+    const firstPollAt = new Date("2026-01-01T00:00:15.000Z");
+    await db.insert(gameEvents).values([
+      {
+        serverId: server.id,
+        matchId: match.id,
+        type: "PlayerKilled",
+        timestamp: firstPollAt,
+        steamId: "1",
+        sourceSnapshotId: 1,
+        idempotencyKey: `${match.id}:PlayerKilled:1:1`,
+      },
+      {
+        serverId: server.id,
+        matchId: match.id,
+        type: "PlayerDeath",
+        timestamp: firstPollAt,
+        steamId: "2",
+        sourceSnapshotId: 1,
+        idempotencyKey: `${match.id}:PlayerDeath:2:1`,
+      },
+      {
+        serverId: server.id,
+        matchId: match.id,
+        type: "PlayerDeath",
+        timestamp: firstPollAt,
+        steamId: "3",
+        sourceSnapshotId: 1,
+        idempotencyKey: `${match.id}:PlayerDeath:3:1`,
+      },
+    ]);
+
+    const result = await getMatchDetail(db, BASE_URL, match.id);
+
+    expect(result?.firstBlood).toEqual({
+      killerSteamId: "1",
+      killerDisplayName: "Alice",
+      victimSteamId: null,
+      victimDisplayName: null,
+    });
+  });
+
+  it("shows no first blood when the earliest poll's kills are split across more than one player", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    const [match] = await db
+      .insert(matches)
+      .values({
+        serverId: server.id,
+        map: "Foundry",
+        experiences: ["Frontline"],
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        endedAt: new Date("2026-01-01T00:30:00.000Z"),
+      })
+      .returning();
+
+    await db.insert(playerMatchStats).values([
+      { matchId: match.id, steamId: "1", faction: "Lonestar", kills: 1, deaths: 0, cash: 0 },
+      { matchId: match.id, steamId: "2", faction: "Valkyra", kills: 1, deaths: 0, cash: 0 },
+    ]);
+
+    const firstPollAt = new Date("2026-01-01T00:00:15.000Z");
+    await db.insert(gameEvents).values([
+      {
+        serverId: server.id,
+        matchId: match.id,
+        type: "PlayerKilled",
+        timestamp: firstPollAt,
+        steamId: "1",
+        sourceSnapshotId: 1,
+        idempotencyKey: `${match.id}:PlayerKilled:1:1`,
+      },
+      {
+        serverId: server.id,
+        matchId: match.id,
+        type: "PlayerKilled",
+        timestamp: firstPollAt,
+        steamId: "2",
+        sourceSnapshotId: 1,
+        idempotencyKey: `${match.id}:PlayerKilled:2:1`,
+      },
+    ]);
+
+    const result = await getMatchDetail(db, BASE_URL, match.id);
+
+    expect(result?.firstBlood).toBeNull();
   });
 });

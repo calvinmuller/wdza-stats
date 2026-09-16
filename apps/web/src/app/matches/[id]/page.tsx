@@ -71,6 +71,19 @@ export default async function MatchDetailPage({
         ))}
       </dl>
 
+      {match.firstBlood && (
+        <div className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-300">
+          <span className="text-brand-gold-500">First blood:</span>{" "}
+          <span className="text-zinc-100">{match.firstBlood.killerDisplayName}</span>
+          {match.firstBlood.victimDisplayName && (
+            <>
+              {" "}
+              on <span className="text-zinc-100">{match.firstBlood.victimDisplayName}</span>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-col gap-3">
         <h2 className="text-xl text-zinc-100">Player stats</h2>
         {match.players.length === 0 ? (

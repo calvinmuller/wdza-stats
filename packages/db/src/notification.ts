@@ -11,20 +11,24 @@ export type NotificationPriority = "low" | "normal" | "high";
 
 // The catalog of noteworthy occurrences the Notification Engine reacts to -
 // deliberately not the same union as GameEventType (game-event.ts). Most
-// GameEvent types (PlayerJoined/Left, PlayerKilled/Death,
-// FactionScoreChanged, PlayerKillStreakBroken) never produce a Notification
-// at all - see ticket 10's "routine events" requirement. A kill streak's own
-// GameEventType (PlayerKillStreakStarted/Increased) fans out into three
-// distinct kinds here rather than one: the milestone reached (3/5/10), not
-// the raw event type, is what determines a streak Notification's priority
-// and message - see apps/worker/src/notification-engine.ts. ChallengeCompleted
-// has no GameEventType at all (completing a Challenge produces a
+// GameEvent types (PlayerJoined/Left, PlayerDeath, FactionScoreChanged,
+// PlayerKillStreakBroken) never produce a Notification at all - see ticket
+// 10's "routine events" requirement. PlayerKilled is the one exception: it
+// only produces a Notification (FirstBlood) for the single PlayerKilled
+// event that is a Match's earliest kill - every other PlayerKilled event
+// stays routine. A kill streak's own GameEventType
+// (PlayerKillStreakStarted/Increased) fans out into three distinct kinds
+// here rather than one: the milestone reached (3/5/10), not the raw event
+// type, is what determines a streak Notification's priority and message -
+// see apps/worker/src/notification-engine.ts. ChallengeCompleted has no
+// GameEventType at all (completing a Challenge produces a
 // ChallengeCompletion row and an XpTransaction, never a GameEvent - see
 // challenge-engine.ts), so it's a Notification-only kind.
 export type NotificationKind =
   | "MatchStarted"
   | "MatchEnded"
   | "AchievementUnlocked"
+  | "FirstBlood"
   | "KillStreak3"
   | "KillStreak5"
   | "KillStreak10"

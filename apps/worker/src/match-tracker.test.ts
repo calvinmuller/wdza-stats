@@ -173,6 +173,7 @@ describe("computePlayerDeltas", () => {
         kills: 3,
         deaths: 1,
         cash: 250,
+        presentAtStart: true,
       },
     ]);
   });
@@ -206,6 +207,17 @@ describe("computePlayerDeltas", () => {
       deaths: 0,
       cash: 0,
     });
+  });
+
+  it("marks presentAtStart true only for a player already in the Match's first Snapshot", () => {
+    const snapshots = [
+      snapshot({ players: [player({ steamId: "1" })] }),
+      snapshot({ players: [player({ steamId: "1" }), player({ steamId: "2" })] }),
+    ];
+
+    const deltas = computePlayerDeltas(snapshots);
+    expect(deltas.find((d) => d.steamId === "1")).toMatchObject({ presentAtStart: true });
+    expect(deltas.find((d) => d.steamId === "2")).toMatchObject({ presentAtStart: false });
   });
 
   it("returns an empty array for a Match window with no player observations", () => {
@@ -363,6 +375,7 @@ describe("Match-boundary detection and persistence (integration)", () => {
         kills: 2,
         deaths: 1,
         cash: 200,
+        presentAtStart: true,
       },
     ]);
   });
@@ -438,7 +451,7 @@ describe("Match-boundary detection and persistence (integration)", () => {
       .from(playerMatchStats)
       .where(eq(playerMatchStats.matchId, closed.id));
     expect(stats).toEqual([
-      { matchId: closed.id, steamId: "1", faction: "Lonestar", kills: 3, deaths: 1, cash: 500 },
+      { matchId: closed.id, steamId: "1", faction: "Lonestar", kills: 3, deaths: 1, cash: 500, presentAtStart: true },
     ]);
 
     const career = await db
@@ -682,7 +695,7 @@ describe("Match-boundary detection and persistence (integration)", () => {
       .from(playerMatchStats)
       .where(eq(playerMatchStats.matchId, closed.id));
     expect(stats).toEqual([
-      { matchId: closed.id, steamId: "1", faction: "Lonestar", kills: 0, deaths: 0, cash: 0 },
+      { matchId: closed.id, steamId: "1", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, presentAtStart: true },
     ]);
   });
 });
@@ -1357,7 +1370,18 @@ describe("Achievement engine (integration)", () => {
   }
 
   afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
     await db.delete(playerAchievements);
+    await db.delete(xpTransactions);
+    await db.delete(notifications);
+    await db.delete(gameEvents);
+    await db.delete(challengeInstances);
+    await db.delete(playerMatchStats);
+    await db.delete(playerCareerStats);
+    await db.delete(matchSnapshots);
+    await db.delete(matches);
+    await db.delete(latestSnapshots);
     await db.delete(servers);
   });
 
@@ -1410,6 +1434,43 @@ describe("Achievement engine (integration)", () => {
 
     const rows = await unlocksFor(server.id, "1");
     expect(rows).toHaveLength(1);
+  });
+
+  it("unlocks Survivor for a player present since the Match's start, but not for one who only joined right before it ended", async () => {
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      {
+        // Alice is here from the Match's first Snapshot.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // Bob joins moments before the Match ends - he never had a chance
+        // to die, but he also never had a chance to survive anything.
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+          { steamId: "2", name: "Bob", faction: "Valkyra", kills: 0, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+      {
+        // map change closes the Match.
+        status: statusFixture({ map: "Deadcity" }),
+        players: playersFixture([]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const aliceUnlocks = await unlocksFor(server.id, "1");
+    const bobUnlocks = await unlocksFor(server.id, "2");
+
+    expect(aliceUnlocks.map((row) => row.achievementId)).toContain("survivor");
+    expect(bobUnlocks.map((row) => row.achievementId)).not.toContain("survivor");
   });
 });
 

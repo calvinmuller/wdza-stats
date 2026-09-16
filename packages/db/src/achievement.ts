@@ -9,7 +9,9 @@
 // - "match_kills": a player's PlayerKilled GameEvents within one Match.
 // - "matches_played"/"matches_won": playerCareerStats' own running totals, as
 //   of the Match this batch just closed.
-// - "survivor": a closed Match's per-participant death count (threshold 0).
+// - "survivor": a closed Match's per-participant death count (threshold 0),
+//   only for a participant present since the Match's own first Snapshot -
+//   excludes someone who joined moments before it ended.
 export type AchievementTrigger =
   | "first_kill"
   | "kill_streak"

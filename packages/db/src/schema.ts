@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -85,6 +86,13 @@ export const playerMatchStats = pgTable(
     kills: integer("kills").notNull(),
     deaths: integer("deaths").notNull(),
     cash: integer("cash").notNull(),
+    // Whether this player was already on the server for the Match's very
+    // first Snapshot, rather than joining partway through - see
+    // computePlayerDeltas' presentAtStart doc comment in match-tracker.ts.
+    // Used to keep the "survivor" Achievement from unlocking for someone who
+    // only joined near the end of the Match with a trivial 0/0 kills/deaths
+    // delta.
+    presentAtStart: boolean("present_at_start").notNull().default(true),
   },
   (table) => [primaryKey({ columns: [table.matchId, table.steamId] })],
 );

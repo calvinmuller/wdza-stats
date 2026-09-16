@@ -113,6 +113,14 @@ export interface PlayerDelta {
   kills: number;
   deaths: number;
   cash: number;
+  // Whether this player was already present in the Match's very first
+  // Snapshot - i.e. they were there from (approximately) kickoff rather than
+  // joining partway through. A late joiner naturally shows a 0/0 kills/deaths
+  // delta (first-seen == last-seen), which is indistinguishable from having
+  // survived the whole Match on stats alone - see the "survivor" Achievement
+  // trigger in achievement-engine.ts, which uses this flag to tell the two
+  // apart.
+  presentAtStart: boolean;
 }
 
 /**
@@ -124,6 +132,7 @@ export interface PlayerDelta {
 export function computePlayerDeltas(snapshots: Snapshot[]): PlayerDelta[] {
   const firstSeen = new Map<string, SnapshotPlayer>();
   const lastSeen = new Map<string, SnapshotPlayer>();
+  const startSteamIds = new Set(snapshots[0]?.players.map((player) => player.steamId) ?? []);
 
   for (const snapshot of snapshots) {
     for (const player of snapshot.players) {
@@ -144,6 +153,7 @@ export function computePlayerDeltas(snapshots: Snapshot[]): PlayerDelta[] {
       kills: last.kills - first.kills,
       deaths: last.deaths - first.deaths,
       cash: last.cash - first.cash,
+      presentAtStart: startSteamIds.has(steamId),
     };
   });
 }
@@ -290,6 +300,7 @@ export async function closeMatch(
       kills: delta.kills,
       deaths: delta.deaths,
       cash: delta.cash,
+      presentAtStart: delta.presentAtStart,
     });
 
     await tx
@@ -776,7 +787,11 @@ async function buildAchievementContext(
   const hasMatchEnded = recordedEvents.some((event) => event.type === "MatchEnded");
   if (hasMatchEnded && closedMatch) {
     const matchStatRows = await tx
-      .select({ steamId: playerMatchStats.steamId, deaths: playerMatchStats.deaths })
+      .select({
+        steamId: playerMatchStats.steamId,
+        deaths: playerMatchStats.deaths,
+        presentAtStart: playerMatchStats.presentAtStart,
+      })
       .from(playerMatchStats)
       .where(eq(playerMatchStats.matchId, closedMatch.id));
 
@@ -801,6 +816,7 @@ async function buildAchievementContext(
       return {
         steamId: stat.steamId,
         deathsInMatch: stat.deaths,
+        presentAtStart: stat.presentAtStart,
         matchesPlayed: career?.matchesPlayed ?? 0,
         matchesWon: career?.matchesWon ?? 0,
       };

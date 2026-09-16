@@ -1,0 +1,1 @@
+ALTER TABLE "player_match_stats" ADD COLUMN "present_at_start" boolean DEFAULT true NOT NULL;

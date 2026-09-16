@@ -16,13 +16,19 @@ export interface AchievementUnlockDraft {
   eventId: number;
 }
 
-/** One closed Match's per-participant state the "matches_played"/"matches_won"/"survivor" triggers need - gathered by the caller from playerCareerStats (post-increment) and playerMatchStats. */
+/** One closed Match's per-participant state the "matches_played"/"matches_won"/"survivor" triggers need - gathered by the caller from playerCareerStats (post-increment) and playerMatchStats. "survivor" also requires presentAtStart, so a late joiner's trivial 0/0 kills/deaths delta doesn't unlock it. */
 export interface MatchCompletionAchievementInfo {
   participants: {
     steamId: string;
     matchesPlayed: number;
     matchesWon: number;
     deathsInMatch: number;
+    // Whether this participant was already present for the Match's very
+    // first Snapshot, rather than joining partway through - see
+    // computePlayerDeltas' presentAtStart doc comment in match-tracker.ts.
+    // "survivor" requires this so a player who joins moments before
+    // MatchEnded (a trivial 0/0 kills/deaths delta) doesn't unlock it.
+    presentAtStart: boolean;
   }[];
 }
 
@@ -117,7 +123,7 @@ function matchCompletionDrafts(event: RecordedGameEvent, context: AchievementCon
       }
     }
     for (const definition of definitionsFor("survivor", context)) {
-      if (participant.deathsInMatch === definition.threshold) {
+      if (participant.presentAtStart && participant.deathsInMatch === definition.threshold) {
         drafts.push(unlockDraft(context, participant.steamId, definition, event.id));
       }
     }

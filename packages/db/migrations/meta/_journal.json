@@ -141,6 +141,13 @@
       "when": 1789548485852,
       "tag": "0019_seed_first_blood_notification_rule",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789552554403,
+      "tag": "0020_flashy_timeslip",
+      "breakpoints": true
     }
   ]
 }

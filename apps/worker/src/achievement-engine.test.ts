@@ -135,7 +135,7 @@ describe("computeAchievementUnlockDrafts", () => {
         [event({ id: 11, type: "MatchEnded", steamId: null, matchId: 1 })],
         context({
           matchCompletions: new Map([
-            [1, { participants: [{ steamId: "1", matchesPlayed: 100, matchesWon: 0, deathsInMatch: 1 }] }],
+            [1, { participants: [{ steamId: "1", matchesPlayed: 100, matchesWon: 0, deathsInMatch: 1, presentAtStart: true }] }],
           ]),
         }),
       );
@@ -148,7 +148,7 @@ describe("computeAchievementUnlockDrafts", () => {
         [event({ id: 12, type: "MatchEnded", steamId: null, matchId: 1 })],
         context({
           matchCompletions: new Map([
-            [1, { participants: [{ steamId: "1", matchesPlayed: 30, matchesWon: 25, deathsInMatch: 1 }] }],
+            [1, { participants: [{ steamId: "1", matchesPlayed: 30, matchesWon: 25, deathsInMatch: 1, presentAtStart: true }] }],
           ]),
         }),
       );
@@ -165,8 +165,8 @@ describe("computeAchievementUnlockDrafts", () => {
               1,
               {
                 participants: [
-                  { steamId: "1", matchesPlayed: 1, matchesWon: 0, deathsInMatch: 0 },
-                  { steamId: "2", matchesPlayed: 1, matchesWon: 0, deathsInMatch: 2 },
+                  { steamId: "1", matchesPlayed: 1, matchesWon: 0, deathsInMatch: 0, presentAtStart: true },
+                  { steamId: "2", matchesPlayed: 1, matchesWon: 0, deathsInMatch: 2, presentAtStart: true },
                 ],
               },
             ],
@@ -175,6 +175,26 @@ describe("computeAchievementUnlockDrafts", () => {
       );
 
       expect(drafts).toEqual([{ serverId: 1, steamId: "1", achievementId: "survivor", eventId: 13 }]);
+    });
+
+    it("does not unlock Survivor for a participant who joined after the Match's first Snapshot, even with zero deaths", () => {
+      const drafts = computeAchievementUnlockDrafts(
+        [event({ id: 14, type: "MatchEnded", steamId: null, matchId: 1 })],
+        context({
+          matchCompletions: new Map([
+            [
+              1,
+              {
+                participants: [
+                  { steamId: "1", matchesPlayed: 1, matchesWon: 0, deathsInMatch: 0, presentAtStart: false },
+                ],
+              },
+            ],
+          ]),
+        }),
+      );
+
+      expect(drafts).toEqual([]);
     });
 
     it("awards nothing for a MatchEnded event with no matching completion context", () => {

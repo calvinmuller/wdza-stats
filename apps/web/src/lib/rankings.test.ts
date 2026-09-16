@@ -58,9 +58,9 @@ describe("getRankings", () => {
 
     const byXp = await getRankings(db, BASE_URL, "xp", 1);
     expect(byXp.rows).toEqual([
-      { rank: 1, steamId: "2", displayName: "Bob", avatarUrl: null, value: 2000 },
-      { rank: 2, steamId: "1", displayName: "Alice", avatarUrl: null, value: 500 },
-      { rank: 3, steamId: "3", displayName: "Carol", avatarUrl: null, value: 100 },
+      { rank: 1, steamId: "2", displayName: "Bob", avatarUrl: null, countryCode: null, value: 2000 },
+      { rank: 2, steamId: "1", displayName: "Alice", avatarUrl: null, countryCode: null, value: 500 },
+      { rank: 3, steamId: "3", displayName: "Carol", avatarUrl: null, countryCode: null, value: 100 },
     ]);
     expect(byXp.totalCount).toBe(3);
     expect(byXp.totalPages).toBe(1);
@@ -157,5 +157,33 @@ describe("getRankings", () => {
     const [row] = (await getRankings(db, BASE_URL, "xp", 1)).rows;
 
     expect(row.avatarUrl).toBe("https://example.com/avatar.jpg");
+  });
+
+  it("includes each player's cached country code", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    await db.insert(playerCareerStats).values({
+      serverId: server.id,
+      steamId: "1",
+      displayName: "Alice",
+      xp: 10,
+    });
+    await db.insert(steamProfiles).values({
+      steamId: "1",
+      personaName: null,
+      avatarUrl: null,
+      countryCode: "ZA",
+      achievements: [],
+      playtimeMinutes: null,
+      status: "ok",
+      fetchedAt: new Date(),
+    });
+
+    const [row] = (await getRankings(db, BASE_URL, "xp", 1)).rows;
+
+    expect(row.countryCode).toBe("ZA");
   });
 });

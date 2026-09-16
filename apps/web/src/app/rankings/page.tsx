@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CountryFlag } from "@/components/country-flag";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
@@ -85,6 +86,7 @@ export default async function RankingsPage({
                       >
                         <PlayerAvatar avatarUrl={row.avatarUrl} size={24} />
                         {row.displayName}
+                        <CountryFlag countryCode={row.countryCode} />
                       </Link>
                     </td>
                     <td className="px-4 py-2.5 text-zinc-300">{row.value}</td>

@@ -3,7 +3,7 @@ import { and, asc, count, desc, eq, notInArray } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getBannedSteamIds } from "./banned-players";
 import { getServerByBaseUrl } from "./server-lookup";
-import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
+import { getAvatarUrlsBySteamId, getCountryCodesBySteamId } from "./steam-profile-lookup";
 
 export type RankingMetric = "xp" | "kills" | "wins" | "streaks";
 
@@ -16,6 +16,7 @@ export type RankingRow = {
   steamId: string;
   displayName: string;
   avatarUrl: string | null;
+  countryCode: string | null;
   value: number;
 };
 
@@ -106,16 +107,23 @@ export async function getRankings(
     .limit(RANKINGS_PAGE_SIZE)
     .offset(offset);
 
-  const avatarUrls = await getAvatarUrlsBySteamId(
-    db,
-    statRows.map((row) => row.steamId),
-  );
+  const [avatarUrls, countryCodes] = await Promise.all([
+    getAvatarUrlsBySteamId(
+      db,
+      statRows.map((row) => row.steamId),
+    ),
+    getCountryCodesBySteamId(
+      db,
+      statRows.map((row) => row.steamId),
+    ),
+  ]);
 
   const rows: RankingRow[] = statRows.map((row, index) => ({
     rank: offset + index + 1,
     steamId: row.steamId,
     displayName: row.displayName,
     avatarUrl: avatarUrls.get(row.steamId) ?? null,
+    countryCode: countryCodes.get(row.steamId) ?? null,
     value: Number(row.value),
   }));
 

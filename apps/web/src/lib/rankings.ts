@@ -1,9 +1,8 @@
-import { playerCareerStats, type Database } from "@wdza-stats/db";
+import { playerCareerStats, steamProfiles, type Database } from "@wdza-stats/db";
 import { and, asc, count, desc, eq, notInArray } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getBannedSteamIds } from "./banned-players";
 import { getServerByBaseUrl } from "./server-lookup";
-import { getAvatarUrlsBySteamId, getCountryCodesBySteamId } from "./steam-profile-lookup";
 
 export type RankingMetric = "xp" | "kills" | "wins" | "streaks";
 
@@ -97,9 +96,15 @@ export async function getRankings(
     .select({
       steamId: playerCareerStats.steamId,
       displayName: playerCareerStats.displayName,
+      avatarUrl: steamProfiles.avatarUrl,
+      countryCode: steamProfiles.countryCode,
       value: column,
     })
     .from(playerCareerStats)
+    // A player without a cached SteamProfile still needs to appear in the
+    // rankings - a leftJoin keeps them in with null avatar/country rather
+    // than dropping the row.
+    .leftJoin(steamProfiles, eq(steamProfiles.steamId, playerCareerStats.steamId))
     .where(and(eq(playerCareerStats.serverId, server.id), notBanned))
     // steamId as a tiebreaker keeps ranking (and pagination) stable when
     // multiple players share the same metric value.
@@ -107,23 +112,12 @@ export async function getRankings(
     .limit(RANKINGS_PAGE_SIZE)
     .offset(offset);
 
-  const [avatarUrls, countryCodes] = await Promise.all([
-    getAvatarUrlsBySteamId(
-      db,
-      statRows.map((row) => row.steamId),
-    ),
-    getCountryCodesBySteamId(
-      db,
-      statRows.map((row) => row.steamId),
-    ),
-  ]);
-
   const rows: RankingRow[] = statRows.map((row, index) => ({
     rank: offset + index + 1,
     steamId: row.steamId,
     displayName: row.displayName,
-    avatarUrl: avatarUrls.get(row.steamId) ?? null,
-    countryCode: countryCodes.get(row.steamId) ?? null,
+    avatarUrl: row.avatarUrl,
+    countryCode: row.countryCode,
     value: Number(row.value),
   }));
 

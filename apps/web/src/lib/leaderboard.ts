@@ -1,17 +1,9 @@
-import { playerCareerStats, type Database } from "@wdza-stats/db";
+import { playerCareerStats, steamProfiles, type Database } from "@wdza-stats/db";
 import { and, eq, notInArray } from "drizzle-orm";
 import { getBannedSteamIds } from "./banned-players";
 import { getOnlineFactionColors } from "./live-snapshot";
-import {
-  toPlayerCareerView,
-  type PlayerCareerView,
-} from "./player-career-stats";
+import { kdRatio, type PlayerCareerView } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
-import {
-  getAvatarUrlsBySteamId,
-  getCountryCodesBySteamId,
-  getPlaytimeMinutesBySteamId,
-} from "./steam-profile-lookup";
 
 export type LeaderboardSort = "kills" | "deaths" | "kd" | "cash" | "playtime";
 
@@ -75,27 +67,47 @@ export async function getLeaderboard(
 
   const bannedSteamIds = await getBannedSteamIds(db);
 
-  const statRows = await db
-    .select()
-    .from(playerCareerStats)
-    .where(
-      and(
-        eq(playerCareerStats.serverId, server.id),
-        notInArray(playerCareerStats.steamId, bannedSteamIds),
+  const [statRows, factionColors] = await Promise.all([
+    db
+      .select({
+        steamId: playerCareerStats.steamId,
+        displayName: playerCareerStats.displayName,
+        kills: playerCareerStats.kills,
+        deaths: playerCareerStats.deaths,
+        cash: playerCareerStats.cash,
+        matchesPlayed: playerCareerStats.matchesPlayed,
+        avatarUrl: steamProfiles.avatarUrl,
+        countryCode: steamProfiles.countryCode,
+        playtimeMinutes: steamProfiles.playtimeMinutes,
+      })
+      .from(playerCareerStats)
+      // A player without a cached SteamProfile still needs to appear on the
+      // leaderboard - a leftJoin keeps them in with null avatar/country/
+      // playtime rather than dropping the row.
+      .leftJoin(steamProfiles, eq(steamProfiles.steamId, playerCareerStats.steamId))
+      .where(
+        and(
+          eq(playerCareerStats.serverId, server.id),
+          notInArray(playerCareerStats.steamId, bannedSteamIds),
+        ),
       ),
-    );
-
-  const [factionColors, avatarUrls, playtimeMinutes, countryCodes] = await Promise.all([
     getOnlineFactionColors(db, server.id),
-    getAvatarUrlsBySteamId(db, statRows.map((row) => row.steamId)),
-    getPlaytimeMinutesBySteamId(db, statRows.map((row) => row.steamId)),
-    getCountryCodesBySteamId(db, statRows.map((row) => row.steamId)),
   ]);
 
   const rows = withAdjustedKd(
-    statRows.map((row) =>
-      toPlayerCareerView(row, factionColors, avatarUrls, playtimeMinutes, countryCodes),
-    ),
+    statRows.map((row) => ({
+      steamId: row.steamId,
+      displayName: row.displayName,
+      kills: row.kills,
+      deaths: row.deaths,
+      kd: kdRatio(row.kills, row.deaths),
+      cash: row.cash,
+      matchesPlayed: row.matchesPlayed,
+      factionColor: factionColors.get(row.steamId) ?? null,
+      avatarUrl: row.avatarUrl,
+      countryCode: row.countryCode,
+      playtimeMinutes: row.playtimeMinutes,
+    })),
   );
 
   const value = SORT_VALUE[sort];

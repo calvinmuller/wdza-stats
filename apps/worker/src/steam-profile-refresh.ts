@@ -47,6 +47,7 @@ async function upsertSteamProfile(
     steamId: string;
     personaName: string | null;
     avatarUrl: string | null;
+    countryCode: string | null;
     achievements: SteamAchievementUnlock[];
     playtimeMinutes: number | null;
     status: SteamProfileStatus;
@@ -61,6 +62,7 @@ async function upsertSteamProfile(
       set: {
         personaName: row.personaName,
         avatarUrl: row.avatarUrl,
+        countryCode: row.countryCode,
         achievements: row.achievements,
         playtimeMinutes: row.playtimeMinutes,
         status: row.status,
@@ -143,13 +145,20 @@ export async function refreshUnseenSteamProfiles(
     console.error("[worker] failed to cache Steam achievement schema:", error);
   }
 
-  let summaries = new Map<string, { personaName: string; avatarUrl: string }>();
+  let summaries = new Map<
+    string,
+    { personaName: string; avatarUrl: string; countryCode: string | null }
+  >();
   try {
     const fetched = await steamClient.fetchPlayerSummaries(targets);
     summaries = new Map(
       fetched.map((summary) => [
         summary.steamId,
-        { personaName: summary.personaName, avatarUrl: summary.avatarUrl },
+        {
+          personaName: summary.personaName,
+          avatarUrl: summary.avatarUrl,
+          countryCode: summary.countryCode,
+        },
       ]),
     );
   } catch (error) {
@@ -166,6 +175,7 @@ export async function refreshUnseenSteamProfiles(
         steamId,
         personaName: null,
         avatarUrl: null,
+        countryCode: null,
         achievements: [],
         playtimeMinutes: null,
         status: "error",
@@ -207,6 +217,7 @@ export async function refreshUnseenSteamProfiles(
       steamId,
       personaName: summary.personaName,
       avatarUrl: summary.avatarUrl,
+      countryCode: summary.countryCode,
       achievements,
       playtimeMinutes,
       status,

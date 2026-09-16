@@ -7,7 +7,7 @@ import {
   type PlayerCareerView,
 } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
-import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
+import { getAvatarUrlsBySteamId, getCountryCodesBySteamId } from "./steam-profile-lookup";
 
 export type { PlayerCareerView } from "./player-career-stats";
 
@@ -40,13 +40,14 @@ export async function searchPlayersByName(
       ),
     );
 
-  const [factionColors, avatarUrls] = await Promise.all([
+  const [factionColors, avatarUrls, countryCodes] = await Promise.all([
     getOnlineFactionColors(db, server.id),
     getAvatarUrlsBySteamId(db, rows.map((row) => row.steamId)),
+    getCountryCodesBySteamId(db, rows.map((row) => row.steamId)),
   ]);
 
   return rows
-    .map((row) => toPlayerCareerView(row, factionColors, avatarUrls))
+    .map((row) => toPlayerCareerView(row, factionColors, avatarUrls, undefined, countryCodes))
     .sort((a, b) => b.kills - a.kills);
 }
 
@@ -86,9 +87,10 @@ export async function getPlayerCareerStat(
     return null;
   }
 
-  const [factionColors, avatarUrls] = await Promise.all([
+  const [factionColors, avatarUrls, countryCodes] = await Promise.all([
     getOnlineFactionColors(db, server.id),
     getAvatarUrlsBySteamId(db, [steamId]),
+    getCountryCodesBySteamId(db, [steamId]),
   ]);
-  return toPlayerCareerView(row, factionColors, avatarUrls);
+  return toPlayerCareerView(row, factionColors, avatarUrls, undefined, countryCodes);
 }

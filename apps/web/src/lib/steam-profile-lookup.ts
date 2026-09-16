@@ -18,6 +18,7 @@ export interface SteamProfileView {
   steamId: string;
   personaName: string | null;
   avatarUrl: string | null;
+  countryCode: string | null;
   achievements: SteamAchievementView[];
   playtimeMinutes: number | null;
 }
@@ -53,6 +54,7 @@ export async function getSteamProfile(
       steamId: row.steamId,
       personaName: row.personaName,
       avatarUrl: row.avatarUrl,
+      countryCode: row.countryCode,
       achievements: [],
       playtimeMinutes: row.playtimeMinutes,
     };
@@ -86,6 +88,7 @@ export async function getSteamProfile(
     steamId: row.steamId,
     personaName: row.personaName,
     avatarUrl: row.avatarUrl,
+    countryCode: row.countryCode,
     achievements,
     playtimeMinutes: row.playtimeMinutes,
   };
@@ -118,6 +121,34 @@ export async function getAvatarUrlsBySteamId(
     }
   }
   return avatarUrls;
+}
+
+/**
+ * Batched country-code lookup for a list of players, mirroring
+ * getAvatarUrlsBySteamId above. Omits any steamId with no cached
+ * SteamProfile or a null countryCode (private profile, or no location set),
+ * so callers render no flag for a missing map entry.
+ */
+export async function getCountryCodesBySteamId(
+  db: Database,
+  steamIds: string[],
+): Promise<Map<string, string>> {
+  if (steamIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await db
+    .select({ steamId: steamProfiles.steamId, countryCode: steamProfiles.countryCode })
+    .from(steamProfiles)
+    .where(inArray(steamProfiles.steamId, Array.from(new Set(steamIds))));
+
+  const countryCodes = new Map<string, string>();
+  for (const row of rows) {
+    if (row.countryCode) {
+      countryCodes.set(row.steamId, row.countryCode);
+    }
+  }
+  return countryCodes;
 }
 
 /**

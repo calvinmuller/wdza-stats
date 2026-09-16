@@ -7,7 +7,11 @@ import {
   type PlayerCareerView,
 } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
-import { getAvatarUrlsBySteamId, getPlaytimeMinutesBySteamId } from "./steam-profile-lookup";
+import {
+  getAvatarUrlsBySteamId,
+  getCountryCodesBySteamId,
+  getPlaytimeMinutesBySteamId,
+} from "./steam-profile-lookup";
 
 export type LeaderboardSort = "kills" | "deaths" | "kd" | "cash" | "playtime";
 
@@ -81,15 +85,16 @@ export async function getLeaderboard(
       ),
     );
 
-  const [factionColors, avatarUrls, playtimeMinutes] = await Promise.all([
+  const [factionColors, avatarUrls, playtimeMinutes, countryCodes] = await Promise.all([
     getOnlineFactionColors(db, server.id),
     getAvatarUrlsBySteamId(db, statRows.map((row) => row.steamId)),
     getPlaytimeMinutesBySteamId(db, statRows.map((row) => row.steamId)),
+    getCountryCodesBySteamId(db, statRows.map((row) => row.steamId)),
   ]);
 
   const rows = withAdjustedKd(
     statRows.map((row) =>
-      toPlayerCareerView(row, factionColors, avatarUrls, playtimeMinutes),
+      toPlayerCareerView(row, factionColors, avatarUrls, playtimeMinutes, countryCodes),
     ),
   );
 

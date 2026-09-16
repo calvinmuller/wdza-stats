@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CountryFlag } from "@/components/country-flag";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
 import type { MatchPlayerStatView } from "@/lib/match-history";
@@ -18,6 +19,7 @@ const COLUMNS: SortableColumn<MatchPlayerStatView>[] = [
       >
         <PlayerAvatar avatarUrl={player.avatarUrl} size={24} />
         {player.displayName}
+        <CountryFlag countryCode={player.countryCode} />
       </Link>
     ),
   },

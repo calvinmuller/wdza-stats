@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { CountryFlag } from "@/components/country-flag";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { formatPlaytimeHours } from "@/lib/format-playtime";
 import type { LeaderboardRow } from "@/lib/leaderboard";
@@ -72,6 +73,7 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
                     >
                       <PlayerAvatar avatarUrl={row.avatarUrl} size={24} />
                       {row.displayName}
+                      <CountryFlag countryCode={row.countryCode} />
                     </Link>
                   </td>
                   <td className="px-4 py-2.5 text-zinc-300">{row.kills}</td>

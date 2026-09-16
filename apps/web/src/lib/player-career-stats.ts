@@ -8,6 +8,7 @@ export interface PlayerCareerView {
   matchesPlayed: number;
   factionColor: string | null;
   avatarUrl: string | null;
+  countryCode: string | null;
   playtimeMinutes: number | null;
 }
 
@@ -32,6 +33,7 @@ export function toPlayerCareerView(
   factionColors: Map<string, string>,
   avatarUrls: Map<string, string>,
   playtimeMinutes: Map<string, number> = new Map(),
+  countryCodes: Map<string, string> = new Map(),
 ): PlayerCareerView {
   return {
     steamId: row.steamId,
@@ -43,6 +45,7 @@ export function toPlayerCareerView(
     matchesPlayed: row.matchesPlayed,
     factionColor: factionColors.get(row.steamId) ?? null,
     avatarUrl: avatarUrls.get(row.steamId) ?? null,
+    countryCode: countryCodes.get(row.steamId) ?? null,
     playtimeMinutes: playtimeMinutes.get(row.steamId) ?? null,
   };
 }

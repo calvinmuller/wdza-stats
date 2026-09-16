@@ -9,6 +9,7 @@ export interface SteamPlayerSummary {
   steamId: string;
   personaName: string;
   avatarUrl: string;
+  countryCode: string | null;
 }
 
 export interface SteamAchievementSchemaEntry {
@@ -77,6 +78,7 @@ interface RawPlayerSummary {
   steamid: string;
   personaname: string;
   avatarfull: string;
+  loccountrycode?: string;
 }
 
 interface RawPlayerAchievement {
@@ -145,6 +147,7 @@ export function createSteamClient(apiKey: string): SteamClient {
             steamId: player.steamid,
             personaName: player.personaname,
             avatarUrl: player.avatarfull,
+            countryCode: player.loccountrycode ?? null,
           });
         }
       }

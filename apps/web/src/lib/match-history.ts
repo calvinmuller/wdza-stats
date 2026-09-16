@@ -7,7 +7,7 @@ import {
 import { and, count, desc, eq, isNotNull, inArray } from "drizzle-orm";
 import { kdRatio } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
-import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
+import { getAvatarUrlsBySteamId, getCountryCodesBySteamId } from "./steam-profile-lookup";
 
 export const MATCHES_PAGE_SIZE = 25;
 
@@ -40,6 +40,7 @@ export interface MatchPlayerStatView {
   kd: number;
   cash: number;
   avatarUrl: string | null;
+  countryCode: string | null;
 }
 
 export interface MatchDetailView {
@@ -309,7 +310,10 @@ export async function getMatchDetail(
     .where(eq(playerMatchStats.matchId, matchId))
     .orderBy(desc(playerMatchStats.kills));
 
-  const avatarUrls = await getAvatarUrlsBySteamId(db, rows.map((row) => row.steamId));
+  const [avatarUrls, countryCodes] = await Promise.all([
+    getAvatarUrlsBySteamId(db, rows.map((row) => row.steamId)),
+    getCountryCodesBySteamId(db, rows.map((row) => row.steamId)),
+  ]);
 
   const players: MatchPlayerStatView[] = rows.map((row) => ({
     steamId: row.steamId,
@@ -320,6 +324,7 @@ export async function getMatchDetail(
     kd: kdRatio(row.kills, row.deaths),
     cash: row.cash,
     avatarUrl: avatarUrls.get(row.steamId) ?? null,
+    countryCode: countryCodes.get(row.steamId) ?? null,
   }));
 
   const mvpPlayer = match.mvpPlayerSteamId

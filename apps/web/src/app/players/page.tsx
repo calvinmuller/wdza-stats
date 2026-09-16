@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CountryFlag } from "@/components/country-flag";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { db } from "@/lib/db";
@@ -61,6 +62,7 @@ export default async function PlayerSearchPage({
                 {player.factionColor && <FactionSwatch color={player.factionColor} />}
                 <PlayerAvatar avatarUrl={player.avatarUrl} size={24} />
                 {player.displayName}
+                <CountryFlag countryCode={player.countryCode} />
               </Link>
             </li>
           ))}

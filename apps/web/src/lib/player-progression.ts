@@ -25,6 +25,7 @@ export interface PlayerProgressionView {
   displayName: string;
   personaName: string | null;
   avatarUrl: string | null;
+  countryCode: string | null;
   factionColor: string | null;
   level: number;
   xp: number;
@@ -135,6 +136,7 @@ export async function getPlayerProgression(
     displayName: row.displayName,
     personaName: steamProfile?.personaName ?? null,
     avatarUrl: steamProfile?.avatarUrl ?? null,
+    countryCode: steamProfile?.countryCode ?? null,
     factionColor: factionColors.get(row.steamId) ?? null,
     level: progress.level,
     xp: row.xp,

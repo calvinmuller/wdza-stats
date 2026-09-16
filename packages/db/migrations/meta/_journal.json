@@ -127,6 +127,13 @@
       "when": 1789542387901,
       "tag": "0017_curved_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789544547051,
+      "tag": "0018_open_anita_blake",
+      "breakpoints": true
     }
   ]
 }

@@ -25,7 +25,7 @@ async function readProfile(steamId: string) {
 describe("refreshUnseenSteamProfiles", () => {
   it("caches a fresh player's persona name, avatar, and achievements as ok", async () => {
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: {
         "1": { available: true, achievements: [{ apiName: "THIS_IS_WARDOGS", unlockedAt: "2026-09-10T00:00:00.000Z" }] },
       },
@@ -37,7 +37,7 @@ describe("refreshUnseenSteamProfiles", () => {
     expect(row).toMatchObject({
       steamId: "1",
       personaName: "Alice",
-      avatarUrl: "https://example.com/a.jpg",
+      avatarUrl: "https://example.com/a.jpg", countryCode: null,
       status: "ok",
       achievements: [{ apiName: "THIS_IS_WARDOGS", unlockedAt: "2026-09-10T00:00:00.000Z" }],
     });
@@ -46,7 +46,7 @@ describe("refreshUnseenSteamProfiles", () => {
   it("logs each newly-cached profile with its status and playtime", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: true, achievements: [] } },
       playtimeMinutes: { "1": 90 },
     });
@@ -80,7 +80,7 @@ describe("refreshUnseenSteamProfiles", () => {
 
   it("caches playtime alongside achievements", async () => {
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: true, achievements: [] } },
       playtimeMinutes: { "1": 4321 },
     });
@@ -93,7 +93,7 @@ describe("refreshUnseenSteamProfiles", () => {
 
   it("caches a null playtime without affecting the achievements-derived status", async () => {
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: true, achievements: [] } },
     });
 
@@ -106,7 +106,7 @@ describe("refreshUnseenSteamProfiles", () => {
   it("caches a null playtime, without throwing, when the playtime fetch fails", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: true, achievements: [] } },
       failPlaytime: () => new Error("network error"),
     });
@@ -119,7 +119,7 @@ describe("refreshUnseenSteamProfiles", () => {
 
   it("caches persona name/avatar with status private when achievements are unavailable", async () => {
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: false } },
     });
 
@@ -128,7 +128,7 @@ describe("refreshUnseenSteamProfiles", () => {
     const row = await readProfile("1");
     expect(row).toMatchObject({
       personaName: "Alice",
-      avatarUrl: "https://example.com/a.jpg",
+      avatarUrl: "https://example.com/a.jpg", countryCode: null,
       status: "private",
       achievements: [],
     });
@@ -136,7 +136,7 @@ describe("refreshUnseenSteamProfiles", () => {
 
   it("does not re-fetch a player already cached as ok", async () => {
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: true, achievements: [] } },
     });
 
@@ -149,7 +149,7 @@ describe("refreshUnseenSteamProfiles", () => {
 
   it("does not re-fetch a player cached as private", async () => {
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: false } },
     });
 
@@ -183,7 +183,7 @@ describe("refreshUnseenSteamProfiles", () => {
     });
 
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: true, achievements: [] } },
     });
 
@@ -205,7 +205,7 @@ describe("refreshUnseenSteamProfiles", () => {
     });
 
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: true, achievements: [] } },
     });
 
@@ -218,8 +218,8 @@ describe("refreshUnseenSteamProfiles", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const client = scriptedSteamClient({
       summaries: {
-        "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" },
-        "2": { steamId: "2", personaName: "Bob", avatarUrl: "https://example.com/b.jpg" },
+        "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null },
+        "2": { steamId: "2", personaName: "Bob", avatarUrl: "https://example.com/b.jpg", countryCode: null },
       },
       achievements: { "2": { available: true, achievements: [] } },
       failAchievements: (steamId) => (steamId === "1" ? new Error("network error") : null),
@@ -236,8 +236,8 @@ describe("refreshUnseenSteamProfiles", () => {
   it("fetches and caches the achievement schema once, not per player", async () => {
     const client = scriptedSteamClient({
       summaries: {
-        "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" },
-        "2": { steamId: "2", personaName: "Bob", avatarUrl: "https://example.com/b.jpg" },
+        "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null },
+        "2": { steamId: "2", personaName: "Bob", avatarUrl: "https://example.com/b.jpg", countryCode: null },
       },
       achievements: {
         "1": { available: true, achievements: [] },
@@ -256,7 +256,7 @@ describe("refreshUnseenSteamProfiles", () => {
 
   it("dedupes repeated steamIds in the input list", async () => {
     const client = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: true, achievements: [] } },
     });
 
@@ -268,8 +268,8 @@ describe("refreshUnseenSteamProfiles", () => {
   it("reports progress once per targeted player, against the targeted count not the input count", async () => {
     const client = scriptedSteamClient({
       summaries: {
-        "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" },
-        "2": { steamId: "2", personaName: "Bob", avatarUrl: "https://example.com/b.jpg" },
+        "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null },
+        "2": { steamId: "2", personaName: "Bob", avatarUrl: "https://example.com/b.jpg", countryCode: null },
       },
       achievements: {
         "1": { available: true, achievements: [] },

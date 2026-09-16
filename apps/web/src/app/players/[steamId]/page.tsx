@@ -73,6 +73,7 @@ export default async function PlayerPage({
         <SteamAvatar
           avatarUrl={progression.avatarUrl}
           personaName={progression.personaName}
+          countryCode={progression.countryCode}
         />
       </h1>
 

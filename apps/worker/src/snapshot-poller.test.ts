@@ -236,7 +236,7 @@ describe("pollAndPersistSnapshot with Steam enrichment", () => {
         "76561198000000001": {
           steamId: "76561198000000001",
           personaName: "Alice",
-          avatarUrl: "https://example.com/a.jpg",
+          avatarUrl: "https://example.com/a.jpg", countryCode: null,
         },
       },
       achievements: { "76561198000000001": { available: true, achievements: [] } },
@@ -365,7 +365,7 @@ describe("pollAndPersistSnapshot playtime-on-join refresh", () => {
       },
     ]);
     const steamClient = scriptedSteamClient({
-      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg" } },
+      summaries: { "1": { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
       achievements: { "1": { available: true, achievements: [] } },
       playtimeMinutes: { "1": 200 },
     });

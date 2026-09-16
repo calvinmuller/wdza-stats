@@ -136,6 +136,9 @@ export const steamProfiles = pgTable("steam_profiles", {
   steamId: text("steam_id").primaryKey(),
   personaName: text("persona_name"),
   avatarUrl: text("avatar_url"),
+  // ISO 3166-1 alpha-2 (e.g. "ZA") from GetPlayerSummaries' loccountrycode -
+  // null if the profile is private or hasn't set a location.
+  countryCode: text("country_code"),
   achievements: jsonb("achievements")
     .notNull()
     .$type<SteamAchievementUnlock[]>(),

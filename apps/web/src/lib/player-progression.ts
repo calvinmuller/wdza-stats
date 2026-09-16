@@ -14,6 +14,7 @@ import {
 } from "@wdza-stats/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { describeChallenge } from "./active-challenges";
+import { getBannedSteamIds } from "./banned-players";
 import { kdRatio } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
 import { getOnlineFactionColors } from "./live-snapshot";
@@ -76,6 +77,11 @@ async function getPlayerCareerRow(db: Database, baseUrl: string, steamId: string
   const server = await getServerByBaseUrl(db, baseUrl);
 
   if (!server) {
+    return null;
+  }
+
+  const bannedSteamIds = await getBannedSteamIds(db);
+  if (bannedSteamIds.includes(steamId)) {
     return null;
   }
 

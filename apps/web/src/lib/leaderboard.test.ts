@@ -1,4 +1,5 @@
 import {
+  bannedPlayers,
   createDb,
   latestSnapshots,
   playerCareerStats,
@@ -19,6 +20,7 @@ afterEach(async () => {
   await db.delete(latestSnapshots);
   await db.delete(servers);
   await db.delete(steamProfiles);
+  await db.delete(bannedPlayers);
 });
 
 afterAll(async () => {
@@ -302,5 +304,22 @@ describe("getLeaderboard", () => {
     const [row] = await getLeaderboard(db, BASE_URL, "kills");
 
     expect(row.factionColor).toBe("#ff0000");
+  });
+
+  it("excludes a banned steamId from the leaderboard", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+
+    await db.insert(playerCareerStats).values([
+      { serverId: server.id, steamId: "1", displayName: "Alice", kills: 50, deaths: 0, cash: 0, matchesPlayed: 1 },
+      { serverId: server.id, steamId: "2", displayName: "Cheater", kills: 999, deaths: 0, cash: 0, matchesPlayed: 1 },
+    ]);
+    await db.insert(bannedPlayers).values({ steamId: "2" });
+
+    const result = await getLeaderboard(db, BASE_URL, "kills");
+
+    expect(result.map((row) => row.displayName)).toEqual(["Alice"]);
   });
 });

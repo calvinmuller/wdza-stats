@@ -1,5 +1,6 @@
 import { playerCareerStats, type Database } from "@wdza-stats/db";
-import { eq } from "drizzle-orm";
+import { and, eq, notInArray } from "drizzle-orm";
+import { getBannedSteamIds } from "./banned-players";
 import { getOnlineFactionColors } from "./live-snapshot";
 import {
   toPlayerCareerView,
@@ -68,10 +69,17 @@ export async function getLeaderboard(
     return [];
   }
 
+  const bannedSteamIds = await getBannedSteamIds(db);
+
   const statRows = await db
     .select()
     .from(playerCareerStats)
-    .where(eq(playerCareerStats.serverId, server.id));
+    .where(
+      and(
+        eq(playerCareerStats.serverId, server.id),
+        notInArray(playerCareerStats.steamId, bannedSteamIds),
+      ),
+    );
 
   const [factionColors, avatarUrls, playtimeMinutes] = await Promise.all([
     getOnlineFactionColors(db, server.id),

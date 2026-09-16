@@ -1,6 +1,7 @@
 import { playerCareerStats, type Database } from "@wdza-stats/db";
-import { asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, notInArray } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
+import { getBannedSteamIds } from "./banned-players";
 import { getServerByBaseUrl } from "./server-lookup";
 import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
 
@@ -76,10 +77,13 @@ export async function getRankings(
     return emptyPage(metric, safePage);
   }
 
+  const bannedSteamIds = await getBannedSteamIds(db);
+  const notBanned = notInArray(playerCareerStats.steamId, bannedSteamIds);
+
   const [{ value: totalCount }] = await db
     .select({ value: count() })
     .from(playerCareerStats)
-    .where(eq(playerCareerStats.serverId, server.id));
+    .where(and(eq(playerCareerStats.serverId, server.id), notBanned));
 
   if (totalCount === 0) {
     return emptyPage(metric, safePage);
@@ -95,7 +99,7 @@ export async function getRankings(
       value: column,
     })
     .from(playerCareerStats)
-    .where(eq(playerCareerStats.serverId, server.id))
+    .where(and(eq(playerCareerStats.serverId, server.id), notBanned))
     // steamId as a tiebreaker keeps ranking (and pagination) stable when
     // multiple players share the same metric value.
     .orderBy(desc(column), asc(playerCareerStats.steamId))

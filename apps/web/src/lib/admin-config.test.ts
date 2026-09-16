@@ -1,5 +1,6 @@
 import {
   achievementDefinitions,
+  bannedPlayers,
   challengeDefinitions,
   createDb,
   levelThresholds,
@@ -9,14 +10,17 @@ import {
   type Database,
 } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
+  banPlayerFromForm,
   getNotificationSettings,
   listAchievementDefinitions,
+  listBannedPlayers,
   listChallengeDefinitions,
   listLevelThresholds,
   listNotificationRules,
   listXpRewards,
+  unbanPlayerFromForm,
   updateAchievementDefinitionFromForm,
   updateChallengeDefinitionFromForm,
   updateLevelThresholdFromForm,
@@ -193,5 +197,44 @@ describe("Notification settings", () => {
         .set({ maxLowNormalPerMinute: original.maxLowNormalPerMinute })
         .where(eq(notificationSettings.id, 1));
     }
+  });
+});
+
+describe("Banned players", () => {
+  afterEach(async () => {
+    await db.delete(bannedPlayers);
+  });
+
+  it("bans a steamId with an optional reason and lists it", async () => {
+    await banPlayerFromForm(db, formData({ steamId: "1", reason: "cheating" }));
+
+    const rows = await listBannedPlayers(db);
+    expect(rows).toEqual([
+      { steamId: "1", reason: "cheating", bannedAt: rows[0].bannedAt },
+    ]);
+  });
+
+  it("bans a steamId with no reason given", async () => {
+    await banPlayerFromForm(db, formData({ steamId: "1" }));
+
+    const [row] = await listBannedPlayers(db);
+    expect(row.reason).toBeNull();
+  });
+
+  it("re-banning an already-banned steamId updates its reason instead of erroring", async () => {
+    await banPlayerFromForm(db, formData({ steamId: "1", reason: "cheating" }));
+    await banPlayerFromForm(db, formData({ steamId: "1", reason: "griefing" }));
+
+    const rows = await listBannedPlayers(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].reason).toBe("griefing");
+  });
+
+  it("unbans a steamId", async () => {
+    await banPlayerFromForm(db, formData({ steamId: "1" }));
+
+    await unbanPlayerFromForm(db, "1");
+
+    expect(await listBannedPlayers(db)).toEqual([]);
   });
 });

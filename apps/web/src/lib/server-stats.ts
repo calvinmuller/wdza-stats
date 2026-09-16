@@ -1,5 +1,6 @@
 import { matches, playerCareerStats, type Database } from "@wdza-stats/db";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, notInArray } from "drizzle-orm";
+import { getBannedSteamIds } from "./banned-players";
 import { getFactionColors } from "./live-snapshot";
 import { getServerByBaseUrl } from "./server-lookup";
 
@@ -42,11 +43,18 @@ export async function getServerStats(
     return EMPTY_STATS;
   }
 
+  const bannedSteamIds = await getBannedSteamIds(db);
+
   const [careerRows, closedMatches, factionColors] = await Promise.all([
     db
       .select()
       .from(playerCareerStats)
-      .where(eq(playerCareerStats.serverId, server.id)),
+      .where(
+        and(
+          eq(playerCareerStats.serverId, server.id),
+          notInArray(playerCareerStats.steamId, bannedSteamIds),
+        ),
+      ),
     db
       .select({ winningFaction: matches.winningFaction })
       .from(matches)

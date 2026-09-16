@@ -1,5 +1,6 @@
 import {
   achievementDefinitions,
+  bannedPlayers,
   challengeCompletions,
   challengeDefinitions,
   challengeInstances,
@@ -148,6 +149,25 @@ export function computePlayerDeltas(snapshots: Snapshot[]): PlayerDelta[] {
 }
 
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+/**
+ * Strips every BannedPlayer steamId out of a Snapshot's roster before it's
+ * diffed or persisted - the single choke point that makes a ban take effect
+ * (see schema.ts's bannedPlayers doc comment). A banned player simply never
+ * appears in the filtered Snapshot, so every downstream step (Match boundary
+ * detection, GameEvent diffing, PlayerMatchStat/PlayerCareerStat rollup,
+ * latestSnapshots' "currently online" view) behaves exactly as if they'd
+ * never joined.
+ */
+function filterBannedPlayers(snapshot: Snapshot, bannedSteamIds: Set<string>): Snapshot {
+  if (bannedSteamIds.size === 0) {
+    return snapshot;
+  }
+  return {
+    ...snapshot,
+    players: snapshot.players.filter((player) => !bannedSteamIds.has(player.steamId)),
+  };
+}
 
 /**
  * Persists a batch of GameEventDrafts and returns the slice of each actually
@@ -1049,11 +1069,12 @@ async function applyNotificationDrafts(tx: Tx, drafts: NotificationDraft[]): Pro
 }
 
 /**
- * Ingests one freshly-polled Snapshot for a Server: detects whether it
- * starts a new Match (comparing it to the Server's last-persisted
- * Snapshot), closing and rolling up the previous Match if so, then
- * persists the Snapshot both as the Server's latest state and, scoped to
- * whichever Match is now open, as raw history for that Match's eventual
+ * Ingests one freshly-polled Snapshot for a Server: first strips any
+ * BannedPlayer steamIds out of the roster (see filterBannedPlayers), then
+ * detects whether it starts a new Match (comparing it to the Server's
+ * last-persisted Snapshot), closing and rolling up the previous Match if so,
+ * then persists the Snapshot both as the Server's latest state and, scoped
+ * to whichever Match is now open, as raw history for that Match's eventual
  * close.
  *
  * A gap in polling needs no special handling: the "previous Snapshot" is
@@ -1145,6 +1166,10 @@ export async function ingestSnapshot(
   let recordedNotifications: NotificationDraft[] = [];
 
   await db.transaction(async (tx) => {
+    const bannedRows = await tx.select({ steamId: bannedPlayers.steamId }).from(bannedPlayers);
+    const bannedSteamIds = new Set(bannedRows.map((row) => row.steamId));
+    snapshot = filterBannedPlayers(snapshot, bannedSteamIds);
+
     const [previousRow] = await tx
       .select()
       .from(latestSnapshots)

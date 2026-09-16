@@ -3,6 +3,7 @@ import { describeChallenge } from "@/lib/active-challenges";
 import {
   getNotificationSettings,
   listAchievementDefinitions,
+  listBannedPlayers,
   listChallengeDefinitions,
   listLevelThresholds,
   listNotificationRules,
@@ -10,7 +11,10 @@ import {
 } from "@/lib/admin-config";
 import { ADMIN_PATH_SECRET } from "@/lib/admin-secret";
 import { db } from "@/lib/db";
+import { formatDateTime } from "@/lib/format-date";
 import {
+  banPlayerAction,
+  unbanPlayerAction,
   updateAchievementDefinitionAction,
   updateChallengeDefinitionAction,
   updateLevelThresholdAction,
@@ -47,15 +51,23 @@ export default async function AdminPage({
     notFound();
   }
 
-  const [xpRewardRows, levelThresholdRows, challengeDefinitionRows, achievementDefinitionRows, notificationRuleRows, notificationSettingsRow] =
-    await Promise.all([
-      listXpRewards(db),
-      listLevelThresholds(db),
-      listChallengeDefinitions(db),
-      listAchievementDefinitions(db),
-      listNotificationRules(db),
-      getNotificationSettings(db),
-    ]);
+  const [
+    xpRewardRows,
+    levelThresholdRows,
+    challengeDefinitionRows,
+    achievementDefinitionRows,
+    notificationRuleRows,
+    notificationSettingsRow,
+    bannedPlayerRows,
+  ] = await Promise.all([
+    listXpRewards(db),
+    listLevelThresholds(db),
+    listChallengeDefinitions(db),
+    listAchievementDefinitions(db),
+    listNotificationRules(db),
+    getNotificationSettings(db),
+    listBannedPlayers(db),
+  ]);
 
   return (
     <div className="flex flex-col gap-10">
@@ -240,6 +252,53 @@ export default async function AdminPage({
           </label>
           <button type="submit" className={buttonClass}>
             Save
+          </button>
+        </form>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="font-display text-xl text-zinc-100">Banned players</h2>
+        <p className="max-w-2xl text-xs text-zinc-500">
+          A banned Steam ID is ignored everywhere: it never shows on the leaderboard, rankings,
+          server stats, player search, or the live snapshot, and the Worker stops updating its
+          stats on the next poll.
+        </p>
+
+        <div className="flex flex-col gap-2">
+          {bannedPlayerRows.length === 0 ? (
+            <p className="text-sm text-zinc-500">No players are banned.</p>
+          ) : (
+            bannedPlayerRows.map((banned) => (
+              <div key={banned.steamId} className={rowClass}>
+                <span className="min-w-40 font-medium text-zinc-200">{banned.steamId}</span>
+                <span className="flex-1 text-sm text-zinc-400">{banned.reason ?? "—"}</span>
+                <span className="text-xs text-zinc-500">
+                  Banned {formatDateTime(banned.bannedAt.toISOString())}
+                </span>
+                <form action={unbanPlayerAction.bind(null, adminSecret, banned.steamId)}>
+                  <button
+                    type="submit"
+                    className="shrink-0 rounded-lg bg-red-900/60 px-3 py-1.5 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-800/60"
+                  >
+                    Unban
+                  </button>
+                </form>
+              </div>
+            ))
+          )}
+        </div>
+
+        <form action={banPlayerAction.bind(null, adminSecret)} className={rowClass}>
+          <label className={`${labelClass} min-w-40 flex-1`}>
+            Steam ID
+            <input type="text" name="steamId" required className={textInputClass} />
+          </label>
+          <label className={`${labelClass} min-w-48 flex-[2]`}>
+            Reason (optional)
+            <input type="text" name="reason" className={textInputClass} />
+          </label>
+          <button type="submit" className={buttonClass}>
+            Ban
           </button>
         </form>
       </section>

@@ -283,6 +283,24 @@ export const mvpFormulaWeights = pgTable("mvp_formula_weights", {
   weight: integer("weight").notNull(),
 });
 
+// BannedPlayer: a steamId the admin has chosen to ignore entirely, keyed by
+// steamId alone (like SteamProfile) rather than per-Server, since a banned
+// cheater/griefer is banned everywhere they show up, not just on the Server
+// the admin happened to be looking at. The Worker filters a banned steamId
+// out of every Snapshot before it's diffed or persisted (see
+// apps/worker/src/match-tracker.ts's ingestSnapshot), so a banned player
+// accrues no further PlayerMatchStat/PlayerCareerStat/XP/GameEvent/
+// Notification activity and never appears in the live Snapshot - the same
+// choke point that also keeps them out of every public read (leaderboard,
+// rankings, player search/profile) built from those tables. Already-recorded
+// history from before the ban stays in place; banning only stops future
+// updates and future visibility, it doesn't retroactively purge the past.
+export const bannedPlayers = pgTable("banned_players", {
+  steamId: text("steam_id").primaryKey(),
+  reason: text("reason"),
+  bannedAt: timestamp("banned_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // The 7 initial Achievements' data - name/description plus the
 // trigger/threshold pair apps/worker/src/achievement-engine.ts checks each
 // relevant GameEvent's observed counter against, seeded in this table's own

@@ -1,5 +1,6 @@
 import {
   achievementDefinitions,
+  bannedPlayers,
   challengeDefinitions,
   levelThresholds,
   notificationRules,
@@ -13,7 +14,7 @@ import {
   type NotificationPriority,
   type XpReason,
 } from "@wdza-stats/db";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 // The Admin area's data access layer (ticket 15) - every read/write the
 // admin UI (app/[adminSecret]) performs against the XP_REWARDS,
@@ -214,4 +215,32 @@ export async function updateNotificationSettingsFromForm(db: Database, formData:
   if (!row) {
     throw new Error("Notification settings row is missing");
   }
+}
+
+// Banned players - see schema.ts's bannedPlayers doc comment. Unlike every
+// other table on this page, this isn't a per-row edit form: it's an
+// add/remove list, since a ban has no tunable "value" beyond its own
+// existence (plus an optional reason).
+export interface BannedPlayerRow {
+  steamId: string;
+  reason: string | null;
+  bannedAt: Date;
+}
+
+export async function listBannedPlayers(db: Database): Promise<BannedPlayerRow[]> {
+  return db.select().from(bannedPlayers).orderBy(desc(bannedPlayers.bannedAt));
+}
+
+export async function banPlayerFromForm(db: Database, formData: FormData): Promise<void> {
+  const steamId = parseText(formData, "steamId");
+  const rawReason = formData.get("reason");
+  const reason = typeof rawReason === "string" && rawReason.trim() !== "" ? rawReason.trim() : null;
+  await db
+    .insert(bannedPlayers)
+    .values({ steamId, reason })
+    .onConflictDoUpdate({ target: bannedPlayers.steamId, set: { reason } });
+}
+
+export async function unbanPlayerFromForm(db: Database, steamId: string): Promise<void> {
+  await db.delete(bannedPlayers).where(eq(bannedPlayers.steamId, steamId));
 }

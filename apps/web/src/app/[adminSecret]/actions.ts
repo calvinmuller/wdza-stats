@@ -3,6 +3,8 @@
 import type { NotificationKind, XpReason } from "@wdza-stats/db";
 import { notFound, redirect } from "next/navigation";
 import {
+  banPlayerFromForm,
+  unbanPlayerFromForm,
   updateAchievementDefinitionFromForm,
   updateChallengeDefinitionFromForm,
   updateLevelThresholdFromForm,
@@ -71,5 +73,17 @@ export async function updateNotificationRuleAction(
 export async function updateNotificationSettingsAction(secret: string, formData: FormData): Promise<void> {
   assertSecret(secret);
   await updateNotificationSettingsFromForm(db, formData);
+  redirect(`/${secret}`);
+}
+
+export async function banPlayerAction(secret: string, formData: FormData): Promise<void> {
+  assertSecret(secret);
+  await banPlayerFromForm(db, formData);
+  redirect(`/${secret}`);
+}
+
+export async function unbanPlayerAction(secret: string, steamId: string): Promise<void> {
+  assertSecret(secret);
+  await unbanPlayerFromForm(db, steamId);
   redirect(`/${secret}`);
 }

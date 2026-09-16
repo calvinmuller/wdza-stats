@@ -1,5 +1,6 @@
 import {
   achievementDefinitions,
+  bannedPlayers,
   challengeCompletions,
   challengeDefinitions,
   challengeInstances,
@@ -683,6 +684,76 @@ describe("Match-boundary detection and persistence (integration)", () => {
     expect(stats).toEqual([
       { matchId: closed.id, steamId: "1", faction: "Lonestar", kills: 0, deaths: 0, cash: 0 },
     ]);
+  });
+});
+
+// Integration: verifies a BannedPlayer steamId is filtered out of a
+// Snapshot before ingestSnapshot does anything else with it (see
+// match-tracker.ts's filterBannedPlayers) - see schema.ts's bannedPlayers
+// doc comment.
+describe("Banned players (integration)", () => {
+  const db: Database = createDb(process.env.DATABASE_URL!);
+
+  async function seedServer() {
+    const [server] = await db
+      .insert(servers)
+      .values({
+        name: "Test Server",
+        baseUrl: `http://rcon-match-tracker-${crypto.randomUUID()}.test:9006`,
+      })
+      .returning();
+    return server;
+  }
+
+  afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
+    await db.delete(notifications);
+    await db.delete(gameEvents);
+    await db.delete(challengeInstances);
+    await db.delete(playerMatchStats);
+    await db.delete(playerCareerStats);
+    await db.delete(matchSnapshots);
+    await db.delete(matches);
+    await db.delete(latestSnapshots);
+    await db.delete(servers);
+    await db.delete(bannedPlayers);
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("never persists a banned steamId to the latest Snapshot, and never accrues PlayerCareerStat for them", async () => {
+    const server = await seedServer();
+    await db.insert(bannedPlayers).values({ steamId: "cheater" });
+
+    const client = scriptedRconClient([
+      {
+        status: statusFixture(),
+        players: playersFixture([
+          { steamId: "cheater", name: "Cheater", faction: "Lonestar", kills: 999, deaths: 0, cash: 0, pingMs: 20 },
+          { steamId: "1", name: "Alice", faction: "Lonestar", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
+        ]),
+      },
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const [latest] = await db.select().from(latestSnapshots).where(eq(latestSnapshots.serverId, server.id));
+    expect(latest.payload.players.map((player) => player.steamId)).toEqual(["1"]);
+
+    const events = await db
+      .select()
+      .from(gameEvents)
+      .where(eq(gameEvents.steamId, "cheater"));
+    expect(events).toEqual([]);
+
+    const careerRows = await db
+      .select()
+      .from(playerCareerStats)
+      .where(eq(playerCareerStats.steamId, "cheater"));
+    expect(careerRows).toEqual([]);
   });
 });
 

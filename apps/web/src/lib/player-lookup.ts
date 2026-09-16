@@ -1,5 +1,6 @@
 import { playerCareerStats, type Database } from "@wdza-stats/db";
-import { and, eq, ilike } from "drizzle-orm";
+import { and, eq, ilike, notInArray } from "drizzle-orm";
+import { getBannedSteamIds } from "./banned-players";
 import { getOnlineFactionColors } from "./live-snapshot";
 import {
   toPlayerCareerView,
@@ -26,6 +27,8 @@ export async function searchPlayersByName(
     return [];
   }
 
+  const bannedSteamIds = await getBannedSteamIds(db);
+
   const rows = await db
     .select()
     .from(playerCareerStats)
@@ -33,6 +36,7 @@ export async function searchPlayersByName(
       and(
         eq(playerCareerStats.serverId, server.id),
         ilike(playerCareerStats.displayName, `%${query}%`),
+        notInArray(playerCareerStats.steamId, bannedSteamIds),
       ),
     );
 
@@ -74,6 +78,11 @@ export async function getPlayerCareerStat(
     .limit(1);
 
   if (!row) {
+    return null;
+  }
+
+  const bannedSteamIds = await getBannedSteamIds(db);
+  if (bannedSteamIds.includes(steamId)) {
     return null;
   }
 

@@ -5,7 +5,7 @@
 // that can't go in this Client Component's browser bundle.
 import { getRotationPreview, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { LightingBadge } from "@/components/lighting-badge";
 import { PlayerAvatar } from "@/components/player-avatar";
@@ -38,6 +38,52 @@ function formatCapturedAt(iso: string): string {
   return `${capturedAtFormatter.format(new Date(iso))} UTC`;
 }
 
+const FLIP_DURATION_MS = 350;
+
+// Animates elements between renders using the FLIP technique: capture each
+// element's position before the reorder, then compensate with an inverse
+// transform and let it transition back to identity, so faction cards glide
+// to their new rank instead of jumping there.
+function useFlip(keys: string[]) {
+  const elementsRef = useRef(new Map<string, HTMLElement>());
+  const rectsRef = useRef(new Map<string, DOMRect>());
+
+  useLayoutEffect(() => {
+    const nextRects = new Map<string, DOMRect>();
+    elementsRef.current.forEach((el, key) => {
+      nextRects.set(key, el.getBoundingClientRect());
+    });
+
+    elementsRef.current.forEach((el, key) => {
+      const prevRect = rectsRef.current.get(key);
+      const nextRect = nextRects.get(key);
+      if (!prevRect || !nextRect) return;
+
+      const dx = prevRect.left - nextRect.left;
+      const dy = prevRect.top - nextRect.top;
+      if (dx === 0 && dy === 0) return;
+
+      el.style.transition = "none";
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      requestAnimationFrame(() => {
+        el.style.transition = `transform ${FLIP_DURATION_MS}ms ease`;
+        el.style.transform = "";
+      });
+    });
+
+    rectsRef.current = nextRects;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keys.join("|")]);
+
+  return (key: string) => (el: HTMLElement | null) => {
+    if (el) {
+      elementsRef.current.set(key, el);
+    } else {
+      elementsRef.current.delete(key);
+    }
+  };
+}
+
 export function LiveServerView({
   initial,
 }: {
@@ -63,6 +109,11 @@ export function LiveServerView({
   }, []);
 
   const TOP_PLAYERS_COUNT = 10;
+
+  const sortedFactions = [...(data?.snapshot.factions ?? [])].sort(
+    (a, b) => b.score - a.score,
+  );
+  const factionFlipRef = useFlip(sortedFactions.map((faction) => faction.name));
 
   if (!data) {
     return (
@@ -194,10 +245,15 @@ export function LiveServerView({
       <section>
         <h2 className="mb-3 text-xl">Factions</h2>
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {snapshot.factions.map((faction) => (
+          {sortedFactions.map((faction, index) => (
             <li
               key={faction.name}
-              className="flex items-center justify-between rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3"
+              ref={factionFlipRef(faction.name)}
+              className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
+                index === 0
+                  ? "border-brand-gold-400/40 bg-brand-gold-400/10"
+                  : "border-white/10 bg-zinc-900/60"
+              }`}
             >
               <span className="flex items-center text-sm font-medium text-zinc-200">
                 <span

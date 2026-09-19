@@ -21,6 +21,8 @@ const NOTIFICATION_PRIORITY_CLASSNAME: Record<RecentNotificationView["priority"]
 };
 
 // No point refreshing faster than new Snapshots can actually arrive.
+const FACTION_SCORE_LIMIT = 100;
+
 export const REFRESH_INTERVAL_MS = SNAPSHOT_POLL_INTERVAL_MS;
 
 // A fixed UTC hh:mm:ss, pinned to a locale/timeZone so the server (whatever
@@ -249,23 +251,40 @@ export function LiveServerView({
             <li
               key={faction.name}
               ref={factionFlipRef(faction.name)}
-              className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
+              className={`rounded-lg border px-4 py-3 ${
                 index === 0
                   ? "border-brand-gold-400/40 bg-brand-gold-400/10"
                   : "border-white/10 bg-zinc-900/60"
               }`}
             >
-              <span className="flex items-center text-sm font-medium text-zinc-200">
-                <span
-                  className="mr-2 inline-block size-3 shrink-0 rounded-full ring-1 ring-white/20"
-                  style={{ backgroundColor: faction.color }}
-                  title={faction.color}
+              <div className="flex items-center justify-between">
+                <span className="flex items-center text-sm font-medium text-zinc-200">
+                  <span
+                    className="mr-2 inline-block size-3 shrink-0 rounded-full ring-1 ring-white/20"
+                    style={{ backgroundColor: faction.color }}
+                    title={faction.color}
+                  />
+                  {faction.name}
+                </span>
+                <span className="font-display text-lg text-zinc-50">
+                  {faction.score}
+                </span>
+              </div>
+              <div
+                className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={FACTION_SCORE_LIMIT}
+                aria-valuenow={Math.min(faction.score, FACTION_SCORE_LIMIT)}
+              >
+                <div
+                  className="h-full rounded-full transition-[width] duration-500"
+                  style={{
+                    backgroundColor: faction.color,
+                    width: `${Math.min(100, Math.max(0, (faction.score / FACTION_SCORE_LIMIT) * 100))}%`,
+                  }}
                 />
-                {faction.name}
-              </span>
-              <span className="font-display text-lg text-zinc-50">
-                {faction.score}
-              </span>
+              </div>
             </li>
           ))}
         </ul>

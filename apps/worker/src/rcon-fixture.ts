@@ -38,6 +38,12 @@ export function scriptedRconClient(
     async fetchStatus() {
       return script[index].status;
     },
+    async fetchRotation() {
+      const entries = script[index].status.rotation.entries ?? [];
+      return {
+        entries: entries.map((entry, i) => ({ index: i, map: entry.map, lighting: "Day" })),
+      };
+    },
     async fetchPlayers() {
       const entry = script[index];
       index = Math.min(index + 1, script.length - 1);

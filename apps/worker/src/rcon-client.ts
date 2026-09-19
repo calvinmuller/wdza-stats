@@ -1,5 +1,5 @@
-// Raw shapes of the RCON API's two read endpoints, confirmed against the
-// live server. Only these two endpoints are ever called - see CONTEXT.md and
+// Raw shapes of the RCON API's three read endpoints, confirmed against the
+// live server. Only these read (GET) endpoints are ever called - see CONTEXT.md and
 // spec.md for why no write endpoint is used. Field names here are the RCON
 // API's own wire format, which differs from our domain Snapshot type (e.g.
 // "name"/"pingMs" here map onto "displayName"/"ping" - see mergeSnapshot in
@@ -19,6 +19,12 @@ export interface RawStatusResponse {
   players: { current: number; max: number };
 }
 
+// GET /v1/rotation: the full ordered rotation. Unlike /v1/status it carries
+// each entry's lighting, which the web app needs to show the next map's art.
+export interface RawRotationResponse {
+  entries: Array<{ index: number; map: string; lighting: string }>;
+}
+
 export interface RawPlayersResponse {
   players: Array<{
     steamId: string;
@@ -32,12 +38,13 @@ export interface RawPlayersResponse {
 }
 
 /**
- * Wraps GET /v1/status and GET /v1/players for one Server. This is the only
+ * Wraps GET /v1/status, /v1/players and /v1/rotation for one Server. This is the only
  * code in the system that calls the RCON API - no write endpoint is exposed.
  */
 export interface RconClient {
   fetchStatus(): Promise<RawStatusResponse>;
   fetchPlayers(): Promise<RawPlayersResponse>;
+  fetchRotation(): Promise<RawRotationResponse>;
 }
 
 export function createRconClient(baseUrl: string, token: string): RconClient {
@@ -58,5 +65,6 @@ export function createRconClient(baseUrl: string, token: string): RconClient {
   return {
     fetchStatus: () => get<RawStatusResponse>("/v1/status"),
     fetchPlayers: () => get<RawPlayersResponse>("/v1/players"),
+    fetchRotation: () => get<RawRotationResponse>("/v1/rotation"),
   };
 }

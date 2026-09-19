@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { ingestSnapshot } from "./match-tracker";
 import type {
   RawPlayersResponse,
+  RawRotationResponse,
   RawStatusResponse,
   RconClient,
 } from "./rcon-client";
@@ -39,7 +40,12 @@ export function newlyJoinedSteamIds(
 function mergeSnapshot(
   status: RawStatusResponse,
   players: RawPlayersResponse,
+  rotation: RawRotationResponse | null,
 ): Snapshot {
+  // /v1/rotation is the source of per-entry lighting; fall back to the
+  // (usually absent) status entries if that call failed.
+  const entries: Array<{ map: string; lighting?: string }> =
+    rotation?.entries ?? status.rotation.entries ?? [];
   return {
     map: status.map,
     lighting: status.lighting,
@@ -47,7 +53,11 @@ function mergeSnapshot(
     experiences: status.experiences,
     rotation: {
       nowIndex: status.rotation.nowIndex,
-      entries: (status.rotation.entries ?? []).map((entry) => ({ map: entry.map })),
+      entries: entries.map((entry) =>
+        entry.lighting === undefined
+          ? { map: entry.map }
+          : { map: entry.map, lighting: entry.lighting },
+      ),
     },
     factions: status.factionScores.map((faction) => ({
       name: faction.name,
@@ -93,7 +103,12 @@ export async function pollAndPersistSnapshot(
 ): Promise<void> {
   const status = await client.fetchStatus();
   const players = await client.fetchPlayers();
-  const snapshot = mergeSnapshot(status, players);
+  // Rotation only adds lighting for the art, so a failure here must not stop polling.
+  const rotation = await client.fetchRotation().catch((error) => {
+    console.error("[worker] rotation fetch failed:", error);
+    return null;
+  });
+  const snapshot = mergeSnapshot(status, players, rotation);
   const capturedAt = new Date();
 
   // One line per poll: a successful ~15s poll otherwise produces no output

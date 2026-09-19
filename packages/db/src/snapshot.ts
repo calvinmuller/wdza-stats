@@ -24,6 +24,8 @@ export interface SnapshotPlayer {
 
 export interface RotationEntry {
   map: string;
+  // Absent on rows persisted before lighting was captured from /v1/rotation.
+  lighting?: string;
 }
 
 export interface SnapshotRotation {

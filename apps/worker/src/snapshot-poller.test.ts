@@ -173,6 +173,7 @@ describe("pollOnce", () => {
     const failingClient: RconClient = {
       fetchStatus: () => Promise.reject(new Error("network error")),
       fetchPlayers: () => Promise.reject(new Error("network error")),
+      fetchRotation: () => Promise.reject(new Error("network error")),
     };
 
     await expect(pollOnce(db, failingClient, server.id)).resolves.toBeUndefined();
@@ -198,6 +199,7 @@ describe("pollOnce", () => {
         return statusFixture({ map: "Deadcity" });
       },
       fetchPlayers: async () => playersFixture([]),
+      fetchRotation: async () => ({ entries: [] }),
     };
 
     await pollOnce(db, client, server.id);

@@ -8,6 +8,8 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { LightingBadge } from "@/components/lighting-badge";
+import { getLightingInfo } from "@/lib/lighting";
+import { getMapArtUrl } from "@/lib/map-art";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
 import { formatDateTime } from "@/lib/format-date";
@@ -130,6 +132,18 @@ export function LiveServerView({
   const playerCount = snapshot.players.length;
   const maxPlayers = snapshot.playerSlots.max;
 
+  const mapArtUrl = getMapArtUrl(snapshot.map, snapshot.lighting);
+  // Entries only carry lighting once the worker has captured /v1/rotation;
+  // older snapshots have none, so the next map falls back to midday light.
+  const nextEntries = snapshot.rotation.entries ?? [];
+  const nextEntry =
+    nextEntries.length > 0
+      ? nextEntries[(snapshot.rotation.nowIndex + 1) % nextEntries.length]
+      : undefined;
+  const nextMapArtUrl = nextEntry
+    ? getMapArtUrl(nextEntry.map, nextEntry.lighting ?? "DayClear", "720")
+    : null;
+  const lightingLabel = getLightingInfo(snapshot.lighting).label;
   const factionColorByName = new Map(
     snapshot.factions.map((faction) => [faction.name, faction.color]),
   );
@@ -225,6 +239,16 @@ export function LiveServerView({
             </button>
           </div>
         </div>
+        {mapArtUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={mapArtUrl}
+            alt={`${snapshot.map} - ${lightingLabel}`}
+            width={1920}
+            height={149}
+            className="mt-3 h-auto min-h-8 w-full rounded-md object-cover object-center"
+          />
+        )}
         <p className="mt-1 text-sm text-zinc-400">
           Map: <span className="text-zinc-200">{snapshot.map}</span>
           <span className="mx-2 text-zinc-600">&middot;</span>
@@ -346,6 +370,21 @@ export function LiveServerView({
 
       {isActivityOpen && (
         <aside className="w-full shrink-0 rounded-xl border border-white/10 bg-zinc-950 lg:sticky lg:top-6 lg:w-80">
+          {nextMapArtUrl && (
+            <figure className="relative overflow-hidden rounded-t-xl border-b border-white/10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={nextMapArtUrl}
+                alt={`Next map: ${rotation.next}`}
+                width={1280}
+                height={720}
+                className="aspect-video w-full object-cover"
+              />
+              <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-4 pb-2 pt-8 text-xs text-zinc-300">
+                Next map: <span className="text-zinc-50">{rotation.next}</span>
+              </figcaption>
+            </figure>
+          )}
           <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3">
             <h2 className="text-lg">Recent activity</h2>
             <button

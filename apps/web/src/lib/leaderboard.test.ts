@@ -187,6 +187,7 @@ describe("getLeaderboard", () => {
       matchesPlayed: 3,
       factionColor: null,
       avatarUrl: null,
+      countryCode: null,
       playtimeMinutes: null,
     });
   });

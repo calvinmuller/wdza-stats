@@ -39,6 +39,16 @@ export const auth = betterAuth({
   session: { fields: { userId: "staffMemberId" } },
   account: { fields: { userId: "staffMemberId" } },
   emailAndPassword: { enabled: true, disableSignUp: true },
+  // Brute-force protection on the one credential endpoint. Applies to HTTP
+  // requests only (Better Auth exempts server-side auth.api calls), so the
+  // sign-in form must go through the client, not a server action. In-memory
+  // counters: per web instance, reset on restart, which is fine at this scale.
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 100,
+    customRules: { "/sign-in/email": { window: 60, max: 5 } },
+  },
   advanced: {
     // Session cookies are httpOnly always; Secure whenever we're in production.
     useSecureCookies: process.env.NODE_ENV === "production",

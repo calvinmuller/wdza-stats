@@ -165,6 +165,13 @@ export function LiveServerView({
       ),
     },
     {
+      key: "level",
+      label: "Level",
+      value: (player) => player.level ?? -1,
+      numeric: true,
+      render: (player) => player.level ?? "—",
+    },
+    {
       key: "faction",
       label: "Faction",
       value: (player) => player.faction,

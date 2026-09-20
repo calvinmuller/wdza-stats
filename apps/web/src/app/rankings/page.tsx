@@ -70,6 +70,7 @@ export default async function RankingsPage({
                 <tr className="border-b border-white/10 bg-zinc-900/60 text-left text-xs uppercase tracking-wide text-zinc-500">
                   <th className="px-4 py-3 font-medium">#</th>
                   <th className="px-4 py-3 font-medium">Player</th>
+                  <th className="px-4 py-3 font-medium">Level</th>
                   <th className="px-4 py-3 font-medium">{METRIC_LABELS[metric]}</th>
                 </tr>
               </thead>
@@ -89,6 +90,7 @@ export default async function RankingsPage({
                         <CountryFlag countryCode={row.countryCode} />
                       </Link>
                     </td>
+                    <td className="px-4 py-2.5 text-zinc-300">{row.level}</td>
                     <td className="px-4 py-2.5 text-zinc-300">{row.value}</td>
                   </tr>
                 ))}

@@ -5,6 +5,7 @@ import {
   gameEvents,
   latestSnapshots,
   matches,
+  playerCareerStats,
   notifications,
   servers,
   steamProfiles,
@@ -76,7 +77,7 @@ describe("getLiveSnapshot", () => {
       capturedAt: capturedAt.toISOString(),
       snapshot: {
         ...snapshot,
-        players: snapshot.players.map((player) => ({ ...player, avatarUrl: null })),
+        players: snapshot.players.map((player) => ({ ...player, avatarUrl: null, level: null })),
       },
       activeChallenges: [],
       recentNotifications: [],
@@ -118,8 +119,43 @@ describe("getLiveSnapshot", () => {
     const result = await getLiveSnapshot(db, "http://rcon.test:9006");
 
     expect(result?.snapshot.players).toEqual([
-      { ...snapshot.players[0], avatarUrl: "https://avatars.steamstatic.com/alice.jpg" },
+      {
+        ...snapshot.players[0],
+        avatarUrl: "https://avatars.steamstatic.com/alice.jpg",
+        level: null,
+      },
     ]);
+  });
+
+  it("joins in each online player's level derived from career XP, and null without a PlayerCareerStat", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: "http://rcon.test:9006" })
+      .returning();
+    const snapshot = snapshotFixture({
+      players: ["1", "2"].map((steamId) => ({
+        steamId,
+        displayName: `Player ${steamId}`,
+        faction: "Lonestar",
+        kills: 0,
+        deaths: 0,
+        cash: 0,
+        ping: 40,
+      })),
+    });
+    await db.insert(latestSnapshots).values({
+      serverId: server.id,
+      capturedAt: new Date("2026-01-01T00:00:00.000Z"),
+      payload: snapshot,
+    });
+    await db
+      .insert(playerCareerStats)
+      .values({ serverId: server.id, steamId: "1", displayName: "Player 1", xp: 0 });
+
+    const result = await getLiveSnapshot(db, "http://rcon.test:9006");
+
+    // Level 1 is always seeded at 0 XP.
+    expect(result?.snapshot.players.map((player) => player.level)).toEqual([1, null]);
   });
 
   it("includes the Server's active daily challenges and recent Notifications, scoped to the Snapshot's own capturedAt", async () => {

@@ -58,10 +58,13 @@ describe("getRankings", () => {
 
     const byXp = await getRankings(db, BASE_URL, "xp", 1);
     expect(byXp.rows).toEqual([
-      { rank: 1, steamId: "2", displayName: "Bob", avatarUrl: null, countryCode: null, value: 2000 },
-      { rank: 2, steamId: "1", displayName: "Alice", avatarUrl: null, countryCode: null, value: 500 },
-      { rank: 3, steamId: "3", displayName: "Carol", avatarUrl: null, countryCode: null, value: 100 },
+      { rank: 1, steamId: "2", displayName: "Bob", avatarUrl: null, countryCode: null, level: expect.any(Number), value: 2000 },
+      { rank: 2, steamId: "1", displayName: "Alice", avatarUrl: null, countryCode: null, level: expect.any(Number), value: 500 },
+      { rank: 3, steamId: "3", displayName: "Carol", avatarUrl: null, countryCode: null, level: expect.any(Number), value: 100 },
     ]);
+    const [bob, alice, carol] = byXp.rows;
+    expect(bob.level).toBeGreaterThanOrEqual(alice.level);
+    expect(alice.level).toBeGreaterThanOrEqual(carol.level);
     expect(byXp.totalCount).toBe(3);
     expect(byXp.totalPages).toBe(1);
 

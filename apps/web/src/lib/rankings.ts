@@ -1,4 +1,10 @@
-import { playerCareerStats, steamProfiles, type Database } from "@wdza-stats/db";
+import {
+  levelForXp,
+  levelThresholds,
+  playerCareerStats,
+  steamProfiles,
+  type Database,
+} from "@wdza-stats/db";
 import { and, asc, count, desc, eq, notInArray } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getBannedSteamIds } from "./banned-players";
@@ -6,7 +12,12 @@ import { getServerByBaseUrl } from "./server-lookup";
 
 export type RankingMetric = "xp" | "kills" | "wins" | "streaks";
 
-export const RANKING_METRICS: RankingMetric[] = ["xp", "kills", "wins", "streaks"];
+export const RANKING_METRICS: RankingMetric[] = [
+  "xp",
+  "kills",
+  "wins",
+  "streaks",
+];
 
 export const RANKINGS_PAGE_SIZE = 25;
 
@@ -16,6 +27,7 @@ export type RankingRow = {
   displayName: string;
   avatarUrl: string | null;
   countryCode: string | null;
+  level: number;
   value: number;
 };
 
@@ -92,25 +104,32 @@ export async function getRankings(
   const column = METRIC_COLUMNS[metric];
   const offset = (safePage - 1) * RANKINGS_PAGE_SIZE;
 
-  const statRows = await db
-    .select({
-      steamId: playerCareerStats.steamId,
-      displayName: playerCareerStats.displayName,
-      avatarUrl: steamProfiles.avatarUrl,
-      countryCode: steamProfiles.countryCode,
-      value: column,
-    })
-    .from(playerCareerStats)
-    // A player without a cached SteamProfile still needs to appear in the
-    // rankings - a leftJoin keeps them in with null avatar/country rather
-    // than dropping the row.
-    .leftJoin(steamProfiles, eq(steamProfiles.steamId, playerCareerStats.steamId))
-    .where(and(eq(playerCareerStats.serverId, server.id), notBanned))
-    // steamId as a tiebreaker keeps ranking (and pagination) stable when
-    // multiple players share the same metric value.
-    .orderBy(desc(column), asc(playerCareerStats.steamId))
-    .limit(RANKINGS_PAGE_SIZE)
-    .offset(offset);
+  const [thresholds, statRows] = await Promise.all([
+    db.select().from(levelThresholds),
+    db
+      .select({
+        steamId: playerCareerStats.steamId,
+        displayName: playerCareerStats.displayName,
+        avatarUrl: steamProfiles.avatarUrl,
+        countryCode: steamProfiles.countryCode,
+        xp: playerCareerStats.xp,
+        value: column,
+      })
+      .from(playerCareerStats)
+      // A player without a cached SteamProfile still needs to appear in the
+      // rankings - a leftJoin keeps them in with null avatar/country rather
+      // than dropping the row.
+      .leftJoin(
+        steamProfiles,
+        eq(steamProfiles.steamId, playerCareerStats.steamId),
+      )
+      .where(and(eq(playerCareerStats.serverId, server.id), notBanned))
+      // steamId as a tiebreaker keeps ranking (and pagination) stable when
+      // multiple players share the same metric value.
+      .orderBy(desc(column), asc(playerCareerStats.steamId))
+      .limit(RANKINGS_PAGE_SIZE)
+      .offset(offset),
+  ]);
 
   const rows: RankingRow[] = statRows.map((row, index) => ({
     rank: offset + index + 1,
@@ -118,6 +137,7 @@ export async function getRankings(
     displayName: row.displayName,
     avatarUrl: row.avatarUrl,
     countryCode: row.countryCode,
+    level: levelForXp(row.xp, thresholds),
     value: Number(row.value),
   }));
 

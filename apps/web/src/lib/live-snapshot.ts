@@ -1,17 +1,21 @@
 import {
   latestSnapshots,
+  levelForXp,
+  levelThresholds,
+  playerCareerStats,
   servers,
   type Database,
   type Snapshot,
   type SnapshotPlayer,
 } from "@wdza-stats/db";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getActiveChallenges, type ActiveChallengeView } from "./active-challenges";
 import { getRecentNotifications, type RecentNotificationView } from "./recent-notifications";
 import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
 
 export interface LiveSnapshotPlayer extends SnapshotPlayer {
   avatarUrl: string | null;
+  level: number | null;
 }
 
 export interface LiveSnapshotView {
@@ -20,6 +24,34 @@ export interface LiveSnapshotView {
   snapshot: Omit<Snapshot, "players"> & { players: LiveSnapshotPlayer[] };
   activeChallenges: ActiveChallengeView[];
   recentNotifications: RecentNotificationView[];
+}
+
+// Level per online player, derived from career XP (the Progression
+// Engine's source of truth). Players with no PlayerCareerStat yet (never in
+// a closed Match) get no entry.
+async function getLevelsBySteamId(
+  db: Database,
+  serverId: number,
+  steamIds: string[],
+): Promise<Map<string, number>> {
+  if (steamIds.length === 0) {
+    return new Map();
+  }
+
+  const [xpRows, thresholds] = await Promise.all([
+    db
+      .select({ steamId: playerCareerStats.steamId, xp: playerCareerStats.xp })
+      .from(playerCareerStats)
+      .where(
+        and(
+          eq(playerCareerStats.serverId, serverId),
+          inArray(playerCareerStats.steamId, steamIds),
+        ),
+      ),
+    db.select().from(levelThresholds),
+  ]);
+
+  return new Map(xpRows.map((row) => [row.steamId, levelForXp(row.xp, thresholds)]));
 }
 
 /**
@@ -50,11 +82,10 @@ export async function getLiveSnapshot(
     return null;
   }
 
-  const [avatarUrls, activeChallenges, recentNotifications] = await Promise.all([
-    getAvatarUrlsBySteamId(
-      db,
-      row.payload.players.map((player) => player.steamId),
-    ),
+  const steamIds = row.payload.players.map((player) => player.steamId);
+  const [avatarUrls, levels, activeChallenges, recentNotifications] = await Promise.all([
+    getAvatarUrlsBySteamId(db, steamIds),
+    getLevelsBySteamId(db, row.serverId, steamIds),
     getActiveChallenges(db, row.serverId, row.capturedAt),
     getRecentNotifications(db, row.serverId),
   ]);
@@ -67,6 +98,7 @@ export async function getLiveSnapshot(
       players: row.payload.players.map((player) => ({
         ...player,
         avatarUrl: avatarUrls.get(player.steamId) ?? null,
+        level: levels.get(player.steamId) ?? null,
       })),
     },
     activeChallenges,

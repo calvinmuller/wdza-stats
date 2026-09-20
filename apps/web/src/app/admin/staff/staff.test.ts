@@ -20,6 +20,7 @@ const { default: ChangePasswordPage } = await import("../change-password/page");
 const { default: AdminPage } = await import("../page");
 
 const PASSWORD = "correct horse battery";
+const SIGN_IN_REDIRECT = /NEXT_REDIRECT/;
 const NOT_FOUND = /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/;
 
 beforeEach(async () => {
@@ -119,7 +120,7 @@ describe("the forced password change", () => {
 
   it("is refused to an anonymous caller", async () => {
     await expect(changePasswordActions.changePasswordAction(null, form({ currentPassword: "x", newPassword: "yyyyyyyy" }))).rejects.toThrow("Forbidden");
-    await expect(ChangePasswordPage()).rejects.toThrow(NOT_FOUND);
+    await expect(ChangePasswordPage()).rejects.toThrow(SIGN_IN_REDIRECT);
   });
 });
 
@@ -135,8 +136,8 @@ describe("pages", () => {
     expect(html).toContain("(you)");
   });
 
-  it("StaffPage 404s for an anonymous visitor and for a moderator", async () => {
-    await expect(StaffPage()).rejects.toThrow(NOT_FOUND);
+  it("StaffPage sends an anonymous visitor to sign in and 404s a moderator", async () => {
+    await expect(StaffPage()).rejects.toThrow(SIGN_IN_REDIRECT);
     await signInAs("moderator");
     await expect(StaffPage()).rejects.toThrow(NOT_FOUND);
   });

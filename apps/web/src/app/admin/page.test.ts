@@ -44,40 +44,31 @@ async function renderPage() {
 }
 
 describe("AdminPage", () => {
-  it("404s (via notFound) for an anonymous visitor", async () => {
-    await expect(renderPage()).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/);
+  it("redirects an anonymous visitor to sign in", async () => {
+    await expect(renderPage()).rejects.toThrow(/NEXT_REDIRECT/);
   });
 
-  it("shows a moderator only the ban screens", async () => {
+  it("shows a moderator only the Players section and its nav", async () => {
     await signInAs("moderator");
 
     const html = await renderPage();
 
     expect(html).toContain("Banned players");
     expect(html).toContain("moderator@example.test");
-    expect(html).not.toContain("XP rewards");
-    expect(html).not.toContain("Level curve");
-    expect(html).not.toContain("Notification rules");
-    expect(html).not.toContain("Kill feed");
+    expect(html).not.toContain("Achievements");
+    expect(html).not.toContain("Server Token");
+    expect(html).not.toContain("Staff");
   });
 
-  it("renders the config editor for a signed-in admin", async () => {
+  it("shows an admin the full sub nav and the Players section", async () => {
     await signInAs("admin");
 
     const html = await renderPage();
 
-    expect(html).toContain("XP rewards");
-    expect(html).toContain("Level curve");
-    expect(html).toContain("Daily challenges");
-    expect(html).toContain("Achievements");
-    expect(html).toContain("Notification rules");
-    expect(html).toContain("Notification settings");
+    for (const label of ["Players", "XP &amp; Levels", "Challenges", "Achievements", "Notifications", "Server Token", "Staff"]) {
+      expect(html).toContain(label);
+    }
     expect(html).toContain("Banned players");
-    expect(html).toContain("Kill feed");
-    // Seeded config rows should show up as editable fields.
-    expect(html).toContain("kill");
-    expect(html).toContain("Level 2");
-    // Who is signed in, and a way out.
     expect(html).toContain("admin@example.test");
     expect(html).toContain("Sign out");
   });

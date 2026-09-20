@@ -15,6 +15,8 @@ export interface CurrentStaff {
 // replaced it.
 export const CHANGE_PASSWORD_PATH = "/admin/change-password";
 
+export const SIGN_IN_PATH = "/admin/sign-in";
+
 // admin outranks moderator: every admin can do what a moderator can.
 const RANK: Record<StaffRole, number> = { moderator: 1, admin: 2 };
 
@@ -34,11 +36,13 @@ export async function getCurrentStaff(): Promise<CurrentStaff | null> {
 }
 
 /**
- * For pages and route segments: an anonymous or under-privileged request gets
- * the same 404 as any unknown URL, so the admin area is never advertised.
+ * For pages and route segments: an anonymous visitor is sent to sign in; a
+ * signed-in Staff Member below the required Role gets the same 404 as any
+ * unknown URL.
  */
 export async function requireStaffPage(required: StaffRole): Promise<CurrentStaff> {
   const staff = await getCurrentStaff();
+  if (!staff) redirect(SIGN_IN_PATH);
   if (!hasRole(staff, required)) notFound();
   if (staff.mustChangePassword) redirect(CHANGE_PASSWORD_PATH);
   return staff;

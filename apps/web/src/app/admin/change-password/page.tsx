@@ -1,7 +1,7 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { SignOutButton } from "@/components/sign-out-button";
-import { getCurrentStaff } from "@/lib/require-staff";
+import { getCurrentStaff, SIGN_IN_PATH } from "@/lib/require-staff";
 import { changePasswordAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ const buttonClass =
 // signed in who simply wants to change theirs.
 export default async function ChangePasswordPage() {
   const staff = await getCurrentStaff();
-  if (!staff) notFound();
+  if (!staff) redirect(SIGN_IN_PATH);
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-10">

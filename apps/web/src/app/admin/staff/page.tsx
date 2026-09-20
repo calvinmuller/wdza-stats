@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { STAFF_ROLES } from "@wdza-stats/db";
 import { ActionForm } from "@/components/action-form";
+import { AdminShell } from "../admin-shell";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format-date";
 import { requireStaffPage } from "@/lib/require-staff";
@@ -29,18 +29,11 @@ export default async function StaffPage() {
   const staff = await listStaffMembers(db);
 
   return (
-    <div className="flex flex-col gap-10">
-      <div>
-        <Link href="/admin" className="text-xs text-zinc-500 hover:text-zinc-300">
-          &larr; Admin
-        </Link>
-        <h1 className="text-3xl">Staff</h1>
-        <p className="max-w-2xl text-xs text-zinc-500">
-          Staff Members sign in with an email and password. A password you set here is temporary: they must replace it
-          at their next sign-in. There is no self-service reset, so a lost password is fixed here.
-        </p>
-      </div>
-
+    <AdminShell
+      staff={me}
+      title="Staff"
+      description="Staff Members sign in with an email and password. A password you set here is temporary: they must replace it at their next sign-in. There is no self-service reset, so a lost password is fixed here."
+    >
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-xl text-zinc-100">Add a Staff Member</h2>
         <ActionForm action={addStaffMemberAction} className={rowClass} successMessage="Staff Member added.">
@@ -132,6 +125,6 @@ export default async function StaffPage() {
           </div>
         ))}
       </section>
-    </div>
+    </AdminShell>
   );
 }

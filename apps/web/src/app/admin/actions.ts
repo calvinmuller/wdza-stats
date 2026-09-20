@@ -32,42 +32,42 @@ export async function updateXpRewardAction(reason: XpReason, formData: FormData)
   const staff = await requireStaffAction("admin");
   await updateXpRewardFromForm(db, reason, formData);
   await recordStaffAction(db, staff, "update_xp_reward", { target: reason, detail: formFields(formData) });
-  redirect("/admin");
+  redirect("/admin/xp");
 }
 
 export async function updateLevelThresholdAction(level: number, formData: FormData): Promise<void> {
   const staff = await requireStaffAction("admin");
   await updateLevelThresholdFromForm(db, level, formData);
   await recordStaffAction(db, staff, "update_level_threshold", { target: String(level), detail: formFields(formData) });
-  redirect("/admin");
+  redirect("/admin/xp");
 }
 
 export async function updateChallengeDefinitionAction(id: number, formData: FormData): Promise<void> {
   const staff = await requireStaffAction("admin");
   await updateChallengeDefinitionFromForm(db, id, formData);
   await recordStaffAction(db, staff, "update_challenge_definition", { target: String(id), detail: formFields(formData) });
-  redirect("/admin");
+  redirect("/admin/challenges");
 }
 
 export async function updateAchievementDefinitionAction(id: string, formData: FormData): Promise<void> {
   const staff = await requireStaffAction("admin");
   await updateAchievementDefinitionFromForm(db, id, formData);
   await recordStaffAction(db, staff, "update_achievement_definition", { target: id, detail: formFields(formData) });
-  redirect("/admin");
+  redirect("/admin/achievements");
 }
 
 export async function updateNotificationRuleAction(kind: NotificationKind, formData: FormData): Promise<void> {
   const staff = await requireStaffAction("admin");
   await updateNotificationRuleFromForm(db, kind, formData);
   await recordStaffAction(db, staff, "update_notification_rule", { target: kind, detail: formFields(formData) });
-  redirect("/admin");
+  redirect("/admin/notifications");
 }
 
 export async function updateNotificationSettingsAction(formData: FormData): Promise<void> {
   const staff = await requireStaffAction("admin");
   await updateNotificationSettingsFromForm(db, formData);
   await recordStaffAction(db, staff, "update_notification_settings", { detail: formFields(formData) });
-  redirect("/admin");
+  redirect("/admin/notifications");
 }
 
 export async function banPlayerAction(formData: FormData): Promise<void> {

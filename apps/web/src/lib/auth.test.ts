@@ -135,8 +135,8 @@ describe("requireStaff", () => {
     await expect(requireStaffPage("admin")).resolves.toMatchObject({ role: "admin" });
   });
 
-  it("refuses an anonymous request: 404 for pages, an error for actions", async () => {
+  it("refuses an anonymous request: sign-in redirect for pages, an error for actions", async () => {
     await expect(requireStaffAction("moderator")).rejects.toThrow("Forbidden");
-    await expect(requireStaffPage("moderator")).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/);
+    await expect(requireStaffPage("moderator")).rejects.toThrow(/NEXT_REDIRECT/);
   });
 });

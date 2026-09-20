@@ -1,4 +1,3 @@
-import { notFound } from "next/navigation";
 import { describeChallenge } from "@/lib/active-challenges";
 import {
   getNotificationSettings,
@@ -9,7 +8,8 @@ import {
   listNotificationRules,
   listXpRewards,
 } from "@/lib/admin-config";
-import { ADMIN_PATH_SECRET } from "@/lib/admin-secret";
+import { SignOutButton } from "@/components/sign-out-button";
+import { requireStaffPage } from "@/lib/require-staff";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format-date";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
@@ -41,19 +41,12 @@ const buttonClass =
 const rowClass = "flex flex-wrap items-end gap-3 rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3";
 const labelClass = "flex flex-col gap-1 text-xs text-zinc-500";
 
-export default async function AdminPage({
-  params,
-}: {
-  params: Promise<{ adminSecret: string }>;
-}) {
-  const { adminSecret } = await params;
-
-  // Render-time gating alone isn't a security boundary (see actions.ts's
-  // own re-check), but it is what keeps this area unreachable through normal
-  // navigation - see ticket 15.
-  if (adminSecret !== ADMIN_PATH_SECRET) {
-    notFound();
-  }
+export default async function AdminPage() {
+  // Render-time gating alone isn't a security boundary (see actions.ts's own
+  // re-check), but it is what keeps this area unreachable, and unadvertised,
+  // for anyone who isn't a signed-in admin: they get the same 404 as any
+  // unknown URL. (Ticket 06 lets moderators in for the ban screens.)
+  const staff = await requireStaffPage("admin");
 
   const [
     xpRewardRows,
@@ -76,11 +69,17 @@ export default async function AdminPage({
 
   return (
     <div className="flex flex-col gap-10">
-      <div>
-        <h1 className="text-3xl">Admin</h1>
-        <p className="max-w-2xl text-xs text-zinc-500">
-          Edit gamification config. Changes apply on the next poll - no redeploy required.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl">Admin</h1>
+          <p className="max-w-2xl text-xs text-zinc-500">
+            Edit gamification config. Changes apply on the next poll - no redeploy required.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-zinc-500">
+          <span>{staff.email}</span>
+          <SignOutButton className="rounded-lg border border-white/10 px-2 py-1 text-zinc-300 hover:bg-white/5" />
+        </div>
       </div>
 
       <section className="flex flex-col gap-3">
@@ -89,7 +88,7 @@ export default async function AdminPage({
           {xpRewardRows.map((reward) => (
             <form
               key={reward.reason}
-              action={updateXpRewardAction.bind(null, adminSecret, reward.reason)}
+              action={updateXpRewardAction.bind(null, reward.reason)}
               className={rowClass}
             >
               <span className="min-w-32 font-medium text-zinc-200">{reward.reason}</span>
@@ -111,7 +110,7 @@ export default async function AdminPage({
           {levelThresholdRows.map((threshold) => (
             <form
               key={threshold.level}
-              action={updateLevelThresholdAction.bind(null, adminSecret, threshold.level)}
+              action={updateLevelThresholdAction.bind(null, threshold.level)}
               className={rowClass}
             >
               <span className="min-w-32 font-medium text-zinc-200">Level {threshold.level}</span>
@@ -140,7 +139,7 @@ export default async function AdminPage({
           {challengeDefinitionRows.map((definition) => (
             <form
               key={definition.id}
-              action={updateChallengeDefinitionAction.bind(null, adminSecret, definition.id)}
+              action={updateChallengeDefinitionAction.bind(null, definition.id)}
               className={rowClass}
             >
               <span className="min-w-48 font-medium text-zinc-200">
@@ -175,7 +174,7 @@ export default async function AdminPage({
           {achievementDefinitionRows.map((achievement) => (
             <form
               key={achievement.id}
-              action={updateAchievementDefinitionAction.bind(null, adminSecret, achievement.id)}
+              action={updateAchievementDefinitionAction.bind(null, achievement.id)}
               className={rowClass}
             >
               <span className="min-w-28 text-xs text-zinc-500">{achievement.trigger}</span>
@@ -217,7 +216,7 @@ export default async function AdminPage({
           {notificationRuleRows.map((rule) => (
             <form
               key={rule.kind}
-              action={updateNotificationRuleAction.bind(null, adminSecret, rule.kind)}
+              action={updateNotificationRuleAction.bind(null, rule.kind)}
               className={rowClass}
             >
               <span className="min-w-40 font-medium text-zinc-200">{rule.kind}</span>
@@ -243,7 +242,7 @@ export default async function AdminPage({
 
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-xl text-zinc-100">Notification settings</h2>
-        <form action={updateNotificationSettingsAction.bind(null, adminSecret)} className={rowClass}>
+        <form action={updateNotificationSettingsAction} className={rowClass}>
           <label className={labelClass}>
             Max low/normal notifications per minute
             <input
@@ -280,7 +279,7 @@ export default async function AdminPage({
                 <span className="text-xs text-zinc-500">
                   Banned {formatDateTime(banned.bannedAt.toISOString())}
                 </span>
-                <form action={unbanPlayerAction.bind(null, adminSecret, banned.steamId)}>
+                <form action={unbanPlayerAction.bind(null, banned.steamId)}>
                   <button
                     type="submit"
                     className="shrink-0 rounded-lg bg-red-900/60 px-3 py-1.5 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-800/60"
@@ -293,7 +292,7 @@ export default async function AdminPage({
           )}
         </div>
 
-        <form action={banPlayerAction.bind(null, adminSecret)} className={rowClass}>
+        <form action={banPlayerAction} className={rowClass}>
           <label className={`${labelClass} min-w-40 flex-1`}>
             Steam ID
             <input type="text" name="steamId" required className={textInputClass} />
@@ -312,7 +311,7 @@ export default async function AdminPage({
         <h2 className="font-display text-xl text-zinc-100">Kill feed</h2>
         {feedServer ? (
           <FeedTokenForm
-            action={generateFeedTokenAction.bind(null, adminSecret)}
+            action={generateFeedTokenAction}
             hasToken={feedServer.feedTokenHash !== null}
           />
         ) : (

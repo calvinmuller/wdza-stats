@@ -17,10 +17,10 @@ import {
 import { desc, eq } from "drizzle-orm";
 
 // The Admin area's data access layer (ticket 15) - every read/write the
-// admin UI (app/[adminSecret]) performs against the XP_REWARDS,
+// admin UI (app/admin) performs against the XP_REWARDS,
 // LEVEL_THRESHOLDS, CHALLENGE_DEFINITIONS, ACHIEVEMENT_DEFINITIONS,
 // NOTIFICATION_RULES, and NOTIFICATION_SETTINGS config tables lives here,
-// kept separate from the Server Actions in app/[adminSecret]/actions.ts so
+// kept separate from the Server Actions in app/admin/actions.ts so
 // it can be unit tested directly against a real database without going
 // through Next's form/action machinery. Every relevant engine
 // (apps/worker/src/*-engine.ts, wired up in apps/worker/src/match-tracker.ts)

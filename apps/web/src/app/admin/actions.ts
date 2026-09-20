@@ -1,7 +1,7 @@
 "use server";
 
 import type { NotificationKind, XpReason } from "@wdza-stats/db";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import {
   banPlayerFromForm,
   unbanPlayerFromForm,
@@ -12,95 +12,81 @@ import {
   updateNotificationSettingsFromForm,
   updateXpRewardFromForm,
 } from "@/lib/admin-config";
-import { ADMIN_PATH_SECRET } from "@/lib/admin-secret";
 import { generateFeedToken } from "@/lib/feed-token";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
-import { getServerByBaseUrl } from "@/lib/server-lookup";
 import { db } from "@/lib/db";
+import { requireStaffAction } from "@/lib/require-staff";
+import { getServerByBaseUrl } from "@/lib/server-lookup";
 
 // Server Actions have their own POST endpoint, reachable independent of
 // whether the caller ever rendered the gated page (see the Next.js Server
 // Actions security guide) - render-time gating on page.tsx alone is not
-// enough, so every action here re-checks the secret itself before touching
-// the database. `secret` is bound in from the rendering page's own route
-// param via Function.prototype.bind (see page.tsx), not read from form
-// input, so it can't be tampered with client-side.
-function assertSecret(secret: string): void {
-  if (secret !== ADMIN_PATH_SECRET) {
-    notFound();
-  }
-}
+// enough, so every action here re-checks the signed-in Staff Member's Role
+// itself before touching the database. Everything is admin-only for now; the
+// moderator-level actions are opened up in ticket 06.
 
-export async function updateXpRewardAction(secret: string, reason: XpReason, formData: FormData): Promise<void> {
-  assertSecret(secret);
+export async function updateXpRewardAction(reason: XpReason, formData: FormData): Promise<void> {
+  await requireStaffAction("admin");
   await updateXpRewardFromForm(db, reason, formData);
-  redirect(`/${secret}`);
+  redirect("/admin");
 }
 
-export async function updateLevelThresholdAction(secret: string, level: number, formData: FormData): Promise<void> {
-  assertSecret(secret);
+export async function updateLevelThresholdAction(level: number, formData: FormData): Promise<void> {
+  await requireStaffAction("admin");
   await updateLevelThresholdFromForm(db, level, formData);
-  redirect(`/${secret}`);
+  redirect("/admin");
 }
 
-export async function updateChallengeDefinitionAction(
-  secret: string,
-  id: number,
+export async function updateChallengeDefinitionAction(id: number,
   formData: FormData,
 ): Promise<void> {
-  assertSecret(secret);
+  await requireStaffAction("admin");
   await updateChallengeDefinitionFromForm(db, id, formData);
-  redirect(`/${secret}`);
+  redirect("/admin");
 }
 
-export async function updateAchievementDefinitionAction(
-  secret: string,
-  id: string,
+export async function updateAchievementDefinitionAction(id: string,
   formData: FormData,
 ): Promise<void> {
-  assertSecret(secret);
+  await requireStaffAction("admin");
   await updateAchievementDefinitionFromForm(db, id, formData);
-  redirect(`/${secret}`);
+  redirect("/admin");
 }
 
-export async function updateNotificationRuleAction(
-  secret: string,
-  kind: NotificationKind,
+export async function updateNotificationRuleAction(kind: NotificationKind,
   formData: FormData,
 ): Promise<void> {
-  assertSecret(secret);
+  await requireStaffAction("admin");
   await updateNotificationRuleFromForm(db, kind, formData);
-  redirect(`/${secret}`);
+  redirect("/admin");
 }
 
-export async function updateNotificationSettingsAction(secret: string, formData: FormData): Promise<void> {
-  assertSecret(secret);
+export async function updateNotificationSettingsAction(formData: FormData): Promise<void> {
+  await requireStaffAction("admin");
   await updateNotificationSettingsFromForm(db, formData);
-  redirect(`/${secret}`);
+  redirect("/admin");
 }
 
-export async function banPlayerAction(secret: string, formData: FormData): Promise<void> {
-  assertSecret(secret);
+export async function banPlayerAction(formData: FormData): Promise<void> {
+  await requireStaffAction("admin");
   await banPlayerFromForm(db, formData);
-  redirect(`/${secret}`);
+  redirect("/admin");
 }
 
-export async function unbanPlayerAction(secret: string, steamId: string): Promise<void> {
-  assertSecret(secret);
+export async function unbanPlayerAction(steamId: string): Promise<void> {
+  await requireStaffAction("admin");
   await unbanPlayerFromForm(db, steamId);
-  redirect(`/${secret}`);
+  redirect("/admin");
 }
 
 // What the feed token form shows after a click: the new token (the only time
 // it is ever visible) or why there isn't one.
 export type FeedTokenState = { token: string | null; error: string | null };
 
-export async function generateFeedTokenAction(
-  secret: string,
-  _previous: FeedTokenState,
+export async function generateFeedTokenAction(_previous: FeedTokenState,
   _formData: FormData,
 ): Promise<FeedTokenState> {
-  assertSecret(secret);
+  await requireStaffAction("admin");
   const server = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
   if (!server) {
     return { token: null, error: "No Server is registered yet - the Worker creates it on its first poll." };

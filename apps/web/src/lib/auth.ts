@@ -21,6 +21,10 @@ import { db } from "./db";
 // createStaffMember (lib/staff.ts), never by anonymous callers.
 export const auth = betterAuth({
   secret: requireEnv("BETTER_AUTH_SECRET"),
+  // The site's public origin (e.g. https://stats.example.com). Better Auth uses
+  // it for its origin/CSRF checks; when unset it trusts whatever origin the
+  // request claims, so set it in production.
+  baseURL: process.env.BETTER_AUTH_URL || undefined,
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: {

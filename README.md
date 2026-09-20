@@ -33,6 +33,26 @@ npm run backfill:steam --workspace=@wdza-stats/worker
 
 Safe to re-run - already-cached players are skipped.
 
+## Admin access
+
+The admin area (`/admin`) is for Staff Members, who sign in with an email and
+password (`/admin/sign-in`). A **moderator** can ban and unban players; an
+**admin** can also edit the game's config, issue the kill feed token, and manage
+Staff Members (`/admin/staff`). There is no public sign-up and no email is ever
+sent, so an admin sets each new Staff Member's first password (they must change
+it at first sign-in) and resets any that is lost. Every admin action is recorded
+in the `staff_audit_log` table. See `docs/adr/0005-staff-login-replaces-the-secret-admin-url.md`.
+
+`ADMIN_PATH_SECRET` is no longer an admin password. It gates one page only,
+`/<ADMIN_PATH_SECRET>/bootstrap`, which creates the **first** admin while none
+exists and, at any time, resets an admin's password when no admin can sign in.
+Keep it secret and long; it is the recovery path.
+
+The web service needs `BETTER_AUTH_SECRET` (signs session cookies; generate one
+with `openssl rand -hex 32`), `BETTER_AUTH_URL` (the site's public origin) and
+`ADMIN_PATH_SECRET`. First-time setup: open the bootstrap page once and create
+your admin.
+
 ## Testing
 
 ```sh

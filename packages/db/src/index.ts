@@ -7,5 +7,6 @@ export * from "./game-event";
 export * from "./level";
 export * from "./notification";
 export * from "./snapshot";
+export * from "./staff";
 export * from "./steam-profile";
 export * from "./xp";

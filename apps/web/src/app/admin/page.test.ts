@@ -48,10 +48,17 @@ describe("AdminPage", () => {
     await expect(renderPage()).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/);
   });
 
-  it("404s for a moderator until ticket 06 opens the ban screens to them", async () => {
+  it("shows a moderator only the ban screens", async () => {
     await signInAs("moderator");
 
-    await expect(renderPage()).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/);
+    const html = await renderPage();
+
+    expect(html).toContain("Banned players");
+    expect(html).toContain("moderator@example.test");
+    expect(html).not.toContain("XP rewards");
+    expect(html).not.toContain("Level curve");
+    expect(html).not.toContain("Notification rules");
+    expect(html).not.toContain("Kill feed");
   });
 
   it("renders the config editor for a signed-in admin", async () => {
@@ -65,6 +72,8 @@ describe("AdminPage", () => {
     expect(html).toContain("Achievements");
     expect(html).toContain("Notification rules");
     expect(html).toContain("Notification settings");
+    expect(html).toContain("Banned players");
+    expect(html).toContain("Kill feed");
     // Seeded config rows should show up as editable fields.
     expect(html).toContain("kill");
     expect(html).toContain("Level 2");

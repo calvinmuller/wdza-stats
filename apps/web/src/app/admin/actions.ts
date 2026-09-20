@@ -22,8 +22,9 @@ import { getServerByBaseUrl } from "@/lib/server-lookup";
 // whether the caller ever rendered the gated page (see the Next.js Server
 // Actions security guide) - render-time gating on page.tsx alone is not
 // enough, so every action here re-checks the signed-in Staff Member's Role
-// itself before touching the database. Everything is admin-only for now; the
-// moderator-level actions are opened up in ticket 06.
+// itself before touching the database. Ban and unban are moderator-level (and
+// so open to admins too); everything else here changes how the game behaves and
+// is admin-only.
 
 export async function updateXpRewardAction(reason: XpReason, formData: FormData): Promise<void> {
   await requireStaffAction("admin");
@@ -68,13 +69,13 @@ export async function updateNotificationSettingsAction(formData: FormData): Prom
 }
 
 export async function banPlayerAction(formData: FormData): Promise<void> {
-  await requireStaffAction("admin");
+  await requireStaffAction("moderator");
   await banPlayerFromForm(db, formData);
   redirect("/admin");
 }
 
 export async function unbanPlayerAction(steamId: string): Promise<void> {
-  await requireStaffAction("admin");
+  await requireStaffAction("moderator");
   await unbanPlayerFromForm(db, steamId);
   redirect("/admin");
 }

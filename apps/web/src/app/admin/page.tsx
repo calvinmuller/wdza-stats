@@ -9,7 +9,7 @@ import {
   listXpRewards,
 } from "@/lib/admin-config";
 import { SignOutButton } from "@/components/sign-out-button";
-import { requireStaffPage } from "@/lib/require-staff";
+import { hasRole, requireStaffPage } from "@/lib/require-staff";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format-date";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
@@ -41,13 +41,9 @@ const buttonClass =
 const rowClass = "flex flex-wrap items-end gap-3 rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3";
 const labelClass = "flex flex-col gap-1 text-xs text-zinc-500";
 
-export default async function AdminPage() {
-  // Render-time gating alone isn't a security boundary (see actions.ts's own
-  // re-check), but it is what keeps this area unreachable, and unadvertised,
-  // for anyone who isn't a signed-in admin: they get the same 404 as any
-  // unknown URL. (Ticket 06 lets moderators in for the ban screens.)
-  const staff = await requireStaffPage("admin");
-
+// Everything a moderator can't touch: the game's tunable config. Loads its own
+// data so a moderator's request never reads it.
+async function ConfigSections() {
   const [
     xpRewardRows,
     levelThresholdRows,
@@ -55,7 +51,6 @@ export default async function AdminPage() {
     achievementDefinitionRows,
     notificationRuleRows,
     notificationSettingsRow,
-    bannedPlayerRows,
   ] = await Promise.all([
     listXpRewards(db),
     listLevelThresholds(db),
@@ -63,25 +58,10 @@ export default async function AdminPage() {
     listAchievementDefinitions(db),
     listNotificationRules(db),
     getNotificationSettings(db),
-    listBannedPlayers(db),
   ]);
-  const feedServer = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
 
   return (
-    <div className="flex flex-col gap-10">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-3xl">Admin</h1>
-          <p className="max-w-2xl text-xs text-zinc-500">
-            Edit gamification config. Changes apply on the next poll - no redeploy required.
-          </p>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-zinc-500">
-          <span>{staff.email}</span>
-          <SignOutButton className="rounded-lg border border-white/10 px-2 py-1 text-zinc-300 hover:bg-white/5" />
-        </div>
-      </div>
-
+      <>
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-xl text-zinc-100">XP rewards</h2>
         <div className="flex flex-col gap-2">
@@ -259,67 +239,113 @@ export default async function AdminPage() {
           </button>
         </form>
       </section>
+      </>
+  );
+}
 
-      <section className="flex flex-col gap-3">
-        <h2 className="font-display text-xl text-zinc-100">Banned players</h2>
-        <p className="max-w-2xl text-xs text-zinc-500">
-          A banned Steam ID is ignored everywhere: it never shows on the leaderboard, rankings,
-          server stats, player search, or the live snapshot, and the Worker stops updating its
-          stats on the next poll.
-        </p>
+async function BannedPlayersSection() {
+  const bannedPlayerRows = await listBannedPlayers(db);
 
-        <div className="flex flex-col gap-2">
-          {bannedPlayerRows.length === 0 ? (
-            <p className="text-sm text-zinc-500">No players are banned.</p>
-          ) : (
-            bannedPlayerRows.map((banned) => (
-              <div key={banned.steamId} className={rowClass}>
-                <span className="min-w-40 font-medium text-zinc-200">{banned.steamId}</span>
-                <span className="flex-1 text-sm text-zinc-400">{banned.reason ?? "—"}</span>
-                <span className="text-xs text-zinc-500">
-                  Banned {formatDateTime(banned.bannedAt.toISOString())}
-                </span>
-                <form action={unbanPlayerAction.bind(null, banned.steamId)}>
-                  <button
-                    type="submit"
-                    className="shrink-0 rounded-lg bg-red-900/60 px-3 py-1.5 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-800/60"
-                  >
-                    Unban
-                  </button>
-                </form>
-              </div>
-            ))
-          )}
-        </div>
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-display text-xl text-zinc-100">Banned players</h2>
+      <p className="max-w-2xl text-xs text-zinc-500">
+        A banned Steam ID is ignored everywhere: it never shows on the leaderboard, rankings,
+        server stats, player search, or the live snapshot, and the Worker stops updating its
+        stats on the next poll.
+      </p>
 
-        <form action={banPlayerAction} className={rowClass}>
-          <label className={`${labelClass} min-w-40 flex-1`}>
-            Steam ID
-            <input type="text" name="steamId" required className={textInputClass} />
-          </label>
-          <label className={`${labelClass} min-w-48 flex-[2]`}>
-            Reason (optional)
-            <input type="text" name="reason" className={textInputClass} />
-          </label>
-          <button type="submit" className={buttonClass}>
-            Ban
-          </button>
-        </form>
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <h2 className="font-display text-xl text-zinc-100">Kill feed</h2>
-        {feedServer ? (
-          <FeedTokenForm
-            action={generateFeedTokenAction}
-            hasToken={feedServer.feedTokenHash !== null}
-          />
+      <div className="flex flex-col gap-2">
+        {bannedPlayerRows.length === 0 ? (
+          <p className="text-sm text-zinc-500">No players are banned.</p>
         ) : (
-          <p className="text-sm text-zinc-400">
-            No Server is registered yet - the Worker creates it on its first poll.
-          </p>
+          bannedPlayerRows.map((banned) => (
+            <div key={banned.steamId} className={rowClass}>
+              <span className="min-w-40 font-medium text-zinc-200">{banned.steamId}</span>
+              <span className="flex-1 text-sm text-zinc-400">{banned.reason ?? "—"}</span>
+              <span className="text-xs text-zinc-500">
+                Banned {formatDateTime(banned.bannedAt.toISOString())}
+              </span>
+              <form action={unbanPlayerAction.bind(null, banned.steamId)}>
+                <button
+                  type="submit"
+                  className="shrink-0 rounded-lg bg-red-900/60 px-3 py-1.5 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-800/60"
+                >
+                  Unban
+                </button>
+              </form>
+            </div>
+          ))
         )}
-      </section>
+      </div>
+
+      <form action={banPlayerAction} className={rowClass}>
+        <label className={`${labelClass} min-w-40 flex-1`}>
+          Steam ID
+          <input type="text" name="steamId" required className={textInputClass} />
+        </label>
+        <label className={`${labelClass} min-w-48 flex-[2]`}>
+          Reason (optional)
+          <input type="text" name="reason" className={textInputClass} />
+        </label>
+        <button type="submit" className={buttonClass}>
+          Ban
+        </button>
+      </form>
+    </section>
+  );
+}
+
+async function KillFeedSection() {
+  const feedServer = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-display text-xl text-zinc-100">Kill feed</h2>
+      {feedServer ? (
+        <FeedTokenForm
+          action={generateFeedTokenAction}
+          hasToken={feedServer.feedTokenHash !== null}
+        />
+      ) : (
+        <p className="text-sm text-zinc-400">
+          No Server is registered yet - the Worker creates it on its first poll.
+        </p>
+      )}
+    </section>
+  );
+}
+
+export default async function AdminPage() {
+  // Render-time gating alone isn't a security boundary (see actions.ts's own
+  // re-check), but it is what keeps this area unreachable, and unadvertised,
+  // for anyone who isn't signed-in staff: they get the same 404 as any unknown
+  // URL. Moderators see only the ban screens; the rest is admin-only.
+  const staff = await requireStaffPage("moderator");
+  const isAdmin = hasRole(staff, "admin");
+
+  return (
+    <div className="flex flex-col gap-10">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl">Admin</h1>
+          <p className="max-w-2xl text-xs text-zinc-500">
+            {isAdmin
+              ? "Edit gamification config. Changes apply on the next poll - no redeploy required."
+              : "Moderation: ban and unban players."}
+          </p>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-zinc-500">
+          <span>{staff.email}</span>
+          <SignOutButton className="rounded-lg border border-white/10 px-2 py-1 text-zinc-300 hover:bg-white/5" />
+        </div>
+      </div>
+
+      {isAdmin && (await ConfigSections())}
+
+      {await BannedPlayersSection()}
+
+      {isAdmin && (await KillFeedSection())}
     </div>
   );
 }

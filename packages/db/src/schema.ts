@@ -20,7 +20,7 @@ import type { ChallengeScope, ChallengeType } from "./challenge";
 import type { GameEventType } from "./game-event";
 import type { NotificationKind, NotificationPriority } from "./notification";
 import type { Snapshot } from "./snapshot";
-import { STAFF_ROLES, type StaffRole } from "./staff";
+import { STAFF_ROLES, type StaffAction, type StaffRole } from "./staff";
 import type { SteamAchievementUnlock, SteamProfileStatus } from "./steam-profile";
 import type { XpReason } from "./xp";
 
@@ -620,4 +620,24 @@ export const staffVerifications = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("staff_verifications_identifier_idx").on(table.identifier)],
+);
+
+// Append-only record of who did what in the admin area. The actor's id and email
+// are copied in and deliberately not a foreign key: the trail must outlive a
+// removed Staff Member. A null staffMemberId means the bootstrap page, which is
+// gated by the secret and has no signed-in person. Never store a password or a
+// token in `detail`.
+export const staffAuditLog = pgTable(
+  "staff_audit_log",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    staffMemberId: text("staff_member_id"),
+    actorEmail: text("actor_email").notNull(),
+    action: text("action").$type<StaffAction>().notNull(),
+    // What it was done to: a steamId, a config row key, a Staff Member id.
+    target: text("target"),
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("staff_audit_log_created_idx").on(table.createdAt)],
 );

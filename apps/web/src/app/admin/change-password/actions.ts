@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { ActionFormState } from "@/components/action-form";
 import { db } from "@/lib/db";
 import { getCurrentStaff } from "@/lib/require-staff";
+import { recordStaffAction } from "@/lib/staff-audit";
 import { changeOwnPassword } from "@/lib/staff-management";
 
 function text(formData: FormData, name: string): string {
@@ -24,6 +25,9 @@ export async function changePasswordAction(_previous: ActionFormState, formData:
     currentPassword: text(formData, "currentPassword"),
     newPassword: text(formData, "newPassword"),
   });
-  if (result.ok) redirect("/admin");
+  if (result.ok) {
+    await recordStaffAction(db, staff, "change_own_password", { target: staff.id });
+    redirect("/admin");
+  }
   return result;
 }

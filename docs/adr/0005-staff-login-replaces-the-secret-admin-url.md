@@ -1,0 +1,7 @@
+# Staff login replaces the secret admin URL
+
+The admin area was gated only by an unguessable path segment (`ADMIN_PATH_SECRET`), which identifies no one: anyone who learns the URL is an admin, it can leak through logs and browser history, and no action can be attributed to a person. We decided to add real sign-in for Staff Members using Better Auth with email and password, and to move the admin area to a normal `/admin` path that requires a session and a Role check (server actions re-check both). Players do not sign in; Steam login was considered and deferred.
+
+Because we chose not to send email, addresses are never verified and there is no self-service password reset. That drives three consequences. There is no public sign-up: Staff Members are created by the bootstrap page or by another admin, and an admin is promoted only after the Staff Member exists (granting a Role to an unregistered email would let anyone claim it by registering first). Lost passwords are reset by an admin. And `ADMIN_PATH_SECRET` survives only to gate a bootstrap page that creates the first admin and resets an admin's password when no admin can sign in, to be retired once that recovery path is no longer needed.
+
+The rejected alternatives: layering login on top of the secret URL (adds friction and no security, since the login already identifies the person), magic-link or email OTP sign-in (needs an email provider we don't want to run), and Steam OpenID login for players (needs a custom Better Auth plugin and has no use until there are player-facing features).

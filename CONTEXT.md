@@ -60,3 +60,11 @@ _Avoid_: Quest, mission, task
 **Notification**:
 A throttled, recorded representation of a noteworthy GameEvent or milestone, shown in the dashboard's recent-events feed. Never delivered to the game server itself — see [docs/adr/0003](./docs/adr/0003-gamification-notifications-stay-off-rcon-writes.md) for why RCON stays read-only.
 _Avoid_: Broadcast (implies delivery to players, which doesn't happen yet), alert
+
+**Staff Member**:
+A person who signs in to run the site: moderating players and, for admins, tuning the game's configuration. Identified by an email address and password, and holds exactly one Role. Distinct from a player: players are only ever a steamId in the stats and never sign in. There is no general "account" or "user" concept.
+_Avoid_: User, Account, Admin (that is a Role, not a kind of person)
+
+**Role**:
+What a Staff Member is allowed to do. `moderator` can ban and unban players. `admin` can do everything a moderator can, plus edit game configuration, generate feed tokens, and manage Staff Members and their Roles. The last remaining admin can never be removed or demoted.
+_Avoid_: Permission level, group

@@ -13,6 +13,9 @@ import {
   updateXpRewardFromForm,
 } from "@/lib/admin-config";
 import { ADMIN_PATH_SECRET } from "@/lib/admin-secret";
+import { generateFeedToken } from "@/lib/feed-token";
+import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
+import { getServerByBaseUrl } from "@/lib/server-lookup";
 import { db } from "@/lib/db";
 
 // Server Actions have their own POST endpoint, reachable independent of
@@ -86,4 +89,22 @@ export async function unbanPlayerAction(secret: string, steamId: string): Promis
   assertSecret(secret);
   await unbanPlayerFromForm(db, steamId);
   redirect(`/${secret}`);
+}
+
+// What the feed token form shows after a click: the new token (the only time
+// it is ever visible) or why there isn't one.
+export type FeedTokenState = { token: string | null; error: string | null };
+
+export async function generateFeedTokenAction(
+  secret: string,
+  _previous: FeedTokenState,
+  _formData: FormData,
+): Promise<FeedTokenState> {
+  assertSecret(secret);
+  const server = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
+  if (!server) {
+    return { token: null, error: "No Server is registered yet - the Worker creates it on its first poll." };
+  }
+  const token = await generateFeedToken(db, server.id);
+  return token ? { token, error: null } : { token: null, error: "The Server could not be found." };
 }

@@ -1,11 +1,13 @@
 import { sql } from "drizzle-orm";
 import {
+  bigserial,
   boolean,
   index,
   integer,
   jsonb,
   pgTable,
   primaryKey,
+  real,
   serial,
   text,
   timestamp,
@@ -26,6 +28,9 @@ export const servers = pgTable("servers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   baseUrl: text("base_url").notNull().unique(),
+  // SHA-256 of the Server's kill feed token; the plaintext is shown once at
+  // generation and never stored. Null: this Server has no feed configured.
+  feedTokenHash: text("feed_token_hash").unique(),
 });
 
 // The most recent Snapshot per Server, overwritten in place on every poll.
@@ -485,3 +490,48 @@ export const notifications = pgTable("notifications", {
     .references(() => gameEvents.id),
   timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
 });
+
+// Kill: one killing reported directly by the game's kill feed (see CONTEXT.md).
+// steamIds and matchRow carry no foreign keys, matching the convention on
+// matches/playerMatchStats: a Kill must outlive whatever it points at, and a
+// player may have no PlayerCareerStat row yet. id is the monotonic cursor the
+// live stream uses for Last-Event-ID replay. gameMatchId/instanceId are the
+// game's own per-boot ids, NOT a Match; matchRow is the Match open on this
+// Server when the Kill arrived (null if none). Factions are snapshotted from
+// the latest Snapshot at receipt (null when unknown).
+export const kills = pgTable(
+  "kills",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => servers.id),
+    eventId: text("event_id").notNull(),
+    instanceId: text("instance_id").notNull(),
+    gameMatchId: text("game_match_id").notNull(),
+    matchRow: integer("match_row"),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    // Seconds on the game's match clock.
+    eventTime: real("event_time").notNull(),
+    map: text("map").notNull(),
+    // Null killer: a death by the environment.
+    killerSteamId: text("killer_steam_id"),
+    killerName: text("killer_name"),
+    killerFaction: text("killer_faction"),
+    victimSteamId: text("victim_steam_id").notNull(),
+    victimName: text("victim_name").notNull(),
+    victimFaction: text("victim_faction"),
+    // The raw weapon or vehicle tag, e.g. Id.Item.AK74M.
+    cause: text("cause"),
+    distanceM: real("distance_m"),
+    headshot: boolean("headshot").notNull().default(false),
+    suicide: boolean("suicide").notNull().default(false),
+    // The other context tags, short form (Penetration, RoadKill, Falling, ...).
+    tags: jsonb("tags").notNull().$type<string[]>(),
+  },
+  (table) => [
+    unique("kills_server_event_unique").on(table.serverId, table.eventId),
+    index("kills_killer_idx").on(table.killerSteamId),
+    index("kills_victim_idx").on(table.victimSteamId),
+  ],
+);

@@ -34,8 +34,12 @@ A player's persona name, avatar, and unlocked WARDOGS achievements as reported b
 _Avoid_: Player profile, Steam stats
 
 **GameEvent**:
-A domain-level occurrence (a kill, a death, a join, a leave, a kill-streak change, a Faction taking the lead, a Match starting or ending) inferred by diffing two consecutive Snapshots for one player or Match. Not a raw feed from the RCON API, since no such stream exists — a GameEvent is always an inference, never a direct report. Persisted as the sole, idempotent input that the XP, Challenge, and Achievement engines react to; never bypassed by those engines calling RCON or Snapshot data directly.
+A domain-level occurrence (a kill, a death, a join, a leave, a kill-streak change, a Faction taking the lead, a Match starting or ending) inferred by diffing two consecutive Snapshots for one player or Match. Not a raw feed from the RCON API, since no such stream exists — a GameEvent is always an inference, never a direct report. The game's kill feed is a separate, direct source: see **Kill**, which is never a GameEvent. Persisted as the sole, idempotent input that the XP, Challenge, and Achievement engines react to; never bypassed by those engines calling RCON or Snapshot data directly.
 _Avoid_: Event (too ambiguous outside this glossary), RCON event
+
+**Kill**:
+One killing (or environmental death) reported directly by the game's kill feed: who killed whom, with what cause, at what distance, and any tags such as headshot. Unlike a GameEvent it is a report, not an inference, and it carries the game's own event identity so the same Kill can never be stored twice. A Kill with no killer is a death by the environment (e.g. a fall). Attributed to the Server that sent it, and to the Match open on that Server when it arrived (the feed's own match id is not a Match).
+_Avoid_: KillEvent, KillFeedEvent (the kill feed is the stream; a Kill is one record in it), GameEvent (reserved for inferences)
 
 **KillStreak**:
 A player's count of consecutive kills without an intervening death. Scoped to a single Match: it always resets to 0 when a new Match starts, regardless of how many consecutive kills the player had when the previous Match ended.

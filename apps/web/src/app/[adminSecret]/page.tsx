@@ -12,8 +12,11 @@ import {
 import { ADMIN_PATH_SECRET } from "@/lib/admin-secret";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format-date";
+import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
+import { getServerByBaseUrl } from "@/lib/server-lookup";
 import {
   banPlayerAction,
+  generateFeedTokenAction,
   unbanPlayerAction,
   updateAchievementDefinitionAction,
   updateChallengeDefinitionAction,
@@ -22,6 +25,7 @@ import {
   updateNotificationSettingsAction,
   updateXpRewardAction,
 } from "./actions";
+import { FeedTokenForm } from "./feed-token-form";
 
 // A DB read via drizzle isn't a Request-time API, so Next won't otherwise
 // know this route needs fresh data on every request - force it dynamic so
@@ -68,6 +72,7 @@ export default async function AdminPage({
     getNotificationSettings(db),
     listBannedPlayers(db),
   ]);
+  const feedServer = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
 
   return (
     <div className="flex flex-col gap-10">
@@ -301,6 +306,20 @@ export default async function AdminPage({
             Ban
           </button>
         </form>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="font-display text-xl text-zinc-100">Kill feed</h2>
+        {feedServer ? (
+          <FeedTokenForm
+            action={generateFeedTokenAction.bind(null, adminSecret)}
+            hasToken={feedServer.feedTokenHash !== null}
+          />
+        ) : (
+          <p className="text-sm text-zinc-400">
+            No Server is registered yet - the Worker creates it on its first poll.
+          </p>
+        )}
       </section>
     </div>
   );

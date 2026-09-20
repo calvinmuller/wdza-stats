@@ -11,16 +11,9 @@ import { LightingBadge } from "@/components/lighting-badge";
 import { getLightingInfo } from "@/lib/lighting";
 import { getMapArtUrl } from "@/lib/map-art";
 import { PlayerAvatar } from "@/components/player-avatar";
+import { ActivityFeed } from "./activity-feed";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
-import { formatDateTime } from "@/lib/format-date";
 import type { LiveSnapshotPlayer, LiveSnapshotView } from "@/lib/live-snapshot";
-import type { RecentNotificationView } from "@/lib/recent-notifications";
-
-const NOTIFICATION_PRIORITY_CLASSNAME: Record<RecentNotificationView["priority"], string> = {
-  high: "text-brand-gold-400",
-  normal: "text-zinc-200",
-  low: "text-zinc-400",
-};
 
 // No point refreshing faster than new Snapshots can actually arrive.
 const FACTION_SCORE_LIMIT = 100;
@@ -403,41 +396,11 @@ export function LiveServerView({
               &times;
             </button>
           </div>
-          <div className="max-h-[70vh] overflow-y-auto p-4">
-            {recentNotifications.length === 0 ? (
-              <p className="text-sm text-zinc-400">Nothing noteworthy has happened yet.</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {recentNotifications.map((notification) => (
-                  <li
-                    key={notification.id}
-                    className="flex flex-col gap-1 rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-2"
-                  >
-                    {notification.steamId ? (
-                      <Link
-                        href={`/players/${notification.steamId}`}
-                        className={`text-sm hover:underline ${NOTIFICATION_PRIORITY_CLASSNAME[notification.priority]}`}
-                      >
-                        {notification.message}
-                      </Link>
-                    ) : (
-                      <span
-                        className={`text-sm ${NOTIFICATION_PRIORITY_CLASSNAME[notification.priority]}`}
-                      >
-                        {notification.message}
-                      </span>
-                    )}
-                    <time
-                      dateTime={notification.timestamp}
-                      className="whitespace-nowrap text-xs text-zinc-500"
-                    >
-                      {formatDateTime(notification.timestamp)}
-                    </time>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <ActivityFeed
+            notifications={recentNotifications}
+            factionColors={Object.fromEntries(snapshot.factions.map((faction) => [faction.name, faction.color]))}
+            linkableSteamIds={new Set(snapshot.players.filter((player) => player.level !== null).map((player) => player.steamId))}
+          />
         </aside>
       )}
     </div>

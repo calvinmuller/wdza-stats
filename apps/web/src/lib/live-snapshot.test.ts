@@ -81,6 +81,7 @@ describe("getLiveSnapshot", () => {
       },
       activeChallenges: [],
       recentNotifications: [],
+      cashHistory: [],
     });
   });
 

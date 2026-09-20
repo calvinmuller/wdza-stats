@@ -45,6 +45,7 @@ describe("GET /api/live-snapshot", () => {
       snapshot: expect.objectContaining({ map: "Deadcity" }),
       activeChallenges: [],
       recentNotifications: [],
+      cashHistory: [],
     });
   });
 });

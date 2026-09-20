@@ -6,6 +6,7 @@
 import { getRotationPreview, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { CashInPlayChart } from "@/components/cash-in-play-chart";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { LightingBadge } from "@/components/lighting-badge";
 import { getLightingInfo } from "@/lib/lighting";
@@ -120,7 +121,7 @@ export function LiveServerView({
     );
   }
 
-  const { serverName, capturedAt, snapshot, activeChallenges, recentNotifications } = data;
+  const { serverName, capturedAt, snapshot, activeChallenges, recentNotifications, cashHistory } = data;
   const rotation = getRotationPreview(snapshot.rotation);
   const playerCount = snapshot.players.length;
   const maxPlayers = snapshot.playerSlots.max;
@@ -365,6 +366,16 @@ export function LiveServerView({
             ))}
           </ul>
         )}
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-xl">
+          Cash in play{" "}
+          <span className="text-sm font-normal text-zinc-500">
+            held by connected players this match
+          </span>
+        </h2>
+        <CashInPlayChart history={cashHistory} factions={snapshot.factions} />
       </section>
       </div>
 

@@ -9,6 +9,7 @@ import {
   type SnapshotPlayer,
 } from "@wdza-stats/db";
 import { and, eq, inArray } from "drizzle-orm";
+import { getCashHistory, type CashHistoryPoint } from "./cash-history";
 import { getActiveChallenges, type ActiveChallengeView } from "./active-challenges";
 import { getRecentNotifications, type RecentNotificationView } from "./recent-notifications";
 import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
@@ -24,6 +25,7 @@ export interface LiveSnapshotView {
   snapshot: Omit<Snapshot, "players"> & { players: LiveSnapshotPlayer[] };
   activeChallenges: ActiveChallengeView[];
   recentNotifications: RecentNotificationView[];
+  cashHistory: CashHistoryPoint[];
 }
 
 // Level per online player, derived from career XP (the Progression
@@ -83,11 +85,12 @@ export async function getLiveSnapshot(
   }
 
   const steamIds = row.payload.players.map((player) => player.steamId);
-  const [avatarUrls, levels, activeChallenges, recentNotifications] = await Promise.all([
+  const [avatarUrls, levels, activeChallenges, recentNotifications, cashHistory] = await Promise.all([
     getAvatarUrlsBySteamId(db, steamIds),
     getLevelsBySteamId(db, row.serverId, steamIds),
     getActiveChallenges(db, row.serverId, row.capturedAt),
     getRecentNotifications(db, row.serverId),
+    getCashHistory(db, row.serverId),
   ]);
 
   return {
@@ -103,6 +106,7 @@ export async function getLiveSnapshot(
     },
     activeChallenges,
     recentNotifications,
+    cashHistory,
   };
 }
 

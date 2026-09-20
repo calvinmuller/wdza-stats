@@ -2,23 +2,9 @@ import { hashPassword } from "better-auth/crypto";
 import { and, eq } from "drizzle-orm";
 import { staffMembers, staffSessions, type Database } from "@wdza-stats/db";
 import { auth } from "./auth";
-import { createStaffMember } from "./staff";
-
-// Better Auth's own default bounds for email-and-password.
-export const PASSWORD_MIN_LENGTH = 8;
-export const PASSWORD_MAX_LENGTH = 128;
+import { createStaffMember, passwordProblem } from "./staff";
 
 export type BootstrapResult = { ok: true } | { ok: false; error: string };
-
-function invalidPassword(password: string): string | null {
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
-  }
-  if (password.length > PASSWORD_MAX_LENGTH) {
-    return `Password must be at most ${PASSWORD_MAX_LENGTH} characters.`;
-  }
-  return null;
-}
 
 export async function adminExists(db: Database): Promise<boolean> {
   const rows = await db
@@ -44,7 +30,7 @@ export async function createFirstAdmin(
   const name = input.name.trim();
   if (!email.includes("@")) return { ok: false, error: "Enter a valid email address." };
   if (!name) return { ok: false, error: "Enter a name." };
-  const passwordError = invalidPassword(input.password);
+  const passwordError = passwordProblem(input.password);
   if (passwordError) return { ok: false, error: passwordError };
 
   const taken = await db
@@ -67,7 +53,7 @@ export async function resetAdminPassword(
   db: Database,
   input: { email: string; password: string },
 ): Promise<BootstrapResult> {
-  const passwordError = invalidPassword(input.password);
+  const passwordError = passwordProblem(input.password);
   if (passwordError) return { ok: false, error: passwordError };
 
   const [admin] = await db

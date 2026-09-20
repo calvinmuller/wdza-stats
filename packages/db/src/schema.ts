@@ -554,6 +554,9 @@ export const staffMembers = pgTable(
     emailVerified: boolean("email_verified").notNull().default(false),
     image: text("image"),
     role: text("role").$type<StaffRole>().notNull(),
+    // Set when an admin has chosen this Staff Member's password (a temporary
+    // one): they must pick their own before doing anything else.
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

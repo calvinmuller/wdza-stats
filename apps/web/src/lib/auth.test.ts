@@ -100,7 +100,7 @@ describe("anonymous sign-up", () => {
 
 describe("requireStaff", () => {
   it("hasRole ranks admin above moderator", () => {
-    const staff = (role: StaffRole) => ({ id: "1", email: "e", name: "n", role });
+    const staff = (role: StaffRole) => ({ id: "1", email: "e", name: "n", role, mustChangePassword: false });
 
     expect(hasRole(staff("admin"), "moderator")).toBe(true);
     expect(hasRole(staff("admin"), "admin")).toBe(true);

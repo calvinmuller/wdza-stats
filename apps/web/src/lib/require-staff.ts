@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { StaffRole } from "@wdza-stats/db";
 import { auth } from "./auth";
 
@@ -8,7 +8,12 @@ export interface CurrentStaff {
   email: string;
   name: string;
   role: StaffRole;
+  mustChangePassword: boolean;
 }
+
+// Where a Staff Member whose password an admin chose is sent until they've
+// replaced it.
+export const CHANGE_PASSWORD_PATH = "/admin/change-password";
 
 // admin outranks moderator: every admin can do what a moderator can.
 const RANK: Record<StaffRole, number> = { moderator: 1, admin: 2 };
@@ -21,8 +26,11 @@ export function hasRole(staff: CurrentStaff | null, required: StaffRole): staff 
 export async function getCurrentStaff(): Promise<CurrentStaff | null> {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return null;
-  const { id, email, name, role } = session.user as typeof session.user & { role: StaffRole };
-  return { id, email, name, role };
+  const { id, email, name, role, mustChangePassword } = session.user as typeof session.user & {
+    role: StaffRole;
+    mustChangePassword?: boolean;
+  };
+  return { id, email, name, role, mustChangePassword: mustChangePassword === true };
 }
 
 /**
@@ -32,6 +40,7 @@ export async function getCurrentStaff(): Promise<CurrentStaff | null> {
 export async function requireStaffPage(required: StaffRole): Promise<CurrentStaff> {
   const staff = await getCurrentStaff();
   if (!hasRole(staff, required)) notFound();
+  if (staff.mustChangePassword) redirect(CHANGE_PASSWORD_PATH);
   return staff;
 }
 
@@ -42,5 +51,6 @@ export async function requireStaffPage(required: StaffRole): Promise<CurrentStaf
 export async function requireStaffAction(required: StaffRole): Promise<CurrentStaff> {
   const staff = await getCurrentStaff();
   if (!hasRole(staff, required)) throw new Error("Forbidden");
+  if (staff.mustChangePassword) throw new Error("Password change required");
   return staff;
 }

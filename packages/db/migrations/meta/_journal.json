@@ -169,6 +169,13 @@
       "when": 1789930083435,
       "tag": "0023_staff_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789931202017,
+      "tag": "0024_staff_must_change_password",
+      "breakpoints": true
     }
   ]
 }

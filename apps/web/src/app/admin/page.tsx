@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { describeChallenge } from "@/lib/active-challenges";
 import {
   getNotificationSettings,
@@ -337,6 +338,14 @@ export default async function AdminPage() {
         </div>
         <div className="flex items-center gap-3 text-xs text-zinc-500">
           <span>{staff.email}</span>
+          {isAdmin && (
+            <Link href="/admin/staff" className="text-zinc-300 hover:text-zinc-100">
+              Staff
+            </Link>
+          )}
+          <Link href="/admin/change-password" className="text-zinc-300 hover:text-zinc-100">
+            Change password
+          </Link>
           <SignOutButton className="rounded-lg border border-white/10 px-2 py-1 text-zinc-300 hover:bg-white/5" />
         </div>
       </div>

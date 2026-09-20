@@ -38,6 +38,7 @@ export const auth = betterAuth({
     additionalFields: {
       // Server-owned: a client can never choose its own Role.
       role: { type: [...STAFF_ROLES], required: true, input: false },
+      mustChangePassword: { type: "boolean", required: false, defaultValue: false, input: false },
     },
   },
   session: { fields: { userId: "staffMemberId" } },

@@ -380,7 +380,7 @@ export function LiveServerView({
       </div>
 
       {isActivityOpen && (
-        <aside className="w-full shrink-0 rounded-xl border border-white/10 bg-zinc-950 lg:sticky lg:top-6 lg:w-80">
+        <aside className="w-full shrink-0 rounded-xl border border-white/10 bg-zinc-950 lg:sticky lg:top-6 lg:w-96">
           {nextMapArtUrl && (
             <figure className="relative overflow-hidden rounded-t-xl border-b border-white/10">
               {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -27,7 +27,7 @@ export default function RootLayout({
       <body className="flex min-h-screen flex-col bg-zinc-950 text-zinc-200">
         <ThemeProvider>
           <header className="border-b border-white/10 bg-zinc-900/60">
-            <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 px-4 py-4 sm:px-6">
+            <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-8 gap-y-3 px-4 py-4 sm:px-6">
               <Link href="/" className="flex items-center gap-3">
                 <Image
                   src="/logo.png"
@@ -49,7 +49,7 @@ export default function RootLayout({
             </div>
           </header>
 
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6">
             {children}
           </main>
 

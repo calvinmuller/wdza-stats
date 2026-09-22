@@ -66,7 +66,7 @@ export default async function LeaderboardPage({
       {rows.length === 0 ? (
         <p className="text-zinc-400">No players have any recorded stats yet.</p>
       ) : (
-        <LeaderboardTable rows={rows} />
+        <LeaderboardTable rows={rows} sort={sort} />
       )}
     </div>
   );

@@ -12,6 +12,9 @@ export interface SortableColumn<Row> {
   // expects "biggest first" for stats but "alphabetical" for names.
   numeric?: boolean;
   cellClassName?: string;
+  // Tooltip shown on the header, e.g. to explain how a derived stat like an
+  // adjusted K/D is computed.
+  headerTitle?: string;
 }
 
 interface SortState {
@@ -108,7 +111,11 @@ export function SortableTable<Row>({
         <thead>
           <tr className="border-b border-white/10 bg-zinc-900/60 text-left text-xs uppercase tracking-wide text-zinc-500">
             {columns.map((column) => (
-              <th key={column.key} className="px-4 py-3 font-medium">
+              <th
+                key={column.key}
+                className="px-4 py-3 font-medium"
+                title={column.headerTitle}
+              >
                 <button
                   type="button"
                   onClick={() => toggleSort(column)}

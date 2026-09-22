@@ -1,6 +1,4 @@
 import Link from "next/link";
-import { CountryFlag } from "@/components/country-flag";
-import { PlayerAvatar } from "@/components/player-avatar";
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import {
@@ -10,6 +8,7 @@ import {
   RANKING_METRICS,
   type RankingMetric,
 } from "@/lib/rankings";
+import { RankingsTable } from "./rankings-table";
 
 // A DB read via drizzle isn't a Request-time API, so Next won't otherwise
 // know this route needs fresh data on every request - force it dynamic so
@@ -64,39 +63,11 @@ export default async function RankingsPage({
         <p className="text-zinc-400">No players have any recorded stats yet.</p>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border border-white/10">
-            <table className="w-full min-w-[360px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-white/10 bg-zinc-900/60 text-left text-xs uppercase tracking-wide text-zinc-500">
-                  <th className="px-4 py-3 font-medium">#</th>
-                  <th className="px-4 py-3 font-medium">Player</th>
-                  <th className="px-4 py-3 font-medium">Level</th>
-                  <th className="px-4 py-3 font-medium">{METRIC_LABELS[metric]}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {result.rows.map((row) => (
-                  <tr key={row.steamId} className="hover:bg-white/5">
-                    <td className="px-4 py-2.5 font-display text-base text-zinc-500">
-                      {row.rank}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Link
-                        href={`/players/${row.steamId}`}
-                        className="flex items-center gap-2 font-medium text-zinc-100 hover:text-brand-gold-500"
-                      >
-                        <PlayerAvatar avatarUrl={row.avatarUrl} size={24} />
-                        {row.displayName}
-                        <CountryFlag countryCode={row.countryCode} />
-                      </Link>
-                    </td>
-                    <td className="px-4 py-2.5 text-zinc-300">{row.level}</td>
-                    <td className="px-4 py-2.5 text-zinc-300">{row.value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <RankingsTable
+            rows={result.rows}
+            metric={metric}
+            valueLabel={METRIC_LABELS[metric]}
+          />
 
           {result.totalPages > 1 && (
             <div className="flex items-center gap-4 text-sm text-zinc-400">

@@ -1,4 +1,4 @@
-import { getCurrentVerifiedPlayerSteamId } from "@/lib/current-verified-player";
+import { getCurrentKickVoteInitiatorSteamId } from "@/lib/current-kick-vote-initiator";
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { getLiveSnapshot } from "@/lib/live-snapshot";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const [initial, viewerSteamId] = await Promise.all([
     getLiveSnapshot(db, CONFIGURED_SERVER_BASE_URL),
-    getCurrentVerifiedPlayerSteamId(),
+    getCurrentKickVoteInitiatorSteamId(),
   ]);
 
   return <LiveServerView initial={initial} viewerSteamId={viewerSteamId} />;

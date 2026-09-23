@@ -3,13 +3,14 @@
 import { revalidatePath } from "next/cache";
 import type { ActionFormState } from "@/components/action-form";
 import { db } from "@/lib/db";
-import { getCurrentVerifiedPlayerSteamId } from "@/lib/current-verified-player";
+import { getCurrentKickVoteInitiatorSteamId, isCurrentAdmin } from "@/lib/current-kick-vote-initiator";
 import { castBallot, startKickVote } from "@/lib/kick-vote";
 import { getVisitorSessionId } from "@/lib/visitor-session";
 
 // No Staff gate here, unlike app/admin/actions.ts - see CONTEXT.md's KickVote
 // entry. Starting a KickVote needs a Verified Player signed in with Steam
-// (docs/adr/0007), whose steamId comes from their sign-in, never the form.
+// (docs/adr/0007) or an admin with a linked steamId (docs/adr/0008); the
+// steamId comes from that sign-in, never the form.
 // Casting a Ballot needs nothing: it stays one per anonymous browser session,
 // with the crowd threshold as its safeguard (docs/adr/0006).
 
@@ -24,9 +25,11 @@ export async function startKickVoteAction(_previous: ActionFormState, formData: 
     return { ok: false, error: "Unknown Server." };
   }
 
-  const initiatorSteamId = await getCurrentVerifiedPlayerSteamId();
+  const initiatorSteamId = await getCurrentKickVoteInitiatorSteamId();
   if (!initiatorSteamId) {
-    return { ok: false, error: "Sign in with Steam to start a KickVote." };
+    return (await isCurrentAdmin())
+      ? { ok: false, error: "Link your Steam account on your staff account page to start a KickVote." }
+      : { ok: false, error: "Sign in with Steam to start a KickVote." };
   }
 
   const result = await startKickVote(db, {

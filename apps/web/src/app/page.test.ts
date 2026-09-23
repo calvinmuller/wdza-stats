@@ -14,14 +14,18 @@ import {
 import { eq, inArray } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { auth } from "@/lib/auth";
 import { snapshotFixture } from "@/lib/live-snapshot-fixture";
 import { createStaffMember } from "@/lib/staff";
 import { signInVerifiedPlayer, VERIFIED_PLAYER_COOKIE } from "@/lib/verified-player";
 
-// HomePage reads the Verified Player cookie through next/headers; there is no
-// request in a test, so each test sets the cookie it wants to "arrive" with.
+// HomePage reads the Verified Player cookie and the staff session through
+// next/headers; there is no request in a test, so each test sets what it
+// wants to "arrive" with.
 let playerCookie: string | undefined;
+let requestHeaders = new Headers();
 vi.mock("next/headers", () => ({
+  headers: async () => requestHeaders,
   cookies: async () => ({
     get: (name: string) => (name === VERIFIED_PLAYER_COOKIE && playerCookie ? { value: playerCookie } : undefined),
   }),
@@ -41,6 +45,7 @@ const insertedDefinitionIds: number[] = [];
 
 afterEach(async () => {
   playerCookie = undefined;
+  requestHeaders = new Headers();
   await db.delete(verifiedPlayers);
   await db.delete(staffMembers);
   await db.delete(notifications);
@@ -244,6 +249,20 @@ describe("HomePage KickVote panel", () => {
 
     expect(html).toContain("Start KickVote");
     expect(html).toContain('value="76561198000000002"');
+    expect(html).not.toContain('value="76561198000000001"');
+  });
+
+  it("shows an online admin the start form through their staff login and linked steamId", async () => {
+    await seedTwoOnlinePlayers();
+    const password = "correct horse battery";
+    const admin = await createStaffMember({ email: "admin@example.test", name: "Admin", password, role: "admin" });
+    await db.update(staffMembers).set({ steamId: "76561198000000001" }).where(eq(staffMembers.id, admin.id));
+    const { headers } = await auth.api.signInEmail({ body: { email: "admin@example.test", password }, returnHeaders: true });
+    requestHeaders = new Headers({ cookie: headers.getSetCookie().map((c) => c.split(";")[0]).join("; ") });
+
+    const html = await render();
+
+    expect(html).toContain("Start KickVote");
     expect(html).not.toContain('value="76561198000000001"');
   });
 

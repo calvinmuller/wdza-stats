@@ -205,6 +205,16 @@ describe("castBallot", () => {
     expect(result).toEqual({ ok: false, error: expect.any(String) });
     expect(await getBallotCount(db, kickVoteId)).toBe(0);
   });
+
+  it("rejects casting once endsAt has passed, even before the Worker has marked the KickVote expired", async () => {
+    const kickVoteId = await startedVote();
+    await db.update(kickVotes).set({ endsAt: new Date(Date.now() - 1_000) }).where(eq(kickVotes.id, kickVoteId));
+
+    const result = await castBallot(db, { kickVoteId, sessionId: "voter-1" });
+
+    expect(result).toEqual({ ok: false, error: expect.any(String) });
+    expect(await getBallotCount(db, kickVoteId)).toBe(0);
+  });
 });
 
 describe("getKickVote", () => {

@@ -1,3 +1,6 @@
+import { sql } from "drizzle-orm";
+import type { Database } from "./client";
+
 // KickVote: a Server-scoped campaign to force a disruptive player off that
 // Server, started by any site visitor and decided by a crowd of KickVoteBallots
 // - see CONTEXT.md. See docs/adr/0006-kick-votes-get-a-narrow-rcon-write-exception.md
@@ -26,7 +29,14 @@ export type KickVoteStatus = "active" | "succeeded" | "expired" | "targetLeft" |
 export const KICK_VOTE_STARTED_CHANNEL = "kick_vote_started";
 
 // The Postgres NOTIFY channel a KickVote's own Ballot count (or resolution)
-// changes on (payload: the KickVote's id, as a string) - web -> web, same
-// shape as kill-notifications.ts's "kills" channel, powering the /kick/{id}
-// page's live SSE updates (ticket 02) with no polling.
+// changes on (payload: the KickVote's id, as a string). Two listeners: the
+// /kick/{id} page's live SSE updates (web -> web, same shape as
+// kill-notifications.ts's "kills" channel), and the Worker's kick-vote-engine
+// resolver, which re-checks the vote on each cast Ballot so a threshold
+// crossing kicks straight away rather than on the next sweep.
 export const KICK_VOTE_UPDATED_CHANNEL = "kick_vote_updated";
+
+/** Tells every KICK_VOTE_UPDATED_CHANNEL listener (both of them, above) that this KickVote changed. */
+export async function notifyKickVoteUpdated(db: Database, kickVoteId: number): Promise<void> {
+  await db.execute(sql`select pg_notify(${KICK_VOTE_UPDATED_CHANNEL}, ${String(kickVoteId)})`);
+}

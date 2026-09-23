@@ -1,5 +1,4 @@
-import { KICK_VOTE_UPDATED_CHANNEL, listenTo, requireEnv, type Database } from "@wdza-stats/db";
-import { sql } from "drizzle-orm";
+import { KICK_VOTE_UPDATED_CHANNEL, listenTo, requireEnv } from "@wdza-stats/db";
 
 // How a cast Ballot (or a resolution, ticket 03) reaches every /kick/{id}
 // page open on it, whichever web process the request landed on - the same
@@ -32,11 +31,6 @@ function startListener(): Listener {
     () => wakeAll(),
   );
   return { ready, stop, subscribers };
-}
-
-/** Tell every process's /kick/{id} pages that this KickVote changed. */
-export async function notifyKickVoteUpdated(db: Database, kickVoteId: number): Promise<void> {
-  await db.execute(sql`select pg_notify(${KICK_VOTE_UPDATED_CHANNEL}, ${String(kickVoteId)})`);
 }
 
 /**

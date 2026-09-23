@@ -90,7 +90,11 @@ export function KickVoteBallotPanel({
       {status === "active" && (
         <>
           <p className="text-sm text-zinc-400">Time remaining: {formatRemaining(remainingMs)}</p>
-          {hasVoted ? (
+          {remainingMs <= 0 ? (
+            // The window has closed but the Worker's sweep hasn't resolved
+            // the vote yet - its final status arrives over the stream shortly.
+            <p className="text-sm text-zinc-400">Voting has closed - waiting for the result.</p>
+          ) : hasVoted ? (
             <p className="text-sm text-brand-green-500">You&apos;ve cast your Ballot.</p>
           ) : (
             <ActionForm

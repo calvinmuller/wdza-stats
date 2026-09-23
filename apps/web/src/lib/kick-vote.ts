@@ -5,10 +5,10 @@ import {
   kickVoteSettings,
   kickVotes,
   latestSnapshots,
+  notifyKickVoteUpdated,
   type Database,
   type KickVoteStatus,
 } from "@wdza-stats/db";
-import { notifyKickVoteUpdated } from "./kick-vote-notifications";
 
 // KickVote's data access layer (ticket 01) - see CONTEXT.md's KickVote entry,
 // spec.md, and docs/adr/0006. Kept separate from app/kick-vote-actions.ts's
@@ -198,7 +198,9 @@ export async function castBallot(
   if (!vote) {
     return { ok: false, error: "KickVote not found." };
   }
-  if (vote.status !== "active") {
+  // endsAt too, not just status: the Worker's sweep only marks a KickVote
+  // expired on its next pass, and a Ballot in that gap must not count.
+  if (vote.status !== "active" || vote.endsAt.getTime() <= Date.now()) {
     return { ok: false, error: "This KickVote has already ended." };
   }
 
@@ -208,6 +210,8 @@ export async function castBallot(
     .onConflictDoNothing()
     .returning({ kickVoteId: kickVoteBallots.kickVoteId });
 
+  // Also the Worker's cue to check whether this Ballot reached the
+  // threshold (ticket 03) - apps/web can't make the kick call itself.
   if (inserted.length > 0) {
     await notifyKickVoteUpdated(db, input.kickVoteId);
   }

@@ -6,7 +6,7 @@ import {
   WARDOGS_STEAM_APP_ID,
 } from "@wdza-stats/db";
 import { runHeartbeat } from "./heartbeat";
-import { startKickVoteAnnouncer } from "./kick-vote-engine";
+import { startKickVoteAnnouncer, startKickVoteResolver } from "./kick-vote-engine";
 import { createRconClient } from "./rcon-client";
 import { startSnapshotPolling, type SteamRefreshConfig } from "./snapshot-poller";
 import { createSteamClient } from "./steam-client";
@@ -42,3 +42,9 @@ console.log(
 const kickVoteAnnouncer = startKickVoteAnnouncer(db, rconClient, databaseUrl);
 await kickVoteAnnouncer.ready;
 console.log("[worker] listening for KickVote announcements");
+
+// Sweeps on the poll cadence: a target leaving can only be noticed as often
+// as the Snapshot it's checked against refreshes.
+const kickVoteResolver = startKickVoteResolver(db, rconClient, server.id, databaseUrl, SNAPSHOT_POLL_INTERVAL_MS);
+await kickVoteResolver.ready;
+console.log("[worker] resolving KickVotes");

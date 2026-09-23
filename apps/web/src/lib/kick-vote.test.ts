@@ -201,6 +201,17 @@ describe("startKickVote initiator checks", () => {
     expect(await getActiveKickVote(db, server.id)).toBeNull();
   });
 
+  it("rejects a target whose steamId a Staff Member has linked", async () => {
+    const server = await seedOnlineServer();
+    const moderator = await createStaffMember({ email: "mod@example.test", name: "Mod", password: "correct horse battery", role: "moderator" });
+    await db.update(staffMembers).set({ steamId: "1" }).where(eq(staffMembers.id, moderator.id));
+
+    const result = await attempt(server.id);
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("Staff Members") });
+    expect(await getActiveKickVote(db, server.id)).toBeNull();
+  });
+
   it("records the initiator's steamId on the KickVote", async () => {
     const server = await seedOnlineServer();
 

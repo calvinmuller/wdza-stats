@@ -204,6 +204,13 @@
       "when": 1790146187197,
       "tag": "0028_kick_vote_initiator_steam_id",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790146546748,
+      "tag": "0029_staff_steam_id",
+      "breakpoints": true
     }
   ]
 }

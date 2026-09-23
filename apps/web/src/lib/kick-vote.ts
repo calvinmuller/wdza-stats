@@ -11,6 +11,7 @@ import {
   type KickVoteStatus,
 } from "@wdza-stats/db";
 import { getKickVoteSettings } from "./admin-config";
+import { getStaffSteamIds } from "./staff-steam-link";
 
 // KickVote's data access layer (ticket 01) - see CONTEXT.md's KickVote entry,
 // spec.md, and docs/adr/0006. Kept separate from app/kick-vote-actions.ts's
@@ -77,7 +78,7 @@ export async function getOnlinePlayers(db: Database, serverId: number): Promise<
  *
  * Rejects (without notifying) if the reason is empty, the initiator is
  * banned, isn't online on this Server themselves, or targets their own
- * steamId, the target isn't online, the initiator started another KickVote
+ * steamId, the target isn't online or is a Staff Member's linked steamId, the initiator started another KickVote
  * (on any Server) inside the cooldown, or the Server already has an active
  * KickVote - the kick_votes_one_active_per_server_idx unique index is only
  * the backstop for a race between two rejections passing at once. The
@@ -114,6 +115,10 @@ export async function startKickVote(
   const target = onlinePlayers.find((player) => player.steamId === input.targetSteamId);
   if (!target) {
     return { ok: false, error: "That player is not currently online on this Server." };
+  }
+
+  if ((await getStaffSteamIds(db, [target.steamId])).size > 0) {
+    return { ok: false, error: "Staff Members can't be the target of a KickVote." };
   }
 
   const settings = await getKickVoteSettings(db);

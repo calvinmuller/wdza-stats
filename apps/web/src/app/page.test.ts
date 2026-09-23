@@ -7,13 +7,15 @@ import {
   matches,
   notifications,
   servers,
+  staffMembers,
   verifiedPlayers,
   type Database,
 } from "@wdza-stats/db";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { snapshotFixture } from "@/lib/live-snapshot-fixture";
+import { createStaffMember } from "@/lib/staff";
 import { signInVerifiedPlayer, VERIFIED_PLAYER_COOKIE } from "@/lib/verified-player";
 
 // HomePage reads the Verified Player cookie through next/headers; there is no
@@ -40,6 +42,7 @@ const insertedDefinitionIds: number[] = [];
 afterEach(async () => {
   playerCookie = undefined;
   await db.delete(verifiedPlayers);
+  await db.delete(staffMembers);
   await db.delete(notifications);
   await db.delete(gameEvents);
   await db.delete(matches);
@@ -242,5 +245,16 @@ describe("HomePage KickVote panel", () => {
     expect(html).toContain("Start KickVote");
     expect(html).toContain('value="76561198000000002"');
     expect(html).not.toContain('value="76561198000000001"');
+  });
+
+  it("leaves Staff Members' linked steamIds out of the targets", async () => {
+    await seedTwoOnlinePlayers();
+    const moderator = await createStaffMember({ email: "mod@example.test", name: "Mod", password: "correct horse battery", role: "moderator" });
+    await db.update(staffMembers).set({ steamId: "76561198000000002" }).where(eq(staffMembers.id, moderator.id));
+    playerCookie = (await signInVerifiedPlayer(db, "76561198000000001")).token;
+
+    const html = await render();
+
+    expect(html).not.toContain('value="76561198000000002"');
   });
 });

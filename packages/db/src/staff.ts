@@ -22,6 +22,8 @@ export const STAFF_ACTIONS = [
   "reset_staff_password",
   "remove_staff_member",
   "change_own_password",
+  "link_own_steam_id",
+  "unlink_own_steam_id",
   "bootstrap_create_admin",
   "bootstrap_reset_admin_password",
 ] as const;

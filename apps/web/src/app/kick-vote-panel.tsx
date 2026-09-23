@@ -17,12 +17,15 @@ export function KickVotePanel({
   onlinePlayers,
   activeKickVote,
   viewerSteamId,
+  staffSteamIds,
 }: {
   serverId: number;
   onlinePlayers: OnlinePlayer[];
   activeKickVote: LiveKickVoteView | null;
   /** The signed-in Verified Player, or null - see docs/adr/0007. */
   viewerSteamId: string | null;
+  /** Staff Members' linked steamIds, which can never be a target. */
+  staffSteamIds: string[];
 }) {
   if (activeKickVote) {
     return (
@@ -66,7 +69,9 @@ export function KickVotePanel({
     );
   }
 
-  const targets = onlinePlayers.filter((player) => player.steamId !== viewerSteamId);
+  const targets = onlinePlayers.filter(
+    (player) => player.steamId !== viewerSteamId && !staffSteamIds.includes(player.steamId),
+  );
 
   return (
     <section className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3">

@@ -125,7 +125,7 @@ export function LiveServerView({
     );
   }
 
-  const { serverId, serverName, capturedAt, snapshot, activeChallenges, recentNotifications, cashHistory, activeKickVote } = data;
+  const { serverId, serverName, capturedAt, snapshot, activeChallenges, recentNotifications, cashHistory, activeKickVote, staffSteamIds } = data;
   const rotation = getRotationPreview(snapshot.rotation);
   const playerCount = snapshot.players.length;
   const maxPlayers = snapshot.playerSlots.max;
@@ -278,6 +278,7 @@ export function LiveServerView({
         onlinePlayers={snapshot.players.map((player) => ({ steamId: player.steamId, displayName: player.displayName }))}
         activeKickVote={activeKickVote}
         viewerSteamId={viewerSteamId}
+        staffSteamIds={staffSteamIds}
       />
 
       <section>

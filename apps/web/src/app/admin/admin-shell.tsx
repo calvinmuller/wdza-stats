@@ -37,6 +37,9 @@ export function AdminShell({
         <span className="font-display text-lg text-zinc-100">Admin</span>
         <div className="flex items-center gap-3 text-xs text-zinc-500">
           <span>{staff.email}</span>
+          <Link href="/admin/account" className="text-zinc-300 hover:text-zinc-100">
+            Steam account
+          </Link>
           <Link href="/admin/change-password" className="text-zinc-300 hover:text-zinc-100">
             Change password
           </Link>

@@ -12,6 +12,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getCashHistory, type CashHistoryPoint } from "./cash-history";
 import { getActiveChallenges, type ActiveChallengeView } from "./active-challenges";
 import { getActiveKickVote } from "./kick-vote";
+import { getStaffSteamIds } from "./staff-steam-link";
 import { getRecentNotifications, type RecentNotificationView } from "./recent-notifications";
 import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
 
@@ -39,6 +40,8 @@ export interface LiveSnapshotView {
   recentNotifications: RecentNotificationView[];
   cashHistory: CashHistoryPoint[];
   activeKickVote: LiveKickVoteView | null;
+  /** Online steamIds linked to a Staff Member, which the KickVote target picker leaves out. */
+  staffSteamIds: string[];
 }
 
 // Level per online player, derived from career XP (the Progression
@@ -98,13 +101,15 @@ export async function getLiveSnapshot(
   }
 
   const steamIds = row.payload.players.map((player) => player.steamId);
-  const [avatarUrls, levels, activeChallenges, recentNotifications, cashHistory, activeKickVote] = await Promise.all([
+  const [avatarUrls, levels, activeChallenges, recentNotifications, cashHistory, activeKickVote, staffSteamIds] =
+    await Promise.all([
     getAvatarUrlsBySteamId(db, steamIds),
     getLevelsBySteamId(db, row.serverId, steamIds),
     getActiveChallenges(db, row.serverId, row.capturedAt),
     getRecentNotifications(db, row.serverId),
     getCashHistory(db, row.serverId),
     getActiveKickVote(db, row.serverId),
+    getStaffSteamIds(db, steamIds),
   ]);
 
   return {
@@ -130,6 +135,7 @@ export async function getLiveSnapshot(
           endsAt: activeKickVote.endsAt.toISOString(),
         }
       : null,
+    staffSteamIds: [...staffSteamIds],
   };
 }
 

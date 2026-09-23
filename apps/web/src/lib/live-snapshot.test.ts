@@ -87,6 +87,7 @@ describe("getLiveSnapshot", () => {
       recentNotifications: [],
       cashHistory: [],
       activeKickVote: null,
+      staffSteamIds: [],
     });
   });
 

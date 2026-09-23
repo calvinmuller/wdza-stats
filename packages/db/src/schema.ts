@@ -558,6 +558,11 @@ export const staffMembers = pgTable(
     // Set when an admin has chosen this Staff Member's password (a temporary
     // one): they must pick their own before doing anything else.
     mustChangePassword: boolean("must_change_password").notNull().default(false),
+    // The Staff Member's own steamId, linked only by them completing Steam
+    // sign-in (docs/adr/0007) - never typed in. A linked steamId can never be
+    // a KickVote's target. Not a Verified Player: the two identities stay
+    // separate even for the same human. Unknown to Better Auth, which leaves it alone.
+    steamId: text("steam_id").unique(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

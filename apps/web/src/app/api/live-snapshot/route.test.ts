@@ -48,6 +48,7 @@ describe("GET /api/live-snapshot", () => {
       recentNotifications: [],
       cashHistory: [],
       activeKickVote: null,
+      staffSteamIds: [],
     });
   });
 });

@@ -1,12 +1,7 @@
-import { NextResponse } from "next/server";
-import { buildSteamSignInUrl, safeReturnPath } from "@/lib/steam-openid";
-import { siteOrigin } from "@/lib/verified-player";
+import { beginSteamSignIn } from "@/lib/steam-sign-in-flow";
 
-// Starts Steam sign-in (see lib/steam-openid.ts). ?returnTo= is where the
-// player lands afterwards; it rides along inside Steam's return URL.
+// Starts Verified Player sign-in with Steam (see lib/steam-sign-in-flow.ts).
+// ?returnTo= is where the player lands afterwards.
 export async function GET(request: Request) {
-  const origin = siteOrigin(request);
-  const returnTo = safeReturnPath(new URL(request.url).searchParams.get("returnTo"));
-  const callback = `${origin}/api/steam/callback?${new URLSearchParams({ returnTo })}`;
-  return NextResponse.redirect(buildSteamSignInUrl(origin, callback));
+  return beginSteamSignIn(request, "/api/steam/callback", new URL(request.url).searchParams.get("returnTo"));
 }

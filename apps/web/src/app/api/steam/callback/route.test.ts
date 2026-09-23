@@ -1,4 +1,5 @@
 import { createDb, verifiedPlayerSessions, verifiedPlayers, type Database } from "@wdza-stats/db";
+import { NextRequest } from "next/server";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getVerifiedPlayerSteamId, VERIFIED_PLAYER_COOKIE } from "@/lib/verified-player";
 import { GET } from "./route";
@@ -26,9 +27,16 @@ function steamSays(isValid: boolean) {
   vi.stubGlobal("fetch", vi.fn(async () => new Response(`ns:http://specs.openid.net/auth/2.0\nis_valid:${isValid}\n`)));
 }
 
-// The browser arriving back from Steam, as Steam would send it.
-function callbackRequest(returnTo: string): Request {
-  const ourQuery = new URLSearchParams({ returnTo });
+const STATE = "state-from-sign-in-start";
+
+// The browser arriving back from Steam, as Steam would send it. `cookieState`
+// is the state cookie this browser holds (null: none), set when it started
+// the sign-in; `signedState` is the one inside the return URL Steam signed.
+function callbackRequest(
+  returnTo: string,
+  { cookieState = STATE as string | null, signedState = STATE } = {},
+): NextRequest {
+  const ourQuery = new URLSearchParams({ returnTo, state: signedState });
   const params = new URLSearchParams(ourQuery);
   params.set("openid.ns", "http://specs.openid.net/auth/2.0");
   params.set("openid.mode", "id_res");
@@ -40,7 +48,8 @@ function callbackRequest(returnTo: string): Request {
   params.set("openid.assoc_handle", "1234567890");
   params.set("openid.signed", "signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle");
   params.set("openid.sig", "c2lnbmF0dXJl");
-  return new Request(`${ORIGIN}/api/steam/callback?${params}`);
+  const headers = cookieState === null ? undefined : { cookie: `wdza_steam_state=${cookieState}` };
+  return new NextRequest(`${ORIGIN}/api/steam/callback?${params}`, { headers });
 }
 
 function sessionToken(response: Response): string | undefined {
@@ -84,4 +93,29 @@ describe("GET /api/steam/callback", () => {
       expect(response.headers.get("location")).toBe(`${ORIGIN}/`);
     },
   );
+});
+
+describe("GET /api/steam/callback, sign-in started elsewhere", () => {
+  it.each([
+    ["no state cookie (someone else's captured callback URL)", { cookieState: null }],
+    ["a state cookie from a different sign-in", { cookieState: "some-other-state" }],
+  ])("refuses a callback with %s, without asking Steam", async (_label, options) => {
+    steamSays(true);
+
+    const response = await GET(callbackRequest("/kick/7", options));
+
+    expect(response.headers.get("location")).toBe(`${ORIGIN}/kick/7?steamSignIn=failed`);
+    expect(sessionToken(response)).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+    await expect(db.select().from(verifiedPlayers)).resolves.toEqual([]);
+  });
+
+  it("clears the one-use state cookie", async () => {
+    steamSays(true);
+
+    const response = await GET(callbackRequest("/"));
+
+    const cleared = response.headers.getSetCookie().find((c) => c.startsWith("wdza_steam_state="));
+    expect(cleared).toMatch(/Max-Age=0/i);
+  });
 });

@@ -1,4 +1,4 @@
-import { getCurrentKickVoteInitiatorSteamId } from "@/lib/current-kick-vote-initiator";
+import { getCurrentKickVoteInitiator } from "@/lib/current-kick-vote-initiator";
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { getLiveSnapshot } from "@/lib/live-snapshot";
@@ -10,10 +10,10 @@ import { LiveServerView } from "./live-server";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [initial, viewerSteamId] = await Promise.all([
+  const [initial, viewer] = await Promise.all([
     getLiveSnapshot(db, CONFIGURED_SERVER_BASE_URL),
-    getCurrentKickVoteInitiatorSteamId(),
+    getCurrentKickVoteInitiator(),
   ]);
 
-  return <LiveServerView initial={initial} viewerSteamId={viewerSteamId} />;
+  return <LiveServerView initial={initial} viewer={viewer} />;
 }

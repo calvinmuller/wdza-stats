@@ -169,7 +169,10 @@ describe("startKickVote", () => {
 });
 
 describe("startKickVote initiator checks", () => {
-  async function attempt(serverId: number, overrides: Partial<{ targetSteamId: string; initiatorSteamId: string }> = {}) {
+  async function attempt(
+    serverId: number,
+    overrides: Partial<{ targetSteamId: string; initiatorSteamId: string; initiatorIsStaff: boolean }> = {},
+  ) {
     return startKickVote(db, { serverId, targetSteamId: "1", reason: "wallhacks", initiatorSteamId: INITIATOR, ...overrides });
   }
 
@@ -180,6 +183,14 @@ describe("startKickVote initiator checks", () => {
 
     expect(result).toEqual({ ok: false, error: expect.stringContaining("playing on this Server") });
     expect(await getActiveKickVote(db, server.id)).toBeNull();
+  });
+
+  it("lets a Staff Member start one without being online on that Server", async () => {
+    const server = await seedOnlineServer();
+
+    const result = await attempt(server.id, { initiatorSteamId: "76561198000000999", initiatorIsStaff: true });
+
+    expect(result).toEqual({ ok: true, kickVoteId: expect.any(Number) });
   });
 
   it("rejects a banned initiator even while they're online", async () => {

@@ -3,6 +3,8 @@ import {
   challengeInstances,
   createDb,
   gameEvents,
+  kickVoteBallots,
+  kickVotes,
   latestSnapshots,
   matches,
   notifications,
@@ -15,6 +17,7 @@ import { eq, inArray } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { auth } from "@/lib/auth";
+import { startKickVote } from "@/lib/kick-vote";
 import { snapshotFixture } from "@/lib/live-snapshot-fixture";
 import { createStaffMember } from "@/lib/staff";
 import { signInVerifiedPlayer, VERIFIED_PLAYER_COOKIE } from "@/lib/verified-player";
@@ -56,6 +59,8 @@ afterEach(async () => {
     await db.delete(challengeDefinitions).where(inArray(challengeDefinitions.id, insertedDefinitionIds));
     insertedDefinitionIds.length = 0;
   }
+  await db.delete(kickVoteBallots);
+  await db.delete(kickVotes);
   await db.delete(latestSnapshots);
   await db.delete(servers);
 });
@@ -228,7 +233,7 @@ describe("HomePage KickVote panel", () => {
     const html = await render();
 
     expect(html).toContain("Sign in with Steam");
-    expect(html).not.toContain("Start KickVote");
+    expect(html).not.toContain("Start a KickVote against");
   });
 
   it("tells a Verified Player who isn't on the Server that they need to be", async () => {
@@ -237,8 +242,8 @@ describe("HomePage KickVote panel", () => {
 
     const html = await render();
 
-    expect(html).toContain("You need to be playing on this Server");
-    expect(html).not.toContain("Start KickVote");
+    expect(html).toContain("Join this Server in-game");
+    expect(html).not.toContain("Start a KickVote against");
   });
 
   it("shows an online Verified Player the start form, without themselves as a target", async () => {
@@ -247,9 +252,9 @@ describe("HomePage KickVote panel", () => {
 
     const html = await render();
 
-    expect(html).toContain("Start KickVote");
-    expect(html).toContain('value="76561198000000002"');
-    expect(html).not.toContain('value="76561198000000001"');
+    expect(html).toContain("Start a KickVote against");
+    expect(html).toContain("Start a KickVote against Cheatermc");
+    expect(html).not.toContain("Start a KickVote against Alice");
   });
 
   it("shows an online admin the start form through their staff login and linked steamId", async () => {
@@ -262,8 +267,41 @@ describe("HomePage KickVote panel", () => {
 
     const html = await render();
 
-    expect(html).toContain("Start KickVote");
-    expect(html).not.toContain('value="76561198000000001"');
+    expect(html).toContain("Start a KickVote against");
+    expect(html).not.toContain("Start a KickVote against Alice");
+  });
+
+  it("shows an admin who isn't on the Server the start form anyway", async () => {
+    await seedTwoOnlinePlayers();
+    const password = "correct horse battery";
+    const admin = await createStaffMember({ email: "admin@example.test", name: "Admin", password, role: "admin" });
+    await db.update(staffMembers).set({ steamId: "76561198000000009" }).where(eq(staffMembers.id, admin.id));
+    const { headers } = await auth.api.signInEmail({ body: { email: "admin@example.test", password }, returnHeaders: true });
+    requestHeaders = new Headers({ cookie: headers.getSetCookie().map((c) => c.split(";")[0]).join("; ") });
+
+    const html = await render();
+
+    expect(html).toContain("Start a KickVote against");
+    expect(html).toContain("Start a KickVote against Alice");
+    expect(html).toContain("Start a KickVote against Cheatermc");
+  });
+
+  it("offers no row actions while a KickVote is already active", async () => {
+    await seedTwoOnlinePlayers();
+    const [server] = await db.select().from(servers);
+    const started = await startKickVote(db, {
+      serverId: server.id,
+      targetSteamId: "76561198000000002",
+      reason: "wallhacks",
+      initiatorSteamId: "76561198000000001",
+    });
+    if (!started.ok) throw new Error(started.error);
+    playerCookie = (await signInVerifiedPlayer(db, "76561198000000001")).token;
+
+    const html = await render();
+
+    expect(html).toContain("A KickVote is active against");
+    expect(html).not.toContain("Start a KickVote against");
   });
 
   it("leaves Staff Members' linked steamIds out of the targets", async () => {
@@ -274,6 +312,6 @@ describe("HomePage KickVote panel", () => {
 
     const html = await render();
 
-    expect(html).not.toContain('value="76561198000000002"');
+    expect(html).not.toContain("Start a KickVote against Cheatermc");
   });
 });

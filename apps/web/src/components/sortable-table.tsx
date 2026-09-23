@@ -15,6 +15,8 @@ export interface SortableColumn<Row> {
   // Tooltip shown on the header, e.g. to explain how a derived stat like an
   // adjusted K/D is computed.
   headerTitle?: string;
+  // false for a column of row actions, whose header isn't a sort button.
+  sortable?: boolean;
 }
 
 interface SortState {
@@ -116,18 +118,22 @@ export function SortableTable<Row>({
                 className="px-4 py-3 font-medium"
                 title={column.headerTitle}
               >
-                <button
-                  type="button"
-                  onClick={() => toggleSort(column)}
-                  className="flex items-center gap-1 uppercase tracking-wide text-zinc-500 hover:text-zinc-200"
-                >
-                  {column.label}
-                  {sort.column === column.key && (
-                    <span className="text-brand-gold-500">
-                      {sort.direction === "asc" ? "↑" : "↓"}
-                    </span>
-                  )}
-                </button>
+                {column.sortable === false ? (
+                  <span className="uppercase tracking-wide text-zinc-500">{column.label}</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => toggleSort(column)}
+                    className="flex items-center gap-1 uppercase tracking-wide text-zinc-500 hover:text-zinc-200"
+                  >
+                    {column.label}
+                    {sort.column === column.key && (
+                      <span className="text-brand-gold-500">
+                        {sort.direction === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </button>
+                )}
               </th>
             ))}
           </tr>

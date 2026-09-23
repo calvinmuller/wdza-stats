@@ -13,8 +13,9 @@ import { getLightingInfo } from "@/lib/lighting";
 import { getMapArtUrl } from "@/lib/map-art";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { ActivityFeed } from "./activity-feed";
-import { KickVotePanel } from "./kick-vote-panel";
+import { canStartKickVote, KickVoteHint, KickVotePanel, StartKickVoteButton } from "./kick-vote-panel";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
+import type { KickVoteInitiator } from "@/lib/current-kick-vote-initiator";
 import type { LiveSnapshotPlayer, LiveSnapshotView } from "@/lib/live-snapshot";
 
 // No point refreshing faster than new Snapshots can actually arrive.
@@ -85,11 +86,11 @@ function useFlip(keys: string[]) {
 
 export function LiveServerView({
   initial,
-  viewerSteamId,
+  viewer,
 }: {
   initial: LiveSnapshotView | null;
-  /** The signed-in Verified Player, or null - for the KickVote panel. */
-  viewerSteamId: string | null;
+  /** Who may start a KickVote from this browser, or null - for the KickVote panel. */
+  viewer: KickVoteInitiator | null;
 }) {
   const [data, setData] = useState(initial);
   const [isActivityOpen, setIsActivityOpen] = useState(true);
@@ -195,6 +196,23 @@ export function LiveServerView({
     },
   ];
 
+  // A KickVote row action only while none is active: KickVotePanel shows that one.
+  const onlinePlayers = snapshot.players.map((player) => ({ steamId: player.steamId, displayName: player.displayName }));
+  const kickVoteViewer = !activeKickVote && canStartKickVote(viewer, onlinePlayers) ? viewer : null;
+  if (kickVoteViewer) {
+    playerColumns.push({
+      key: "kickVote",
+      label: "",
+      value: () => "",
+      sortable: false,
+      cellClassName: "text-right",
+      render: (player) =>
+        player.steamId === kickVoteViewer.steamId || staffSteamIds.includes(player.steamId) ? null : (
+          <StartKickVoteButton serverId={serverId} target={player} />
+        ),
+    });
+  }
+
   const sortedPlayers = [...snapshot.players].sort((a, b) => b.kills - a.kills);
   const visiblePlayers = showAllPlayers
     ? sortedPlayers
@@ -273,13 +291,7 @@ export function LiveServerView({
         )}
       </section>
 
-      <KickVotePanel
-        serverId={serverId}
-        onlinePlayers={snapshot.players.map((player) => ({ steamId: player.steamId, displayName: player.displayName }))}
-        activeKickVote={activeKickVote}
-        viewerSteamId={viewerSteamId}
-        staffSteamIds={staffSteamIds}
-      />
+      <KickVotePanel activeKickVote={activeKickVote} />
 
       <section>
         <h2 className="mb-3 text-xl">Factions</h2>
@@ -334,6 +346,7 @@ export function LiveServerView({
             ({playerCount}/{maxPlayers})
           </span>
         </h2>
+        {!activeKickVote && playerCount > 0 && !kickVoteViewer && <KickVoteHint viewer={viewer} />}
         <SortableTable
           columns={playerColumns}
           rows={visiblePlayers}

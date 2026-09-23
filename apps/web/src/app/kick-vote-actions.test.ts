@@ -143,9 +143,39 @@ describe("startKickVoteAction", () => {
     expect(row.initiatorSteamId).toBe(INITIATOR);
   });
 
-  it("still requires an admin's linked steamId to be online on the Server", async () => {
+  it("lets an admin start one without being online on the Server", async () => {
     const server = await seedOnlineServer();
     await signInAsStaff("admin", "76561198000000999");
+
+    const result = await startKickVoteAction(
+      null,
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
+    );
+
+    expect(result).toEqual({ ok: true });
+    const [row] = await db.select().from(kickVotes).where(eq(kickVotes.serverId, server.id));
+    expect(row.initiatorSteamId).toBe("76561198000000999");
+  });
+
+  it("uses a Staff Member's linked steamId over an offline Verified Player sign-in in the same browser", async () => {
+    const server = await seedOnlineServer();
+    await signInAsStaff("moderator", "76561198000000999");
+    const { token } = await signInVerifiedPlayer(db, "76561198000000888");
+    cookieStore = new Map([[VERIFIED_PLAYER_COOKIE, token]]);
+
+    const result = await startKickVoteAction(
+      null,
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
+    );
+
+    expect(result).toEqual({ ok: true });
+    const [row] = await db.select().from(kickVotes).where(eq(kickVotes.serverId, server.id));
+    expect(row.initiatorSteamId).toBe("76561198000000999");
+  });
+
+  it("still requires a Verified Player to be online on the Server", async () => {
+    const server = await seedOnlineServer();
+    await signInAs("76561198000000888");
 
     const result = await startKickVoteAction(
       null,

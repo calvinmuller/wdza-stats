@@ -72,13 +72,16 @@ export async function getOnlinePlayers(db: Database, serverId: number): Promise<
 }
 
 /**
- * Starts a KickVote on behalf of a Verified Player (docs/adr/0007), against a
+ * Starts a KickVote on behalf of a Verified Player (docs/adr/0007) or a Staff
+ * Member's linked steamId (docs/adr/0008), against a
  * currently-online target, snapshotting threshold/duration from
  * kickVoteSettings, then notifies the Worker to make the in-game broadcast.
- * `initiatorSteamId` must come from the caller's Steam sign-in, never a form.
+ * `initiatorSteamId` and `initiatorIsStaff` must come from the caller's
+ * sign-in, never a form.
  *
  * Rejects (without notifying) if the reason is empty, the initiator is
- * banned, isn't online on this Server themselves, or targets their own
+ * banned, isn't online on this Server themselves (unless they're a Staff
+ * Member), or targets their own
  * steamId, the target isn't online or is a Staff Member's linked steamId, the initiator started another KickVote
  * (on any Server) inside the cooldown, or the Server already has an active
  * KickVote - the kick_votes_one_active_per_server_idx unique index is only
@@ -88,7 +91,7 @@ export async function getOnlinePlayers(db: Database, serverId: number): Promise<
  */
 export async function startKickVote(
   db: Database,
-  input: { serverId: number; targetSteamId: string; reason: string; initiatorSteamId: string },
+  input: { serverId: number; targetSteamId: string; reason: string; initiatorSteamId: string; initiatorIsStaff?: boolean },
 ): Promise<KickVoteResult> {
   const reason = input.reason.trim();
   if (!reason) {
@@ -105,7 +108,7 @@ export async function startKickVote(
   }
 
   const onlinePlayers = await getOnlinePlayers(db, input.serverId);
-  if (!onlinePlayers.some((player) => player.steamId === input.initiatorSteamId)) {
+  if (!input.initiatorIsStaff && !onlinePlayers.some((player) => player.steamId === input.initiatorSteamId)) {
     return { ok: false, error: "You need to be playing on this Server to start a KickVote." };
   }
 

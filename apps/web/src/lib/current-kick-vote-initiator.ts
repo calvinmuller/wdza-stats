@@ -3,19 +3,26 @@ import { db } from "./db";
 import { getCurrentStaff, hasRole } from "./require-staff";
 import { getOwnSteamId } from "./staff-steam-link";
 
-// Who may start a KickVote in this request, as a steamId - see docs/adr/0008.
-// A signed-in Verified Player comes first; failing that, a signed-in Staff
-// Member (moderator or admin) stands in as their linked steamId, which is
-// proven theirs by the same Steam sign-in (docs/adr/0007). Either way
-// startKickVote still applies every initiator rule to that steamId.
+// Who may start a KickVote in this request - see docs/adr/0008. A signed-in
+// Staff Member (moderator or admin) with a linked steamId comes first, as
+// that steamId, which is proven theirs by the same Steam sign-in
+// (docs/adr/0007); failing that, a signed-in Verified Player. startKickVote
+// applies every initiator rule to the steamId, except that a Staff Member
+// needn't be online.
 
-/** The steamId that starts a KickVote for this request, or null if nobody may. */
-export async function getCurrentKickVoteInitiatorSteamId(): Promise<string | null> {
-  const playerSteamId = await getCurrentVerifiedPlayerSteamId();
-  if (playerSteamId) return playerSteamId;
+export interface KickVoteInitiator {
+  steamId: string;
+  isStaff: boolean;
+}
 
+/** Who starts a KickVote for this request, or null if nobody may. */
+export async function getCurrentKickVoteInitiator(): Promise<KickVoteInitiator | null> {
   const staff = await getCurrentStaffInitiator();
-  return staff ? getOwnSteamId(db, staff.id) : null;
+  const staffSteamId = staff ? await getOwnSteamId(db, staff.id) : null;
+  if (staffSteamId) return { steamId: staffSteamId, isStaff: true };
+
+  const playerSteamId = await getCurrentVerifiedPlayerSteamId();
+  return playerSteamId ? { steamId: playerSteamId, isStaff: false } : null;
 }
 
 /** Whether this request is a signed-in Staff Member, who could start a KickVote once they link a steamId. */

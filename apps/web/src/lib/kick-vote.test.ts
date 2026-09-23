@@ -1,4 +1,5 @@
 import {
+  bannedPlayers,
   createDb,
   kickVoteBallots,
   kickVoteSettings,
@@ -31,6 +32,7 @@ afterEach(async () => {
   await db.delete(latestSnapshots);
   await db.delete(servers);
   await db.delete(staffMembers);
+  await db.delete(bannedPlayers);
   // Restore the migration-seeded defaults other tests rely on.
   await db
     .update(kickVoteSettings)
@@ -42,16 +44,22 @@ afterAll(async () => {
   await db.$client.end();
 });
 
+// Verified Players who start KickVotes in these tests. Both are online on
+// every seeded Server, since only an online Verified Player can start one.
+const INITIATOR = "76561198000000100";
+const OTHER_INITIATOR = "76561198000000101";
+
 async function seedOnlineServer(steamId = "1", displayName = "Cheatermc") {
   const [server] = await db
     .insert(servers)
     .values({ name: "WDZA Test", baseUrl: `http://rcon-kick-vote-${crypto.randomUUID()}.test:9006` })
     .returning();
+  const online = (id: string, name: string) => ({ steamId: id, displayName: name, faction: "Lonestar", kills: 0, deaths: 0, cash: 0, ping: 40 });
   await db.insert(latestSnapshots).values({
     serverId: server.id,
     capturedAt: new Date(),
     payload: snapshotFixture({
-      players: [{ steamId, displayName, faction: "Lonestar", kills: 0, deaths: 0, cash: 0, ping: 40 }],
+      players: [online(steamId, displayName), online(INITIATOR, "Alice"), online(OTHER_INITIATOR, "Bob")],
     }),
   });
   return server;
@@ -65,7 +73,7 @@ describe("startKickVote", () => {
       serverId: server.id,
       targetSteamId: "1",
       reason: "wallhacks",
-      initiatorSessionId: "session-1",
+      initiatorSteamId: INITIATOR,
     });
 
     expect(result).toEqual({ ok: true, kickVoteId: expect.any(Number) });
@@ -89,7 +97,7 @@ describe("startKickVote", () => {
       serverId: server.id,
       targetSteamId: "1",
       reason: "   ",
-      initiatorSessionId: "session-1",
+      initiatorSteamId: INITIATOR,
     });
 
     expect(result).toEqual({ ok: false, error: expect.any(String) });
@@ -103,7 +111,7 @@ describe("startKickVote", () => {
       serverId: server.id,
       targetSteamId: "not-online",
       reason: "wallhacks",
-      initiatorSessionId: "session-1",
+      initiatorSteamId: INITIATOR,
     });
 
     expect(result).toEqual({ ok: false, error: expect.any(String) });
@@ -116,7 +124,7 @@ describe("startKickVote", () => {
       serverId: server.id,
       targetSteamId: "1",
       reason: "wallhacks",
-      initiatorSessionId: "session-1",
+      initiatorSteamId: INITIATOR,
     });
     expect(first.ok).toBe(true);
 
@@ -124,7 +132,7 @@ describe("startKickVote", () => {
       serverId: server.id,
       targetSteamId: "1",
       reason: "aimbot",
-      initiatorSessionId: "session-2",
+      initiatorSteamId: OTHER_INITIATOR,
     });
 
     expect(second).toEqual({ ok: false, error: expect.any(String) });
@@ -132,7 +140,7 @@ describe("startKickVote", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("blocks a session from starting another KickVote inside its cooldown window", async () => {
+  it("blocks a Verified Player from starting another KickVote, on any Server, inside their cooldown window", async () => {
     await db
       .update(kickVoteSettings)
       .set({ initiatorCooldownSeconds: 3600 })
@@ -144,7 +152,7 @@ describe("startKickVote", () => {
       serverId: first.id,
       targetSteamId: "1",
       reason: "wallhacks",
-      initiatorSessionId: "same-session",
+      initiatorSteamId: INITIATOR,
     });
     expect(firstStart.ok).toBe(true);
 
@@ -152,7 +160,7 @@ describe("startKickVote", () => {
       serverId: second.id,
       targetSteamId: "2",
       reason: "aimbot",
-      initiatorSessionId: "same-session",
+      initiatorSteamId: INITIATOR,
     });
 
     expect(secondStart).toEqual({ ok: false, error: expect.any(String) });
@@ -160,13 +168,67 @@ describe("startKickVote", () => {
   });
 });
 
-async function startedVote(initiatorSessionId = "initiator") {
+describe("startKickVote initiator checks", () => {
+  async function attempt(serverId: number, overrides: Partial<{ targetSteamId: string; initiatorSteamId: string }> = {}) {
+    return startKickVote(db, { serverId, targetSteamId: "1", reason: "wallhacks", initiatorSteamId: INITIATOR, ...overrides });
+  }
+
+  it("rejects an initiator who isn't online on that Server", async () => {
+    const server = await seedOnlineServer();
+
+    const result = await attempt(server.id, { initiatorSteamId: "76561198000000999" });
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("playing on this Server") });
+    expect(await getActiveKickVote(db, server.id)).toBeNull();
+  });
+
+  it("rejects a banned initiator even while they're online", async () => {
+    const server = await seedOnlineServer();
+    await db.insert(bannedPlayers).values({ steamId: INITIATOR });
+
+    const result = await attempt(server.id);
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("Banned") });
+    expect(await getActiveKickVote(db, server.id)).toBeNull();
+  });
+
+  it("rejects an initiator targeting themselves", async () => {
+    const server = await seedOnlineServer();
+
+    const result = await attempt(server.id, { targetSteamId: INITIATOR });
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("yourself") });
+    expect(await getActiveKickVote(db, server.id)).toBeNull();
+  });
+
+  it("records the initiator's steamId on the KickVote", async () => {
+    const server = await seedOnlineServer();
+
+    await attempt(server.id);
+
+    const [row] = await db.select().from(kickVotes).where(eq(kickVotes.serverId, server.id));
+    expect(row).toMatchObject({ initiatorSteamId: INITIATOR, initiatorSessionId: null });
+  });
+
+  it("doesn't hold one Verified Player's cooldown against another", async () => {
+    await db.update(kickVoteSettings).set({ initiatorCooldownSeconds: 3600 }).where(eq(kickVoteSettings.id, 1));
+    const first = await seedOnlineServer();
+    const second = await seedOnlineServer();
+    expect((await attempt(first.id)).ok).toBe(true);
+
+    const result = await attempt(second.id, { initiatorSteamId: OTHER_INITIATOR });
+
+    expect(result.ok).toBe(true);
+  });
+});
+
+async function startedVote(initiatorSteamId = INITIATOR) {
   const server = await seedOnlineServer();
   const started = await startKickVote(db, {
     serverId: server.id,
     targetSteamId: "1",
     reason: "wallhacks",
-    initiatorSessionId,
+    initiatorSteamId,
   });
   if (!started.ok) throw new Error("failed to start KickVote in test setup");
   return started.kickVoteId;
@@ -236,11 +298,21 @@ describe("getKickVote", () => {
   });
 });
 
+describe("getKickVote", () => {
+  it("never includes who started the KickVote", async () => {
+    const kickVoteId = await startedVote();
+
+    const vote = await getKickVote(db, kickVoteId);
+
+    expect(JSON.stringify(vote)).not.toContain(INITIATOR);
+  });
+});
+
 describe("listActiveKickVotes", () => {
   it("lists only active KickVotes, with their Server, Ballot count and threshold", async () => {
     const kickVoteId = await startedVote();
     await castBallot(db, { kickVoteId, sessionId: "voter-1" });
-    const ended = await startedVote("another-initiator");
+    const ended = await startedVote(OTHER_INITIATOR);
     await db.update(kickVotes).set({ status: "expired", resolvedAt: new Date() }).where(eq(kickVotes.id, ended));
 
     const rows = await listActiveKickVotes(db);

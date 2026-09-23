@@ -85,8 +85,11 @@ function useFlip(keys: string[]) {
 
 export function LiveServerView({
   initial,
+  viewerSteamId,
 }: {
   initial: LiveSnapshotView | null;
+  /** The signed-in Verified Player, or null - for the KickVote panel. */
+  viewerSteamId: string | null;
 }) {
   const [data, setData] = useState(initial);
   const [isActivityOpen, setIsActivityOpen] = useState(true);
@@ -274,6 +277,7 @@ export function LiveServerView({
         serverId={serverId}
         onlinePlayers={snapshot.players.map((player) => ({ steamId: player.steamId, displayName: player.displayName }))}
         activeKickVote={activeKickVote}
+        viewerSteamId={viewerSteamId}
       />
 
       <section>

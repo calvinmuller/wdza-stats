@@ -31,14 +31,18 @@ async function seedActiveVote() {
     serverId: server.id,
     capturedAt: new Date(),
     payload: snapshotFixture({
-      players: [{ steamId: "1", displayName: "Cheatermc", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, ping: 40 }],
+      players: [
+        { steamId: "1", displayName: "Cheatermc", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, ping: 40 },
+        // The Verified Player starting the vote, who must be online too.
+        { steamId: "76561198000000100", displayName: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, ping: 40 },
+      ],
     }),
   });
   const started = await startKickVote(db, {
     serverId: server.id,
     targetSteamId: "1",
     reason: "wallhacks",
-    initiatorSessionId: "initiator",
+    initiatorSteamId: "76561198000000100",
   });
   if (!started.ok) throw new Error("failed to start KickVote in test setup");
   return started.kickVoteId;

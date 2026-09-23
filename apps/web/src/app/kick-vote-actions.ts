@@ -3,13 +3,15 @@
 import { revalidatePath } from "next/cache";
 import type { ActionFormState } from "@/components/action-form";
 import { db } from "@/lib/db";
+import { getCurrentVerifiedPlayerSteamId } from "@/lib/current-verified-player";
 import { castBallot, startKickVote } from "@/lib/kick-vote";
 import { getVisitorSessionId } from "@/lib/visitor-session";
 
-// Any site visitor may call this - see CONTEXT.md's KickVote entry. No Staff
-// gate here, unlike app/admin/actions.ts: the crowd threshold and per-session
-// cooldown (both enforced inside startKickVote) are this feature's only
-// safeguards, per docs/adr/0006.
+// No Staff gate here, unlike app/admin/actions.ts - see CONTEXT.md's KickVote
+// entry. Starting a KickVote needs a Verified Player signed in with Steam
+// (docs/adr/0007), whose steamId comes from their sign-in, never the form.
+// Casting a Ballot needs nothing: it stays one per anonymous browser session,
+// with the crowd threshold as its safeguard (docs/adr/0006).
 
 function text(formData: FormData, name: string): string {
   const value = formData.get(name);
@@ -22,12 +24,16 @@ export async function startKickVoteAction(_previous: ActionFormState, formData: 
     return { ok: false, error: "Unknown Server." };
   }
 
-  const sessionId = await getVisitorSessionId();
+  const initiatorSteamId = await getCurrentVerifiedPlayerSteamId();
+  if (!initiatorSteamId) {
+    return { ok: false, error: "Sign in with Steam to start a KickVote." };
+  }
+
   const result = await startKickVote(db, {
     serverId,
     targetSteamId: text(formData, "targetSteamId"),
     reason: text(formData, "reason"),
-    initiatorSessionId: sessionId,
+    initiatorSteamId,
   });
 
   if (!result.ok) return result;

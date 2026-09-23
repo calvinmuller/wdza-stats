@@ -16,10 +16,13 @@ export function KickVotePanel({
   serverId,
   onlinePlayers,
   activeKickVote,
+  viewerSteamId,
 }: {
   serverId: number;
   onlinePlayers: OnlinePlayer[];
   activeKickVote: LiveKickVoteView | null;
+  /** The signed-in Verified Player, or null - see docs/adr/0007. */
+  viewerSteamId: string | null;
 }) {
   if (activeKickVote) {
     return (
@@ -42,6 +45,29 @@ export function KickVotePanel({
     return null;
   }
 
+  // Only a hint: startKickVoteAction re-checks all of this on the server.
+  if (!viewerSteamId || !onlinePlayers.some((player) => player.steamId === viewerSteamId)) {
+    return (
+      <section className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-400">
+        {viewerSteamId ? (
+          "You need to be playing on this Server to start a KickVote."
+        ) : (
+          <>
+            <a
+              href={`/api/steam/sign-in?${new URLSearchParams({ returnTo: "/" })}`}
+              className="text-brand-gold-400 underline decoration-dotted hover:text-brand-gold-300"
+            >
+              Sign in with Steam
+            </a>{" "}
+            to start a KickVote.
+          </>
+        )}
+      </section>
+    );
+  }
+
+  const targets = onlinePlayers.filter((player) => player.steamId !== viewerSteamId);
+
   return (
     <section className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3">
       <h2 className="mb-2 text-sm font-medium text-zinc-200">Start a KickVote</h2>
@@ -54,7 +80,7 @@ export function KickVotePanel({
         <label className={labelClass}>
           Target
           <select name="targetSteamId" required className={inputClass}>
-            {onlinePlayers.map((player) => (
+            {targets.map((player) => (
               <option key={player.steamId} value={player.steamId}>
                 {player.displayName}
               </option>

@@ -1,5 +1,6 @@
 import { and, asc, count, eq, gt, sql } from "drizzle-orm";
 import {
+  bannedPlayers,
   KICK_VOTE_STARTED_CHANNEL,
   kickVoteBallots,
   kickVotes,
@@ -69,24 +70,47 @@ export async function getOnlinePlayers(db: Database, serverId: number): Promise<
 }
 
 /**
- * Starts a KickVote against a currently-online target, snapshotting
- * threshold/duration from kickVoteSettings, then notifies the Worker to make
- * the in-game broadcast. Rejects (without notifying) if the reason is empty,
- * the target isn't online, the initiating session is still in its cooldown,
- * or the Server already has an active KickVote - the
- * kick_votes_one_active_per_server_idx unique index is only the backstop for
- * a race between two rejections passing at once.
+ * Starts a KickVote on behalf of a Verified Player (docs/adr/0007), against a
+ * currently-online target, snapshotting threshold/duration from
+ * kickVoteSettings, then notifies the Worker to make the in-game broadcast.
+ * `initiatorSteamId` must come from the caller's Steam sign-in, never a form.
+ *
+ * Rejects (without notifying) if the reason is empty, the initiator is
+ * banned, isn't online on this Server themselves, or targets their own
+ * steamId, the target isn't online, the initiator started another KickVote
+ * (on any Server) inside the cooldown, or the Server already has an active
+ * KickVote - the kick_votes_one_active_per_server_idx unique index is only
+ * the backstop for a race between two rejections passing at once. The
+ * initiator only has to be online at the start: the vote carries on if they
+ * leave.
  */
 export async function startKickVote(
   db: Database,
-  input: { serverId: number; targetSteamId: string; reason: string; initiatorSessionId: string },
+  input: { serverId: number; targetSteamId: string; reason: string; initiatorSteamId: string },
 ): Promise<KickVoteResult> {
   const reason = input.reason.trim();
   if (!reason) {
     return { ok: false, error: "Enter a reason for the KickVote." };
   }
 
+  const [banned] = await db
+    .select({ steamId: bannedPlayers.steamId })
+    .from(bannedPlayers)
+    .where(eq(bannedPlayers.steamId, input.initiatorSteamId))
+    .limit(1);
+  if (banned) {
+    return { ok: false, error: "Banned players can't start a KickVote." };
+  }
+
   const onlinePlayers = await getOnlinePlayers(db, input.serverId);
+  if (!onlinePlayers.some((player) => player.steamId === input.initiatorSteamId)) {
+    return { ok: false, error: "You need to be playing on this Server to start a KickVote." };
+  }
+
+  if (input.targetSteamId === input.initiatorSteamId) {
+    return { ok: false, error: "You can't start a KickVote against yourself." };
+  }
+
   const target = onlinePlayers.find((player) => player.steamId === input.targetSteamId);
   if (!target) {
     return { ok: false, error: "That player is not currently online on this Server." };
@@ -98,7 +122,7 @@ export async function startKickVote(
   const [recentStart] = await db
     .select({ id: kickVotes.id })
     .from(kickVotes)
-    .where(and(eq(kickVotes.initiatorSessionId, input.initiatorSessionId), gt(kickVotes.startedAt, cooldownCutoff)))
+    .where(and(eq(kickVotes.initiatorSteamId, input.initiatorSteamId), gt(kickVotes.startedAt, cooldownCutoff)))
     .limit(1);
   if (recentStart) {
     return { ok: false, error: "You started a KickVote recently - wait before starting another." };
@@ -119,7 +143,7 @@ export async function startKickVote(
       targetSteamId: target.steamId,
       targetName: target.displayName,
       reason,
-      initiatorSessionId: input.initiatorSessionId,
+      initiatorSteamId: input.initiatorSteamId,
       threshold: settings.thresholdBallots,
       durationSeconds: settings.durationSeconds,
       startedAt,
@@ -148,9 +172,28 @@ export interface KickVoteDetailView {
   resolvedAt: Date | null;
 }
 
-/** One KickVote by id, or null if it doesn't exist - the /kick/{id} page's 404 case. */
+/**
+ * One KickVote by id, or null if it doesn't exist - the /kick/{id} page's 404
+ * case. Selects only public fields: who started a KickVote is for Staff
+ * Members only (docs/adr/0007), so it never rides along on this public view.
+ */
 export async function getKickVote(db: Database, id: number): Promise<KickVoteDetailView | null> {
-  const [row] = await db.select().from(kickVotes).where(eq(kickVotes.id, id)).limit(1);
+  const [row] = await db
+    .select({
+      id: kickVotes.id,
+      serverId: kickVotes.serverId,
+      targetSteamId: kickVotes.targetSteamId,
+      targetName: kickVotes.targetName,
+      reason: kickVotes.reason,
+      status: kickVotes.status,
+      threshold: kickVotes.threshold,
+      startedAt: kickVotes.startedAt,
+      endsAt: kickVotes.endsAt,
+      resolvedAt: kickVotes.resolvedAt,
+    })
+    .from(kickVotes)
+    .where(eq(kickVotes.id, id))
+    .limit(1);
   return row ?? null;
 }
 
@@ -178,11 +221,10 @@ export async function hasCastBallot(db: Database, kickVoteId: number, sessionId:
  * same session is a no-op (the (kickVoteId, sessionId) primary key makes the
  * insert idempotent) rather than an error, and there is no way to remove a
  * cast Ballot - see CONTEXT.md's KickVoteBallot entry. There is deliberately
- * no check that the caller isn't the KickVote's own target: sessions are
- * anonymous per-browser tokens with no link to a steamId (no player ever
- * signs in - see CONTEXT.md's Staff Member entry for the same limitation on
- * the other side of this feature), so which session "is" the target isn't
- * determinable and isn't enforced.
+ * no check that the caller isn't the KickVote's own target: Ballots stay
+ * anonymous per-browser sessions with no link to a steamId, even now that
+ * starting a KickVote needs Steam sign-in (docs/adr/0007), so which session
+ * "is" the target isn't determinable and isn't enforced.
  */
 export async function castBallot(
   db: Database,

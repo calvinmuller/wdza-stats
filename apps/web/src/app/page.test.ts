@@ -7,13 +7,25 @@ import {
   matches,
   notifications,
   servers,
+  verifiedPlayers,
   type Database,
 } from "@wdza-stats/db";
 import { inArray } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { snapshotFixture } from "@/lib/live-snapshot-fixture";
-import HomePage from "./page";
+import { signInVerifiedPlayer, VERIFIED_PLAYER_COOKIE } from "@/lib/verified-player";
+
+// HomePage reads the Verified Player cookie through next/headers; there is no
+// request in a test, so each test sets the cookie it wants to "arrive" with.
+let playerCookie: string | undefined;
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) => (name === VERIFIED_PLAYER_COOKIE && playerCookie ? { value: playerCookie } : undefined),
+  }),
+}));
+
+const { default: HomePage } = await import("./page");
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
@@ -26,6 +38,8 @@ const BASE_URL = process.env.RCON_BASE_URL!;
 const insertedDefinitionIds: number[] = [];
 
 afterEach(async () => {
+  playerCookie = undefined;
+  await db.delete(verifiedPlayers);
   await db.delete(notifications);
   await db.delete(gameEvents);
   await db.delete(matches);
@@ -178,5 +192,55 @@ describe("HomePage", () => {
 
     expect(html).toContain("Recent activity");
     expect(html).toContain("Match started on Deadcity");
+  });
+});
+
+describe("HomePage KickVote panel", () => {
+  async function seedTwoOnlinePlayers() {
+    const [server] = await db.insert(servers).values({ name: "WDZA Test", baseUrl: BASE_URL }).returning();
+    await db.insert(latestSnapshots).values({
+      serverId: server.id,
+      capturedAt: new Date(),
+      payload: snapshotFixture({
+        players: [
+          { steamId: "76561198000000001", displayName: "Alice", faction: "Lonestar", kills: 0, deaths: 0, cash: 0, ping: 40 },
+          { steamId: "76561198000000002", displayName: "Cheatermc", faction: "Valkyra", kills: 0, deaths: 0, cash: 0, ping: 40 },
+        ],
+      }),
+    });
+  }
+
+  async function render() {
+    return renderToStaticMarkup(await HomePage());
+  }
+
+  it("asks a signed-out visitor to sign in with Steam instead of showing the start form", async () => {
+    await seedTwoOnlinePlayers();
+
+    const html = await render();
+
+    expect(html).toContain("Sign in with Steam");
+    expect(html).not.toContain("Start KickVote");
+  });
+
+  it("tells a Verified Player who isn't on the Server that they need to be", async () => {
+    await seedTwoOnlinePlayers();
+    playerCookie = (await signInVerifiedPlayer(db, "76561198000000009")).token;
+
+    const html = await render();
+
+    expect(html).toContain("You need to be playing on this Server");
+    expect(html).not.toContain("Start KickVote");
+  });
+
+  it("shows an online Verified Player the start form, without themselves as a target", async () => {
+    await seedTwoOnlinePlayers();
+    playerCookie = (await signInVerifiedPlayer(db, "76561198000000001")).token;
+
+    const html = await render();
+
+    expect(html).toContain("Start KickVote");
+    expect(html).toContain('value="76561198000000002"');
+    expect(html).not.toContain('value="76561198000000001"');
   });
 });

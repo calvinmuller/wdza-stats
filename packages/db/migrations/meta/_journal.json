@@ -197,6 +197,13 @@
       "when": 1790145774320,
       "tag": "0027_verified_players",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790146187197,
+      "tag": "0028_kick_vote_initiator_steam_id",
+      "breakpoints": true
     }
   ]
 }

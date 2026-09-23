@@ -682,7 +682,12 @@ export const kickVotes = pgTable(
     targetSteamId: text("target_steam_id").notNull(),
     targetName: text("target_name").notNull(),
     reason: text("reason").notNull(),
-    initiatorSessionId: text("initiator_session_id").notNull(),
+    // Who started it: the Verified Player's steamId (docs/adr/0007), shown only
+    // to Staff Members and keying the start cooldown. initiatorSessionId is the
+    // anonymous visitor session that started a KickVote before Steam sign-in
+    // existed; it is only ever set on those older rows, which have no steamId.
+    initiatorSteamId: text("initiator_steam_id"),
+    initiatorSessionId: text("initiator_session_id"),
     threshold: integer("threshold").notNull(),
     durationSeconds: integer("duration_seconds").notNull(),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
@@ -695,7 +700,7 @@ export const kickVotes = pgTable(
     uniqueIndex("kick_votes_one_active_per_server_idx")
       .on(table.serverId)
       .where(sql`${table.status} = 'active'`),
-    index("kick_votes_initiator_session_idx").on(table.initiatorSessionId, table.startedAt),
+    index("kick_votes_initiator_steam_id_idx").on(table.initiatorSteamId, table.startedAt),
   ],
 );
 

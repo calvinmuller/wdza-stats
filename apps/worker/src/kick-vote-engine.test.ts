@@ -57,7 +57,7 @@ async function seedActiveVote(serverId: number, overrides: Partial<typeof kickVo
       targetSteamId: "1",
       targetName: "Cheatermc",
       reason: "wallhacks",
-      initiatorSessionId: "session-1",
+      initiatorSteamId: "76561198000000100",
       threshold: 25,
       durationSeconds: 300,
       endsAt: new Date(Date.now() + 300_000),

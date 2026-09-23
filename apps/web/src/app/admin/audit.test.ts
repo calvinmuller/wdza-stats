@@ -141,7 +141,7 @@ describe("kick votes", () => {
         targetSteamId: STEAM_ID,
         targetName: "Cheatermc",
         reason: "wallhacks",
-        initiatorSessionId: "initiator",
+        initiatorSteamId: "76561198000000100",
         threshold: 25,
         durationSeconds: 300,
         endsAt: new Date(Date.now() + 300_000),

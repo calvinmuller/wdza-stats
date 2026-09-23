@@ -9,6 +9,7 @@ import {
   parseBatch,
   parseFeedBearer,
 } from "@/lib/kill-feed";
+import { relayToWarcon } from "@/lib/warcon-relay";
 
 // Where the game posts its kill feed: [WDServerFeed] Url is the web origin and
 // the game appends /api/ingest/events itself. The bearer token is the only
@@ -32,6 +33,8 @@ export async function POST(request: Request) {
   if (text.length > MAX_BODY_BYTES) {
     return Response.json({ error: "Batch too large." }, { status: 413 });
   }
+  // Raw and unparsed, so Warcon sees exactly what the game sent. Not awaited.
+  void relayToWarcon(text);
   let batch: ReturnType<typeof parseBatch>;
   try {
     batch = parseBatch(JSON.parse(text));

@@ -15,7 +15,7 @@ import type { RconClient } from "./rcon-client";
 // Player-facing base URL for the /kick/{id} page (ticket 02) - kept here as
 // copy, not env config, since it's what the in-game broadcast tells players
 // to type, not an address this codebase itself ever fetches.
-const KICK_VOTE_URL_BASE = "stats.wardogsza.co.za/kick";
+const KICK_VOTE_URL_BASE = "stats.wardogs.co.za/kick";
 
 export interface KickVoteAnnouncement {
   id: number;

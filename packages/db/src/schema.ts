@@ -716,3 +716,32 @@ export const kickVoteBallots = pgTable(
   },
   (table) => [primaryKey({ columns: [table.kickVoteId, table.sessionId] })],
 );
+
+// Verified Player: a person who has proven, by signing in with Steam, that
+// they own this steamId - see CONTEXT.md and docs/adr/0007. The first sign-in
+// creates the row, and that is the claim; there is no separate step. Keyed by
+// steamId alone (like steamProfiles and bannedPlayers): owning a steamId isn't
+// per-Server. Deliberately unrelated to staffMembers - the same human can be
+// both, as two separate identities.
+export const verifiedPlayers = pgTable("verified_players", {
+  steamId: text("steam_id").primaryKey(),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSignedInAt: timestamp("last_signed_in_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One Verified Player's signed-in browser. Only a SHA-256 hash of the cookie's
+// token is stored, so a leaked row can't be replayed as a cookie. Separate from
+// staffSessions (Better Auth) and from the anonymous visitor-session cookie
+// behind KickVoteBallots.
+export const verifiedPlayerSessions = pgTable(
+  "verified_player_sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    steamId: text("steam_id")
+      .notNull()
+      .references(() => verifiedPlayers.steamId, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("verified_player_sessions_steam_id_idx").on(table.steamId)],
+);

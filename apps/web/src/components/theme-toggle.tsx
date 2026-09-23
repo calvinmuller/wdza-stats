@@ -2,6 +2,8 @@
 
 import { useTheme, type ThemeOverride } from "./theme-provider";
 
+const AUTO = "auto";
+
 const OPTIONS: { label: string; value: ThemeOverride }[] = [
   { label: "Auto", value: null },
   { label: "Light", value: "light" },
@@ -13,22 +15,32 @@ export function ThemeToggle() {
   const { override, setOverride } = useTheme();
 
   return (
-    <div className="inline-flex items-center rounded-full border border-white/10 bg-zinc-900/60 p-0.5 text-xs">
-      {OPTIONS.map((option) => (
-        <button
-          key={option.label}
-          type="button"
-          onClick={() => setOverride(option.value)}
-          title={option.value === null ? "Based off game lighting" : undefined}
-          className={
-            override === option.value
-              ? "rounded-full bg-zinc-50 px-2.5 py-1 text-zinc-950"
-              : "rounded-full px-2.5 py-1 text-zinc-400 hover:text-zinc-200"
-          }
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <label
+      className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-zinc-900/60 py-1 pl-2.5 pr-1.5 text-xs text-zinc-500"
+      title="Auto follows the in-game lighting"
+    >
+      Lighting
+      <select
+        value={override ?? AUTO}
+        onChange={(event) =>
+          setOverride(
+            event.target.value === AUTO
+              ? null
+              : (event.target.value as ThemeOverride),
+          )
+        }
+        className="cursor-pointer bg-transparent text-zinc-200 focus:outline-none"
+      >
+        {OPTIONS.map((option) => (
+          <option
+            key={option.label}
+            value={option.value ?? AUTO}
+            className="bg-zinc-900 text-zinc-200"
+          >
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

@@ -1,7 +1,17 @@
-import { createDb, steamAchievementSchema, steamProfiles, type Database } from "@wdza-stats/db";
-import { eq } from "drizzle-orm";
+import {
+  createDb,
+  steamAchievementSchema,
+  steamProfiles,
+  VERIFIED_PLAYER_CLAIMED_CHANNEL,
+  type Database,
+} from "@wdza-stats/db";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { refreshPlaytimeOnJoin, refreshUnseenSteamProfiles } from "./steam-profile-refresh";
+import {
+  refreshPlaytimeOnJoin,
+  refreshUnseenSteamProfiles,
+  startClaimedSteamProfileFetcher,
+} from "./steam-profile-refresh";
 import { scriptedSteamClient } from "./steam-fixture";
 
 const APP_ID = 1867240;
@@ -389,5 +399,24 @@ describe("refreshPlaytimeOnJoin", () => {
     await expect(refreshPlaytimeOnJoin(db, client, APP_ID, [])).resolves.toBeUndefined();
 
     expect(client.playtimeCalls).toEqual([]);
+  });
+});
+
+describe("startClaimedSteamProfileFetcher", () => {
+  it("fetches a newly claimed Verified Player's SteamProfile as soon as the claim is announced", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const steamId = "76561198000000001";
+    const client = scriptedSteamClient({
+      summaries: { [steamId]: { steamId, personaName: "Alice", avatarUrl: "https://example.com/a.jpg", countryCode: null } },
+      achievements: { [steamId]: { available: true, achievements: [] } },
+    });
+    const fetcher = startClaimedSteamProfileFetcher(db, client, APP_ID, process.env.DATABASE_URL!);
+    await fetcher.ready;
+    try {
+      await db.execute(sql`select pg_notify(${VERIFIED_PLAYER_CLAIMED_CHANNEL}, ${steamId})`);
+      await expect.poll(() => readProfile(steamId)).toMatchObject({ personaName: "Alice", status: "ok" });
+    } finally {
+      await fetcher.stop();
+    }
   });
 });

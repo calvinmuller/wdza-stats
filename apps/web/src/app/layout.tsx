@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Barlow_Condensed } from "next/font/google";
 import { NavLinks } from "@/components/nav-links";
+import { PlayerSignIn } from "@/components/player-sign-in";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import "./globals.css";
@@ -43,7 +44,7 @@ export default function RootLayout({
               </Link>
               <NavLinks />
               <div className="ml-auto flex items-center gap-2">
-                <span className="text-xs text-zinc-500">Lighting</span>
+                <PlayerSignIn />
                 <ThemeToggle />
               </div>
             </div>

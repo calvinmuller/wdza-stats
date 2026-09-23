@@ -10,6 +10,7 @@ import { startKickVoteAnnouncer, startKickVoteResolver } from "./kick-vote-engin
 import { createRconClient } from "./rcon-client";
 import { startSnapshotPolling, type SteamRefreshConfig } from "./snapshot-poller";
 import { createSteamClient } from "./steam-client";
+import { startClaimedSteamProfileFetcher } from "./steam-profile-refresh";
 
 loadRootEnv();
 
@@ -48,3 +49,9 @@ console.log("[worker] listening for KickVote announcements");
 const kickVoteResolver = startKickVoteResolver(db, rconClient, server.id, databaseUrl, SNAPSHOT_POLL_INTERVAL_MS);
 await kickVoteResolver.ready;
 console.log("[worker] resolving KickVotes");
+
+if (steamConfig) {
+  const claimedProfileFetcher = startClaimedSteamProfileFetcher(db, steamConfig.client, steamConfig.appId, databaseUrl);
+  await claimedProfileFetcher.ready;
+  console.log("[worker] fetching SteamProfiles for newly claimed Verified Players");
+}

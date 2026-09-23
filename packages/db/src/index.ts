@@ -11,3 +11,4 @@ export * from "./snapshot";
 export * from "./staff";
 export * from "./steam-profile";
 export * from "./xp";
+export * from "./verified-player";

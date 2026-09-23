@@ -1,5 +1,7 @@
 import {
+  listenTo,
   steamAchievementSchema,
+  VERIFIED_PLAYER_CLAIMED_CHANNEL,
   steamProfiles,
   type Database,
   type SteamAchievementUnlock,
@@ -275,4 +277,23 @@ export async function refreshPlaytimeOnJoin(
       console.error(`[worker] Steam playtime refresh failed for ${steamId}:`, error);
     }
   }
+}
+
+/**
+ * Fetches a newly claimed Verified Player's SteamProfile as soon as apps/web
+ * announces the claim (VERIFIED_PLAYER_CLAIMED_CHANNEL), so they see their
+ * own name and avatar without waiting to next appear in a Snapshot. Same
+ * skip rules as every other refresh: a steamId that already has a profile is
+ * left alone. `ready` resolves once the LISTEN is active.
+ */
+export function startClaimedSteamProfileFetcher(
+  db: Database,
+  steamClient: SteamClient,
+  appId: number,
+  connectionString: string,
+): { ready: Promise<void>; stop: () => Promise<void> } {
+  return listenTo(connectionString, VERIFIED_PLAYER_CLAIMED_CHANNEL, (steamId) => {
+    if (!/^\d{17}$/.test(steamId)) return;
+    void refreshUnseenSteamProfiles(db, steamClient, appId, [steamId]);
+  });
 }

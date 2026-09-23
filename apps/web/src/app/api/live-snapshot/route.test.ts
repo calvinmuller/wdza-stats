@@ -40,12 +40,14 @@ describe("GET /api/live-snapshot", () => {
 
     expect(response.status).toBe(200);
     expect(body).toEqual({
+      serverId: server.id,
       serverName: "WDZA Test",
       capturedAt: capturedAt.toISOString(),
       snapshot: expect.objectContaining({ map: "Deadcity" }),
       activeChallenges: [],
       recentNotifications: [],
       cashHistory: [],
+      activeKickVote: null,
     });
   });
 });

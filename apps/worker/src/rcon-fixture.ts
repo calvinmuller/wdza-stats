@@ -49,5 +49,7 @@ export function scriptedRconClient(
       index = Math.min(index + 1, script.length - 1);
       return entry.players;
     },
+    async kickPlayer() {},
+    async broadcast() {},
   };
 }

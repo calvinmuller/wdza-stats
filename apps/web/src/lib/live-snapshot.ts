@@ -11,6 +11,7 @@ import {
 import { and, eq, inArray } from "drizzle-orm";
 import { getCashHistory, type CashHistoryPoint } from "./cash-history";
 import { getActiveChallenges, type ActiveChallengeView } from "./active-challenges";
+import { getActiveKickVote } from "./kick-vote";
 import { getRecentNotifications, type RecentNotificationView } from "./recent-notifications";
 import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
 
@@ -19,13 +20,25 @@ export interface LiveSnapshotPlayer extends SnapshotPlayer {
   level: number | null;
 }
 
+// Dates as ISO strings, like capturedAt below - this view is shared as-is
+// between the server-rendered page and its /api/live-snapshot poll, and a
+// Date only survives the first of those two round trips.
+export interface LiveKickVoteView {
+  id: number;
+  targetName: string;
+  reason: string;
+  endsAt: string;
+}
+
 export interface LiveSnapshotView {
+  serverId: number;
   serverName: string;
   capturedAt: string;
   snapshot: Omit<Snapshot, "players"> & { players: LiveSnapshotPlayer[] };
   activeChallenges: ActiveChallengeView[];
   recentNotifications: RecentNotificationView[];
   cashHistory: CashHistoryPoint[];
+  activeKickVote: LiveKickVoteView | null;
 }
 
 // Level per online player, derived from career XP (the Progression
@@ -85,15 +98,17 @@ export async function getLiveSnapshot(
   }
 
   const steamIds = row.payload.players.map((player) => player.steamId);
-  const [avatarUrls, levels, activeChallenges, recentNotifications, cashHistory] = await Promise.all([
+  const [avatarUrls, levels, activeChallenges, recentNotifications, cashHistory, activeKickVote] = await Promise.all([
     getAvatarUrlsBySteamId(db, steamIds),
     getLevelsBySteamId(db, row.serverId, steamIds),
     getActiveChallenges(db, row.serverId, row.capturedAt),
     getRecentNotifications(db, row.serverId),
     getCashHistory(db, row.serverId),
+    getActiveKickVote(db, row.serverId),
   ]);
 
   return {
+    serverId: row.serverId,
     serverName: row.serverName,
     capturedAt: row.capturedAt.toISOString(),
     snapshot: {
@@ -107,6 +122,14 @@ export async function getLiveSnapshot(
     activeChallenges,
     recentNotifications,
     cashHistory,
+    activeKickVote: activeKickVote
+      ? {
+          id: activeKickVote.id,
+          targetName: activeKickVote.targetName,
+          reason: activeKickVote.reason,
+          endsAt: activeKickVote.endsAt.toISOString(),
+        }
+      : null,
   };
 }
 

@@ -1,9 +1,15 @@
 // Raw shapes of the RCON API's three read endpoints, confirmed against the
-// live server. Only these read (GET) endpoints are ever called - see CONTEXT.md and
-// spec.md for why no write endpoint is used. Field names here are the RCON
-// API's own wire format, which differs from our domain Snapshot type (e.g.
-// "name"/"pingMs" here map onto "displayName"/"ping" - see mergeSnapshot in
-// snapshot-poller.ts).
+// live server. Field names here are the RCON API's own wire format, which
+// differs from our domain Snapshot type (e.g. "name"/"pingMs" here map onto
+// "displayName"/"ping" - see mergeSnapshot in snapshot-poller.ts).
+//
+// Two write endpoints are also called, by kick-vote-engine.ts only - see
+// docs/adr/0006-kick-votes-get-a-narrow-rcon-write-exception.md for why RCON
+// stops being read-only for exactly this one feature. Their request bodies
+// aren't confirmed against the live server the way the reads above are
+// (POST /v1/players/{steamId}/kick with an empty body, POST /v1/broadcast
+// with {"message"}) - the best guess available until a real KickVote proves
+// it out.
 
 export interface RawStatusResponse {
   map: string;
@@ -38,13 +44,16 @@ export interface RawPlayersResponse {
 }
 
 /**
- * Wraps GET /v1/status, /v1/players and /v1/rotation for one Server. This is the only
- * code in the system that calls the RCON API - no write endpoint is exposed.
+ * Wraps GET /v1/status, /v1/players and /v1/rotation, plus the two KickVote
+ * write endpoints, for one Server. This is the only code in the system that
+ * calls the RCON API.
  */
 export interface RconClient {
   fetchStatus(): Promise<RawStatusResponse>;
   fetchPlayers(): Promise<RawPlayersResponse>;
   fetchRotation(): Promise<RawRotationResponse>;
+  kickPlayer(steamId: string): Promise<void>;
+  broadcast(message: string): Promise<void>;
 }
 
 export function createRconClient(baseUrl: string, token: string): RconClient {
@@ -62,9 +71,28 @@ export function createRconClient(baseUrl: string, token: string): RconClient {
     return (await response.json()) as T;
   }
 
+  async function post(path: string, body: unknown): Promise<void> {
+    const response = await fetch(new URL(path, baseUrl), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `RCON request to ${path} failed with status ${response.status}`,
+      );
+    }
+  }
+
   return {
     fetchStatus: () => get<RawStatusResponse>("/v1/status"),
     fetchPlayers: () => get<RawPlayersResponse>("/v1/players"),
     fetchRotation: () => get<RawRotationResponse>("/v1/rotation"),
+    kickPlayer: (steamId) => post(`/v1/players/${steamId}/kick`, {}),
+    broadcast: (message) => post("/v1/broadcast", { message }),
   };
 }

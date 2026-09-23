@@ -4,6 +4,7 @@ export * from "./challenge";
 export * from "./client";
 export * from "./env";
 export * from "./game-event";
+export * from "./kick-vote";
 export * from "./level";
 export * from "./notification";
 export * from "./snapshot";

@@ -20,6 +20,7 @@ import type { ChallengeScope, ChallengeType } from "./challenge";
 import type { GameEventType } from "./game-event";
 import type { NotificationKind, NotificationPriority } from "./notification";
 import type { Snapshot } from "./snapshot";
+import type { KickVoteStatus } from "./kick-vote";
 import { STAFF_ROLES, type StaffAction, type StaffRole } from "./staff";
 import type { SteamAchievementUnlock, SteamProfileStatus } from "./steam-profile";
 import type { XpReason } from "./xp";
@@ -640,4 +641,78 @@ export const staffAuditLog = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("staff_audit_log_created_idx").on(table.createdAt)],
+);
+
+// The KICK_VOTE_SETTINGS config table: a singleton row (id always 1), matching
+// notificationSettings/mvpFormulaWeights' own config-table precedent.
+// thresholdBallots/durationSeconds/initiatorCooldownSeconds are read fresh
+// when a KickVote starts and snapshotted onto that row (see kickVotes.threshold
+// and .durationSeconds below) so a mid-vote settings change never alters a
+// vote already in flight.
+export const kickVoteSettings = pgTable("kick_vote_settings", {
+  id: integer("id").primaryKey(),
+  thresholdBallots: integer("threshold_ballots").notNull(),
+  durationSeconds: integer("duration_seconds").notNull(),
+  initiatorCooldownSeconds: integer("initiator_cooldown_seconds").notNull(),
+});
+
+// KickVote: a Server-scoped campaign to force a disruptive player off - see
+// CONTEXT.md and kick-vote.ts. targetSteamId is not a foreign key (matching
+// bannedPlayers/kills' own convention): the target need not have a
+// PlayerCareerStat row. targetName is captured at initiation, from the same
+// Snapshot the initiator picked the target out of, so the /kick/{id} page and
+// the in-game broadcast can still show a name after the target leaves and
+// drops out of the live Snapshot (see status "targetLeft"). threshold and
+// durationSeconds are snapshotted from kickVoteSettings at startedAt, not
+// read live, for the reason given on that table. endsAt is the derived
+// startedAt + durationSeconds, stored rather than computed on every read
+// since it's what the worker's expiry sweep and the /kick/{id} page's
+// countdown both query against. resolvedAt is null only while status is
+// "active". cancelledByStaffMemberId is set only for status "staffCancelled"
+// (see staff.ts's "cancel_kick_vote" STAFF_ACTIONS entry, which is the
+// audit-log record of the same action - this column is for the read path,
+// not a replacement for that log).
+export const kickVotes = pgTable(
+  "kick_votes",
+  {
+    id: serial("id").primaryKey(),
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => servers.id),
+    targetSteamId: text("target_steam_id").notNull(),
+    targetName: text("target_name").notNull(),
+    reason: text("reason").notNull(),
+    initiatorSessionId: text("initiator_session_id").notNull(),
+    threshold: integer("threshold").notNull(),
+    durationSeconds: integer("duration_seconds").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    status: text("status").notNull().$type<KickVoteStatus>().default("active"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    cancelledByStaffMemberId: text("cancelled_by_staff_member_id").references(() => staffMembers.id),
+  },
+  (table) => [
+    uniqueIndex("kick_votes_one_active_per_server_idx")
+      .on(table.serverId)
+      .where(sql`${table.status} = 'active'`),
+    index("kick_votes_initiator_session_idx").on(table.initiatorSessionId, table.startedAt),
+  ],
+);
+
+// KickVoteBallot: one browser session's vote toward one KickVote - see
+// CONTEXT.md. The (kick_vote_id, session_id) primary key is what makes a
+// second vote from the same session a no-op rather than a second Ballot
+// (mirroring playerAchievements' composite-key idempotency), and is also the
+// enforcement mechanism for "no retraction": there is no delete path, only
+// insert-if-absent.
+export const kickVoteBallots = pgTable(
+  "kick_vote_ballots",
+  {
+    kickVoteId: integer("kick_vote_id")
+      .notNull()
+      .references(() => kickVotes.id),
+    sessionId: text("session_id").notNull(),
+    castAt: timestamp("cast_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.kickVoteId, table.sessionId] })],
 );

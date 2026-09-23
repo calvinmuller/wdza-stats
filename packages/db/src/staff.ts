@@ -14,6 +14,8 @@ export const STAFF_ACTIONS = [
   "update_achievement_definition",
   "update_notification_rule",
   "update_notification_settings",
+  "update_kick_vote_settings",
+  "cancel_kick_vote",
   "generate_feed_token",
   "add_staff_member",
   "change_staff_role",

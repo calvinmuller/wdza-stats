@@ -58,8 +58,16 @@ A goal with a target and a deadline (daily is the first scope shipped; weekly/se
 _Avoid_: Quest, mission, task
 
 **Notification**:
-A throttled, recorded representation of a noteworthy GameEvent or milestone, shown in the dashboard's recent-events feed. Never delivered to the game server itself — see [docs/adr/0003](./docs/adr/0003-gamification-notifications-stay-off-rcon-writes.md) for why RCON stays read-only.
-_Avoid_: Broadcast (implies delivery to players, which doesn't happen yet), alert
+A throttled, recorded representation of a noteworthy GameEvent or milestone, shown in the dashboard's recent-events feed. Still never delivered to the game server itself — see [docs/adr/0003](./docs/adr/0003-gamification-notifications-stay-off-rcon-writes.md) for why RCON stays read-only for this concept specifically. **KickVote** below is a narrow, unrelated exception to that read-only boundary — see [docs/adr/0006](./docs/adr/0006-kick-votes-get-a-narrow-rcon-write-exception.md).
+_Avoid_: Broadcast (a Notification is still never delivered to players; a KickVote's own announcement is a different concept — see **KickVote**), alert
+
+**KickVote**:
+A Server-scoped campaign to force a disruptive player (typically a suspected cheater) off that Server, started by any site visitor against a steamId currently present in that Server's live Snapshot. Decided by a threshold count of KickVoteBallots within a fixed time window (both values configured, not hardcoded); reaching the threshold first triggers a real RCON kick of the target. Announced once, at start, via a real RCON broadcast — the one instance in this codebase of RCON being written to rather than only read, per [docs/adr/0006](./docs/adr/0006-kick-votes-get-a-narrow-rcon-write-exception.md). Exactly one may be active per Server at a time. Ends as exactly one of: succeeded (threshold reached), expired (window elapsed first), targetLeft (the target dropped out of the Server's Snapshot before either), or staffCancelled (a moderator or admin ended it early).
+_Avoid_: Vote (ambiguous with **KickVoteBallot**, the individual cast vote), poll (already means something else — see **Snapshot**)
+
+**KickVoteBallot**:
+One browser session's vote toward one KickVote. Sessions, not players, are what's counted here: this codebase has no player identity beyond a steamId reported by the game, so a KickVoteBallot is deliberately scoped to "one browser session voted," not "one player voted" — see the initiator/voter identity trade-off in [docs/adr/0006](./docs/adr/0006-kick-votes-get-a-narrow-rcon-write-exception.md). At most one KickVoteBallot per session per KickVote; there is no way to retract one once cast.
+_Avoid_: Vote (see **KickVote**)
 
 **Staff Member**:
 A person who signs in to run the site: moderating players and, for admins, tuning the game's configuration. Identified by an email address and password, and holds exactly one Role. Distinct from a player: players are only ever a steamId in the stats and never sign in. There is no general "account" or "user" concept.

@@ -3,6 +3,7 @@ import {
   challengeInstances,
   createDb,
   gameEvents,
+  kickVotes,
   latestSnapshots,
   matches,
   playerCareerStats,
@@ -25,6 +26,7 @@ const db: Database = createDb(process.env.DATABASE_URL!);
 const insertedDefinitionIds: number[] = [];
 
 afterEach(async () => {
+  await db.delete(kickVotes);
   await db.delete(notifications);
   await db.delete(gameEvents);
   await db.delete(matches);
@@ -33,6 +35,7 @@ afterEach(async () => {
     await db.delete(challengeDefinitions).where(inArray(challengeDefinitions.id, insertedDefinitionIds));
     insertedDefinitionIds.length = 0;
   }
+  await db.delete(playerCareerStats);
   await db.delete(latestSnapshots);
   await db.delete(servers);
   await db.delete(steamProfiles);
@@ -73,6 +76,7 @@ describe("getLiveSnapshot", () => {
     const result = await getLiveSnapshot(db, "http://rcon.test:9006");
 
     expect(result).toEqual({
+      serverId: server.id,
       serverName: "WDZA Test",
       capturedAt: capturedAt.toISOString(),
       snapshot: {
@@ -82,6 +86,7 @@ describe("getLiveSnapshot", () => {
       activeChallenges: [],
       recentNotifications: [],
       cashHistory: [],
+      activeKickVote: null,
     });
   });
 
@@ -209,5 +214,39 @@ describe("getLiveSnapshot", () => {
     expect(result?.recentNotifications).toEqual([
       expect.objectContaining({ message: "Match started on Sandstorm" }),
     ]);
+  });
+
+  it("includes the Server's active KickVote, if any", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: "http://rcon.test:9006" })
+      .returning();
+    await db
+      .insert(latestSnapshots)
+      .values({ serverId: server.id, capturedAt: new Date("2026-01-01T00:00:00.000Z"), payload: snapshotFixture({}) });
+    const endsAt = new Date("2026-01-01T00:05:00.000Z");
+    const [vote] = await db
+      .insert(kickVotes)
+      .values({
+        serverId: server.id,
+        targetSteamId: "1",
+        targetName: "Cheatermc",
+        reason: "wallhacks",
+        initiatorSessionId: "session-1",
+        threshold: 25,
+        durationSeconds: 300,
+        endsAt,
+        status: "active",
+      })
+      .returning();
+
+    const result = await getLiveSnapshot(db, "http://rcon.test:9006");
+
+    expect(result?.activeKickVote).toEqual({
+      id: vote.id,
+      targetName: "Cheatermc",
+      reason: "wallhacks",
+      endsAt: endsAt.toISOString(),
+    });
   });
 });

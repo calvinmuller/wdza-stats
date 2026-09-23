@@ -6,13 +6,15 @@ import {
   WARDOGS_STEAM_APP_ID,
 } from "@wdza-stats/db";
 import { runHeartbeat } from "./heartbeat";
+import { startKickVoteAnnouncer } from "./kick-vote-engine";
 import { createRconClient } from "./rcon-client";
 import { startSnapshotPolling, type SteamRefreshConfig } from "./snapshot-poller";
 import { createSteamClient } from "./steam-client";
 
 loadRootEnv();
 
-const db = createDb(requireEnv("DATABASE_URL"));
+const databaseUrl = requireEnv("DATABASE_URL");
+const db = createDb(databaseUrl);
 const baseUrl = requireEnv("RCON_BASE_URL");
 const token = requireEnv("RCON_TOKEN");
 
@@ -36,3 +38,7 @@ startSnapshotPolling(db, rconClient, server.id, SNAPSHOT_POLL_INTERVAL_MS, steam
 console.log(
   `[worker] polling RCON every ${SNAPSHOT_POLL_INTERVAL_MS / 1000}s for "${server.name}"`,
 );
+
+const kickVoteAnnouncer = startKickVoteAnnouncer(db, rconClient, databaseUrl);
+await kickVoteAnnouncer.ready;
+console.log("[worker] listening for KickVote announcements");

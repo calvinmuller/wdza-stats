@@ -174,6 +174,8 @@ describe("pollOnce", () => {
       fetchStatus: () => Promise.reject(new Error("network error")),
       fetchPlayers: () => Promise.reject(new Error("network error")),
       fetchRotation: () => Promise.reject(new Error("network error")),
+      kickPlayer: () => Promise.reject(new Error("network error")),
+      broadcast: () => Promise.reject(new Error("network error")),
     };
 
     await expect(pollOnce(db, failingClient, server.id)).resolves.toBeUndefined();
@@ -200,6 +202,8 @@ describe("pollOnce", () => {
       },
       fetchPlayers: async () => playersFixture([]),
       fetchRotation: async () => ({ entries: [] }),
+      kickPlayer: async () => {},
+      broadcast: async () => {},
     };
 
     await pollOnce(db, client, server.id);

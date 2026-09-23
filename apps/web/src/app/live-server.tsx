@@ -13,6 +13,7 @@ import { getLightingInfo } from "@/lib/lighting";
 import { getMapArtUrl } from "@/lib/map-art";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { ActivityFeed } from "./activity-feed";
+import { KickVotePanel } from "./kick-vote-panel";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
 import type { LiveSnapshotPlayer, LiveSnapshotView } from "@/lib/live-snapshot";
 
@@ -121,7 +122,7 @@ export function LiveServerView({
     );
   }
 
-  const { serverName, capturedAt, snapshot, activeChallenges, recentNotifications, cashHistory } = data;
+  const { serverId, serverName, capturedAt, snapshot, activeChallenges, recentNotifications, cashHistory, activeKickVote } = data;
   const rotation = getRotationPreview(snapshot.rotation);
   const playerCount = snapshot.players.length;
   const maxPlayers = snapshot.playerSlots.max;
@@ -268,6 +269,12 @@ export function LiveServerView({
           </p>
         )}
       </section>
+
+      <KickVotePanel
+        serverId={serverId}
+        onlinePlayers={snapshot.players.map((player) => ({ steamId: player.steamId, displayName: player.displayName }))}
+        activeKickVote={activeKickVote}
+      />
 
       <section>
         <h2 className="mb-3 text-xl">Factions</h2>

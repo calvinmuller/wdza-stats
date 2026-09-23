@@ -17,6 +17,7 @@ import {
   cancelKickVote,
   castBallot,
   getActiveKickVote,
+  getOldestActiveKickVoteId,
   getBallotCount,
   getKickVote,
   hasCastBallot,
@@ -328,6 +329,23 @@ describe("getKickVote", () => {
     const vote = await getKickVote(db, kickVoteId);
 
     expect(JSON.stringify(vote)).not.toContain(INITIATOR);
+  });
+});
+
+describe("getOldestActiveKickVoteId", () => {
+  it("is null with no active KickVote", async () => {
+    const ended = await startedVote();
+    await db.update(kickVotes).set({ status: "expired", resolvedAt: new Date() }).where(eq(kickVotes.id, ended));
+
+    expect(await getOldestActiveKickVoteId(db)).toBeNull();
+  });
+
+  it("picks the earliest-started active KickVote", async () => {
+    const older = await startedVote();
+    await startedVote(OTHER_INITIATOR);
+    await db.update(kickVotes).set({ startedAt: new Date(Date.now() - 60_000) }).where(eq(kickVotes.id, older));
+
+    expect(await getOldestActiveKickVoteId(db)).toBe(older);
   });
 });
 

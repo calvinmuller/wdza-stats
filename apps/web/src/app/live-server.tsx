@@ -96,17 +96,19 @@ export function LiveServerView({
   const [isActivityOpen, setIsActivityOpen] = useState(true);
   const [showAllPlayers, setShowAllPlayers] = useState(false);
 
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const response = await fetch("/api/live-snapshot");
-        if (response.ok) {
-          setData(await response.json());
-        }
-      } catch {
-        // Keep showing the last known-good Snapshot until the next poll succeeds.
+  async function refresh() {
+    try {
+      const response = await fetch("/api/live-snapshot");
+      if (response.ok) {
+        setData(await response.json());
       }
-    }, REFRESH_INTERVAL_MS);
+    } catch {
+      // Keep showing the last known-good Snapshot until the next poll succeeds.
+    }
+  }
+
+  useEffect(() => {
+    const interval = setInterval(refresh, REFRESH_INTERVAL_MS);
 
     return () => clearInterval(interval);
   }, []);
@@ -208,7 +210,7 @@ export function LiveServerView({
       cellClassName: "text-right",
       render: (player) =>
         player.steamId === kickVoteViewer.steamId || staffSteamIds.includes(player.steamId) ? null : (
-          <StartKickVoteButton serverId={serverId} target={player} />
+          <StartKickVoteButton serverId={serverId} target={player} onStarted={refresh} />
         ),
     });
   }

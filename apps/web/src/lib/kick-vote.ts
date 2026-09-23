@@ -47,6 +47,20 @@ export async function getActiveKickVote(db: Database, serverId: number): Promise
   return row ?? null;
 }
 
+/**
+ * The id of the oldest active KickVote across all Servers, or null - where
+ * /kick sends players, so nobody has to relay a KickVote's id by hand.
+ */
+export async function getOldestActiveKickVoteId(db: Database): Promise<number | null> {
+  const [row] = await db
+    .select({ id: kickVotes.id })
+    .from(kickVotes)
+    .where(eq(kickVotes.status, "active"))
+    .orderBy(asc(kickVotes.startedAt), asc(kickVotes.id))
+    .limit(1);
+  return row?.id ?? null;
+}
+
 /** Tells the Worker's kick-vote-engine to announce a just-started KickVote via RCON. */
 export async function notifyKickVoteStarted(db: Database, kickVoteId: number): Promise<void> {
   await db.execute(sql`select pg_notify(${KICK_VOTE_STARTED_CHANNEL}, ${String(kickVoteId)})`);

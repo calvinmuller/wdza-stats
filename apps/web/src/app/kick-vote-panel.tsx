@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRef } from "react";
+import { useFormStatus } from "react-dom";
 import { ActionForm } from "@/components/action-form";
 import type { KickVoteInitiator } from "@/lib/current-kick-vote-initiator";
 import type { OnlinePlayer } from "@/lib/kick-vote";
@@ -64,8 +65,30 @@ export function KickVoteHint({ viewer }: { viewer: KickVoteInitiator | null }) {
   );
 }
 
-/** A row action in the Online players table: asks for a reason, then starts a KickVote against `target`. */
-export function StartKickVoteButton({ serverId, target }: { serverId: number; target: OnlinePlayer }) {
+/** Disabled while the KickVote is being started, so a slow Server Action can't be submitted twice. */
+function StartKickVoteSubmit() {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} className={`${buttonClass} disabled:cursor-wait disabled:opacity-60`}>
+      {pending ? "Starting..." : "Start KickVote"}
+    </button>
+  );
+}
+
+/**
+ * A row action in the Online players table: asks for a reason, then starts a
+ * KickVote against `target`. The dialog stays open until `onStarted` has
+ * refreshed the table, so its "Kick vote" buttons are gone when it closes.
+ */
+export function StartKickVoteButton({
+  serverId,
+  target,
+  onStarted,
+}: {
+  serverId: number;
+  target: OnlinePlayer;
+  onStarted: () => Promise<void>;
+}) {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   return (
@@ -88,7 +111,10 @@ export function StartKickVoteButton({ serverId, target }: { serverId: number; ta
         <ActionForm
           action={startKickVoteAction}
           className="flex flex-wrap items-end gap-3"
-          onSuccess={() => dialogRef.current?.close()}
+          onSuccess={async () => {
+            await onStarted();
+            dialogRef.current?.close();
+          }}
         >
           <input type="hidden" name="serverId" value={serverId} />
           <input type="hidden" name="targetSteamId" value={target.steamId} />
@@ -104,9 +130,7 @@ export function StartKickVoteButton({ serverId, target }: { serverId: number; ta
             >
               Cancel
             </button>
-            <button type="submit" className={buttonClass}>
-              Start KickVote
-            </button>
+            <StartKickVoteSubmit />
           </div>
         </ActionForm>
       </dialog>

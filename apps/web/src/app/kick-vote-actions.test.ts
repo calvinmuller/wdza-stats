@@ -1,4 +1,5 @@
-import { createDb, kickVotes, latestSnapshots, servers, type Database } from "@wdza-stats/db";
+import { createDb, kickVoteBallots, kickVotes, latestSnapshots, servers, type Database } from "@wdza-stats/db";
+import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { snapshotFixture } from "@/lib/live-snapshot-fixture";
 
@@ -14,7 +15,7 @@ vi.mock("next/headers", () => ({
   }),
 }));
 
-const { startKickVoteAction } = await import("./kick-vote-actions");
+const { castBallotAction, startKickVoteAction } = await import("./kick-vote-actions");
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
@@ -23,6 +24,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  await db.delete(kickVoteBallots);
   await db.delete(kickVotes);
   await db.delete(latestSnapshots);
   await db.delete(servers);
@@ -89,6 +91,30 @@ describe("startKickVoteAction", () => {
       null,
       form({ serverId: "not-a-number", targetSteamId: "1", reason: "wallhacks" }),
     );
+
+    expect(result).toEqual({ ok: false, error: expect.any(String) });
+  });
+});
+
+describe("castBallotAction", () => {
+  it("casts a Ballot using a freshly-minted visitor session cookie", async () => {
+    const server = await seedOnlineServer();
+    const started = await startKickVoteAction(
+      null,
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
+    );
+    if (!started?.ok) throw new Error("failed to start KickVote in test setup");
+    cookieStore = new Map(); // a different visitor casting the Ballot
+    const [kickVote] = await db.select({ id: kickVotes.id }).from(kickVotes).where(eq(kickVotes.serverId, server.id));
+
+    const result = await castBallotAction(null, form({ kickVoteId: String(kickVote.id) }));
+
+    expect(result).toEqual({ ok: true });
+    expect(cookieStore.size).toBe(1);
+  });
+
+  it("rejects an unparsable KickVote id", async () => {
+    const result = await castBallotAction(null, form({ kickVoteId: "not-a-number" }));
 
     expect(result).toEqual({ ok: false, error: expect.any(String) });
   });

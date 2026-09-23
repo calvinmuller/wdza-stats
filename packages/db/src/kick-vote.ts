@@ -24,3 +24,9 @@ export type KickVoteStatus = "active" | "succeeded" | "expired" | "targetLeft" |
 // the row, so it's the Worker's kick-vote-engine that LISTENs here and makes
 // the actual RCON broadcast call.
 export const KICK_VOTE_STARTED_CHANNEL = "kick_vote_started";
+
+// The Postgres NOTIFY channel a KickVote's own Ballot count (or resolution)
+// changes on (payload: the KickVote's id, as a string) - web -> web, same
+// shape as kill-notifications.ts's "kills" channel, powering the /kick/{id}
+// page's live SSE updates (ticket 02) with no polling.
+export const KICK_VOTE_UPDATED_CHANNEL = "kick_vote_updated";

@@ -118,6 +118,7 @@ describe("getPlayerCareerStat", () => {
       matchesPlayed: 4,
       factionColor: null,
       avatarUrl: null,
+      countryCode: null,
       playtimeMinutes: null,
     });
   });

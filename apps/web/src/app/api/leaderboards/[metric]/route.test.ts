@@ -54,8 +54,8 @@ describe("GET /api/leaderboards/[metric]", () => {
     expect(body.page).toBe(1);
     expect(body.totalCount).toBe(2);
     expect(body.rows).toEqual([
-      { rank: 1, steamId: "2", displayName: "Bob", avatarUrl: null, value: 500 },
-      { rank: 2, steamId: "1", displayName: "Alice", avatarUrl: null, value: 100 },
+      { rank: 1, steamId: "2", displayName: "Bob", avatarUrl: null, countryCode: null, level: 1, value: 500 },
+      { rank: 2, steamId: "1", displayName: "Alice", avatarUrl: null, countryCode: null, level: 1, value: 100 },
     ]);
   });
 

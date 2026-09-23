@@ -1,5 +1,6 @@
 import {
   createDb,
+  kickVoteBallots,
   kickVoteSettings,
   kickVotes,
   latestSnapshots,
@@ -9,11 +10,19 @@ import {
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { snapshotFixture } from "./live-snapshot-fixture";
-import { getActiveKickVote, startKickVote } from "./kick-vote";
+import {
+  castBallot,
+  getActiveKickVote,
+  getBallotCount,
+  getKickVote,
+  hasCastBallot,
+  startKickVote,
+} from "./kick-vote";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 afterEach(async () => {
+  await db.delete(kickVoteBallots);
   await db.delete(kickVotes);
   await db.delete(latestSnapshots);
   await db.delete(servers);
@@ -143,5 +152,71 @@ describe("startKickVote", () => {
 
     expect(secondStart).toEqual({ ok: false, error: expect.any(String) });
     expect(await getActiveKickVote(db, second.id)).toBeNull();
+  });
+});
+
+async function startedVote() {
+  const server = await seedOnlineServer();
+  const started = await startKickVote(db, {
+    serverId: server.id,
+    targetSteamId: "1",
+    reason: "wallhacks",
+    initiatorSessionId: "initiator",
+  });
+  if (!started.ok) throw new Error("failed to start KickVote in test setup");
+  return started.kickVoteId;
+}
+
+describe("castBallot", () => {
+  it("casts a Ballot, making it visible via getBallotCount and hasCastBallot", async () => {
+    const kickVoteId = await startedVote();
+
+    const result = await castBallot(db, { kickVoteId, sessionId: "voter-1" });
+
+    expect(result).toEqual({ ok: true, kickVoteId });
+    expect(await getBallotCount(db, kickVoteId)).toBe(1);
+    expect(await hasCastBallot(db, kickVoteId, "voter-1")).toBe(true);
+    expect(await hasCastBallot(db, kickVoteId, "voter-2")).toBe(false);
+  });
+
+  it("produces exactly one row when the same session casts twice, as a no-op rather than an error", async () => {
+    const kickVoteId = await startedVote();
+
+    const first = await castBallot(db, { kickVoteId, sessionId: "voter-1" });
+    const second = await castBallot(db, { kickVoteId, sessionId: "voter-1" });
+
+    expect(first).toEqual({ ok: true, kickVoteId });
+    expect(second).toEqual({ ok: true, kickVoteId });
+    expect(await getBallotCount(db, kickVoteId)).toBe(1);
+  });
+
+  it("rejects casting on a KickVote that no longer exists", async () => {
+    const result = await castBallot(db, { kickVoteId: 999_999, sessionId: "voter-1" });
+
+    expect(result).toEqual({ ok: false, error: expect.any(String) });
+  });
+
+  it("rejects casting on a KickVote that has already ended", async () => {
+    const kickVoteId = await startedVote();
+    await db.update(kickVotes).set({ status: "expired", resolvedAt: new Date() }).where(eq(kickVotes.id, kickVoteId));
+
+    const result = await castBallot(db, { kickVoteId, sessionId: "voter-1" });
+
+    expect(result).toEqual({ ok: false, error: expect.any(String) });
+    expect(await getBallotCount(db, kickVoteId)).toBe(0);
+  });
+});
+
+describe("getKickVote", () => {
+  it("returns null for an id that doesn't exist", async () => {
+    expect(await getKickVote(db, 999_999)).toBeNull();
+  });
+
+  it("returns the full row for an id that does", async () => {
+    const kickVoteId = await startedVote();
+
+    const vote = await getKickVote(db, kickVoteId);
+
+    expect(vote).toMatchObject({ id: kickVoteId, targetName: "Cheatermc", reason: "wallhacks", status: "active" });
   });
 });

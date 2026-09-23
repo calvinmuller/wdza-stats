@@ -29,3 +29,15 @@ export async function getVisitorSessionId(): Promise<string> {
   });
   return sessionId;
 }
+
+/**
+ * Callable during a page render too, unlike getVisitorSessionId - reads this
+ * browser's session id without minting one, for "has this browser already
+ * done X" display checks (e.g. the /kick/{id} page deciding whether to show
+ * its voting form). A visitor with no session yet reads as null; they get one
+ * the moment they actually act (e.g. casting a Ballot), not just from looking.
+ */
+export async function getVisitorSessionIdIfPresent(): Promise<string | null> {
+  const store = await cookies();
+  return store.get(COOKIE_NAME)?.value ?? null;
+}

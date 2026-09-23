@@ -1,12 +1,14 @@
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, count, eq, gt, sql } from "drizzle-orm";
 import {
   KICK_VOTE_STARTED_CHANNEL,
+  kickVoteBallots,
   kickVoteSettings,
   kickVotes,
   latestSnapshots,
   type Database,
   type KickVoteStatus,
 } from "@wdza-stats/db";
+import { notifyKickVoteUpdated } from "./kick-vote-notifications";
 
 // KickVote's data access layer (ticket 01) - see CONTEXT.md's KickVote entry,
 // spec.md, and docs/adr/0006. Kept separate from app/kick-vote-actions.ts's
@@ -135,4 +137,80 @@ export async function startKickVote(
   await notifyKickVoteStarted(db, row.id);
 
   return { ok: true, kickVoteId: row.id };
+}
+
+// Ticket 02: the /kick/{id} page and casting a Ballot.
+
+export interface KickVoteDetailView {
+  id: number;
+  serverId: number;
+  targetSteamId: string;
+  targetName: string;
+  reason: string;
+  status: KickVoteStatus;
+  threshold: number;
+  startedAt: Date;
+  endsAt: Date;
+  resolvedAt: Date | null;
+}
+
+/** One KickVote by id, or null if it doesn't exist - the /kick/{id} page's 404 case. */
+export async function getKickVote(db: Database, id: number): Promise<KickVoteDetailView | null> {
+  const [row] = await db.select().from(kickVotes).where(eq(kickVotes.id, id)).limit(1);
+  return row ?? null;
+}
+
+/** How many KickVoteBallots this KickVote has - the count shown against its threshold. */
+export async function getBallotCount(db: Database, kickVoteId: number): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(kickVoteBallots)
+    .where(eq(kickVoteBallots.kickVoteId, kickVoteId));
+  return row?.value ?? 0;
+}
+
+/** Whether this session has already cast a Ballot on this KickVote. */
+export async function hasCastBallot(db: Database, kickVoteId: number, sessionId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ sessionId: kickVoteBallots.sessionId })
+    .from(kickVoteBallots)
+    .where(and(eq(kickVoteBallots.kickVoteId, kickVoteId), eq(kickVoteBallots.sessionId, sessionId)))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * Casts this session's Ballot on an active KickVote. Casting again from the
+ * same session is a no-op (the (kickVoteId, sessionId) primary key makes the
+ * insert idempotent) rather than an error, and there is no way to remove a
+ * cast Ballot - see CONTEXT.md's KickVoteBallot entry. There is deliberately
+ * no check that the caller isn't the KickVote's own target: sessions are
+ * anonymous per-browser tokens with no link to a steamId (no player ever
+ * signs in - see CONTEXT.md's Staff Member entry for the same limitation on
+ * the other side of this feature), so which session "is" the target isn't
+ * determinable and isn't enforced.
+ */
+export async function castBallot(
+  db: Database,
+  input: { kickVoteId: number; sessionId: string },
+): Promise<KickVoteResult> {
+  const vote = await getKickVote(db, input.kickVoteId);
+  if (!vote) {
+    return { ok: false, error: "KickVote not found." };
+  }
+  if (vote.status !== "active") {
+    return { ok: false, error: "This KickVote has already ended." };
+  }
+
+  const inserted = await db
+    .insert(kickVoteBallots)
+    .values({ kickVoteId: input.kickVoteId, sessionId: input.sessionId })
+    .onConflictDoNothing()
+    .returning({ kickVoteId: kickVoteBallots.kickVoteId });
+
+  if (inserted.length > 0) {
+    await notifyKickVoteUpdated(db, input.kickVoteId);
+  }
+
+  return { ok: true, kickVoteId: input.kickVoteId };
 }

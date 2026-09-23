@@ -20,7 +20,12 @@ describe("fetchPlayerSummaries", () => {
         jsonResponse({
           response: {
             players: [
-              { steamid: "1", personaname: "Alice", avatarfull: "https://example.com/alice.jpg" },
+              {
+                steamid: "1",
+                personaname: "Alice",
+                avatarfull: "https://example.com/alice.jpg",
+                loccountrycode: "US",
+              },
             ],
           },
         }),
@@ -31,7 +36,12 @@ describe("fetchPlayerSummaries", () => {
     const result = await client.fetchPlayerSummaries(["1"]);
 
     expect(result).toEqual([
-      { steamId: "1", personaName: "Alice", avatarUrl: "https://example.com/alice.jpg" },
+      {
+        steamId: "1",
+        personaName: "Alice",
+        avatarUrl: "https://example.com/alice.jpg",
+        countryCode: "US",
+      },
     ]);
   });
 

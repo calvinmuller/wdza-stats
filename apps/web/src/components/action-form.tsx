@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, type ReactNode } from "react";
+import { useActionState, useEffect, type ReactNode } from "react";
 
 export type ActionFormState = { ok: true } | { ok: false; error: string } | null;
 
@@ -11,15 +11,25 @@ export function ActionForm({
   className,
   successMessage,
   confirm,
+  onSuccess,
   children,
 }: {
   action: (previous: ActionFormState, formData: FormData) => Promise<ActionFormState>;
   className?: string;
   successMessage?: string;
   confirm?: string;
+  // For a caller that needs to react to success beyond showing successMessage
+  // (e.g. flipping local UI state) - runs once per successful submission, not
+  // on every render while state stays ok.
+  onSuccess?: () => void;
   children: ReactNode;
 }) {
   const [state, formAction] = useActionState(action, null);
+
+  useEffect(() => {
+    if (state?.ok === true) onSuccess?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   return (
     <form

@@ -93,6 +93,7 @@ describe("getPlayerProgression", () => {
       displayName: "Alice",
       personaName: null,
       avatarUrl: null,
+      countryCode: null,
       factionColor: null,
       level: 2,
       xp: 1300,
@@ -117,6 +118,7 @@ describe("getPlayerProgression", () => {
       displayName: "Alice",
       personaName: null,
       avatarUrl: null,
+      countryCode: null,
       factionColor: null,
       level: 1,
       xp: 0,
@@ -250,7 +252,7 @@ describe("getPlayerAchievements", () => {
       {
         id: "first_blood",
         name: "First Blood",
-        description: "Get your first kill",
+        description: "Get the first kill of the game",
         unlockedAt: older.unlockedAt.toISOString(),
       },
     ]);

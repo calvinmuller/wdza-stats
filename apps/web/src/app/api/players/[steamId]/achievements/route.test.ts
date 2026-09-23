@@ -99,7 +99,7 @@ describe("GET /api/players/[steamId]/achievements", () => {
       {
         id: "first_blood",
         name: "First Blood",
-        description: "Get your first kill",
+        description: "Get the first kill of the game",
         unlockedAt: older.unlockedAt.toISOString(),
       },
     ]);

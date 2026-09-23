@@ -168,7 +168,7 @@ describe("startKickVoteAction", () => {
     await expect(db.select().from(kickVotes)).resolves.toEqual([]);
   });
 
-  it("doesn't let a moderator's staff login start a KickVote", async () => {
+  it("starts a KickVote as a signed-in moderator's linked steamId too", async () => {
     const server = await seedOnlineServer();
     await signInAsStaff("moderator", INITIATOR);
 
@@ -177,8 +177,9 @@ describe("startKickVoteAction", () => {
       form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
     );
 
-    expect(result).toEqual({ ok: false, error: expect.stringContaining("Sign in with Steam") });
-    await expect(db.select().from(kickVotes)).resolves.toEqual([]);
+    expect(result).toEqual({ ok: true });
+    const [row] = await db.select().from(kickVotes).where(eq(kickVotes.serverId, server.id));
+    expect(row.initiatorSteamId).toBe(INITIATOR);
   });
 
   it("keeps the cooldown when the same Verified Player signs in from a new browser", async () => {

@@ -5,6 +5,7 @@ import { useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { ActionForm } from "@/components/action-form";
 import type { KickVoteInitiator } from "@/lib/current-kick-vote-initiator";
+import { KICK_REASONS } from "@/lib/kick-reasons";
 import type { OnlinePlayer } from "@/lib/kick-vote";
 import type { LiveKickVoteView } from "@/lib/live-snapshot";
 import { startKickVoteAction } from "./kick-vote-actions";
@@ -120,7 +121,16 @@ export function StartKickVoteButton({
           <input type="hidden" name="targetSteamId" value={target.steamId} />
           <label className={labelClass} style={{ flexBasis: "16rem" }}>
             Reason
-            <input name="reason" required autoComplete="off" className={inputClass} />
+            <select name="reason" required defaultValue="" className={inputClass}>
+              <option value="" disabled>
+                Pick a reason
+              </option>
+              {KICK_REASONS.map((reason) => (
+                <option key={reason} value={reason}>
+                  {reason}
+                </option>
+              ))}
+            </select>
           </label>
           <div className="flex basis-full justify-end gap-2">
             <button

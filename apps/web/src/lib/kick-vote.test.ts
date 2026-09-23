@@ -74,13 +74,13 @@ describe("startKickVote", () => {
     const result = await startKickVote(db, {
       serverId: server.id,
       targetSteamId: "1",
-      reason: "wallhacks",
+      reason: "Hacker",
       initiatorSteamId: INITIATOR,
     });
 
     expect(result).toEqual({ ok: true, kickVoteId: expect.any(Number) });
     const active = await getActiveKickVote(db, server.id);
-    expect(active).toMatchObject({ targetName: "Cheatermc", reason: "wallhacks" });
+    expect(active).toMatchObject({ targetName: "Cheatermc", reason: "Hacker" });
 
     const [row] = await db.select().from(kickVotes).where(eq(kickVotes.serverId, server.id));
     expect(row).toMatchObject({
@@ -90,6 +90,20 @@ describe("startKickVote", () => {
       durationSeconds: 300,
       status: "active",
     });
+  });
+
+  it("rejects a reason that isn't one of the KICK_REASONS", async () => {
+    const server = await seedOnlineServer();
+
+    const result = await startKickVote(db, {
+      serverId: server.id,
+      targetSteamId: "1",
+      reason: "wallhacks",
+      initiatorSteamId: INITIATOR,
+    });
+
+    expect(result).toEqual({ ok: false, error: expect.any(String) });
+    expect(await getActiveKickVote(db, server.id)).toBeNull();
   });
 
   it("rejects an empty reason", async () => {
@@ -112,7 +126,7 @@ describe("startKickVote", () => {
     const result = await startKickVote(db, {
       serverId: server.id,
       targetSteamId: "not-online",
-      reason: "wallhacks",
+      reason: "Hacker",
       initiatorSteamId: INITIATOR,
     });
 
@@ -125,7 +139,7 @@ describe("startKickVote", () => {
     const first = await startKickVote(db, {
       serverId: server.id,
       targetSteamId: "1",
-      reason: "wallhacks",
+      reason: "Hacker",
       initiatorSteamId: INITIATOR,
     });
     expect(first.ok).toBe(true);
@@ -133,7 +147,7 @@ describe("startKickVote", () => {
     const second = await startKickVote(db, {
       serverId: server.id,
       targetSteamId: "1",
-      reason: "aimbot",
+      reason: "Teamkilling",
       initiatorSteamId: OTHER_INITIATOR,
     });
 
@@ -153,7 +167,7 @@ describe("startKickVote", () => {
     const firstStart = await startKickVote(db, {
       serverId: first.id,
       targetSteamId: "1",
-      reason: "wallhacks",
+      reason: "Hacker",
       initiatorSteamId: INITIATOR,
     });
     expect(firstStart.ok).toBe(true);
@@ -161,7 +175,7 @@ describe("startKickVote", () => {
     const secondStart = await startKickVote(db, {
       serverId: second.id,
       targetSteamId: "2",
-      reason: "aimbot",
+      reason: "Teamkilling",
       initiatorSteamId: INITIATOR,
     });
 
@@ -175,7 +189,7 @@ describe("startKickVote initiator checks", () => {
     serverId: number,
     overrides: Partial<{ targetSteamId: string; initiatorSteamId: string; initiatorIsStaff: boolean }> = {},
   ) {
-    return startKickVote(db, { serverId, targetSteamId: "1", reason: "wallhacks", initiatorSteamId: INITIATOR, ...overrides });
+    return startKickVote(db, { serverId, targetSteamId: "1", reason: "Hacker", initiatorSteamId: INITIATOR, ...overrides });
   }
 
   it("rejects an initiator who isn't online on that Server", async () => {
@@ -251,7 +265,7 @@ async function startedVote(initiatorSteamId = INITIATOR) {
   const started = await startKickVote(db, {
     serverId: server.id,
     targetSteamId: "1",
-    reason: "wallhacks",
+    reason: "Hacker",
     initiatorSteamId,
   });
   if (!started.ok) throw new Error("failed to start KickVote in test setup");
@@ -318,7 +332,7 @@ describe("getKickVote", () => {
 
     const vote = await getKickVote(db, kickVoteId);
 
-    expect(vote).toMatchObject({ id: kickVoteId, targetName: "Cheatermc", reason: "wallhacks", status: "active" });
+    expect(vote).toMatchObject({ id: kickVoteId, targetName: "Cheatermc", reason: "Hacker", status: "active" });
   });
 });
 
@@ -364,7 +378,7 @@ describe("listActiveKickVotes", () => {
         serverName: "WDZA Test",
         targetName: "Cheatermc",
         targetSteamId: "1",
-        reason: "wallhacks",
+        reason: "Hacker",
         ballotCount: 1,
         threshold: 25,
         endsAt: expect.any(Date),

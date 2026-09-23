@@ -13,6 +13,7 @@ import {
   type KickVoteStatus,
 } from "@wdza-stats/db";
 import { getKickVoteSettings } from "./admin-config";
+import { isKickReason, KICK_REASONS } from "./kick-reasons";
 import { getStaffSteamIds } from "./staff-steam-link";
 
 // KickVote's data access layer (ticket 01) - see CONTEXT.md's KickVote entry,
@@ -94,7 +95,7 @@ export async function getOnlinePlayers(db: Database, serverId: number): Promise<
  * `initiatorSteamId` and `initiatorIsStaff` must come from the caller's
  * sign-in, never a form.
  *
- * Rejects (without notifying) if the reason is empty, the initiator is
+ * Rejects (without notifying) if the reason isn't one of KICK_REASONS, the initiator is
  * banned, isn't online on this Server themselves (unless they're a Staff
  * Member), or targets their own
  * steamId, the target isn't online or is a Staff Member's linked steamId, the initiator started another KickVote
@@ -109,8 +110,8 @@ export async function startKickVote(
   input: { serverId: number; targetSteamId: string; reason: string; initiatorSteamId: string; initiatorIsStaff?: boolean },
 ): Promise<KickVoteResult> {
   const reason = input.reason.trim();
-  if (!reason) {
-    return { ok: false, error: "Enter a reason for the KickVote." };
+  if (!isKickReason(reason)) {
+    return { ok: false, error: `Pick a reason for the KickVote: ${KICK_REASONS.join(" or ")}.` };
   }
 
   const [banned] = await db

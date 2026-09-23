@@ -108,7 +108,7 @@ describe("startKickVoteAction", () => {
 
     const result = await startKickVoteAction(
       null,
-      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "Hacker" }),
     );
 
     expect(result).toEqual({ ok: false, error: expect.stringContaining("Sign in with Steam") });
@@ -121,7 +121,7 @@ describe("startKickVoteAction", () => {
 
     const result = await startKickVoteAction(
       null,
-      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks", initiatorSteamId: "1" }),
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "Hacker", initiatorSteamId: "1" }),
     );
 
     expect(result).toEqual({ ok: true });
@@ -135,7 +135,7 @@ describe("startKickVoteAction", () => {
 
     const result = await startKickVoteAction(
       null,
-      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks", initiatorSteamId: "1" }),
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "Hacker", initiatorSteamId: "1" }),
     );
 
     expect(result).toEqual({ ok: true });
@@ -149,7 +149,7 @@ describe("startKickVoteAction", () => {
 
     const result = await startKickVoteAction(
       null,
-      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "Hacker" }),
     );
 
     expect(result).toEqual({ ok: true });
@@ -165,7 +165,7 @@ describe("startKickVoteAction", () => {
 
     const result = await startKickVoteAction(
       null,
-      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "Hacker" }),
     );
 
     expect(result).toEqual({ ok: true });
@@ -179,7 +179,7 @@ describe("startKickVoteAction", () => {
 
     const result = await startKickVoteAction(
       null,
-      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "Hacker" }),
     );
 
     expect(result).toEqual({ ok: false, error: expect.stringContaining("playing on this Server") });
@@ -191,7 +191,7 @@ describe("startKickVoteAction", () => {
 
     const result = await startKickVoteAction(
       null,
-      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "Hacker" }),
     );
 
     expect(result).toEqual({ ok: false, error: expect.stringContaining("Link your Steam account") });
@@ -204,7 +204,7 @@ describe("startKickVoteAction", () => {
 
     const result = await startKickVoteAction(
       null,
-      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "Hacker" }),
     );
 
     expect(result).toEqual({ ok: true });
@@ -215,7 +215,7 @@ describe("startKickVoteAction", () => {
   it("keeps the cooldown when the same Verified Player signs in from a new browser", async () => {
     const server = await seedOnlineServer();
     await signInAs(INITIATOR);
-    await startKickVoteAction(null, form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }));
+    await startKickVoteAction(null, form({ serverId: String(server.id), targetSteamId: "1", reason: "Hacker" }));
 
     // A second Server so the active-vote check doesn't reject this call for
     // an unrelated reason - only the cooldown check matters here.
@@ -223,7 +223,7 @@ describe("startKickVoteAction", () => {
     await signInAs(INITIATOR);
     const result = await startKickVoteAction(
       null,
-      form({ serverId: String(secondServer.id), targetSteamId: "1", reason: "aimbot" }),
+      form({ serverId: String(secondServer.id), targetSteamId: "1", reason: "Teamkilling" }),
     );
 
     expect(result).toEqual({ ok: false, error: expect.stringContaining("recently") });
@@ -232,7 +232,7 @@ describe("startKickVoteAction", () => {
   it("rejects an unparsable Server id without touching the database", async () => {
     const result = await startKickVoteAction(
       null,
-      form({ serverId: "not-a-number", targetSteamId: "1", reason: "wallhacks" }),
+      form({ serverId: "not-a-number", targetSteamId: "1", reason: "Hacker" }),
     );
 
     expect(result).toEqual({ ok: false, error: expect.any(String) });
@@ -245,7 +245,7 @@ describe("castBallotAction", () => {
     await signInAs(INITIATOR);
     const started = await startKickVoteAction(
       null,
-      form({ serverId: String(server.id), targetSteamId: "1", reason: "wallhacks" }),
+      form({ serverId: String(server.id), targetSteamId: "1", reason: "Hacker" }),
     );
     if (!started?.ok) throw new Error("failed to start KickVote in test setup");
     cookieStore = new Map(); // a different, anonymous visitor casting the Ballot

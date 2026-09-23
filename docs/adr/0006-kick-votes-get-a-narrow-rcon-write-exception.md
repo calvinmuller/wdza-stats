@@ -11,3 +11,5 @@
 - `apps/worker/src/rcon-client.ts` gains its first two write calls (`kickPlayer`, `broadcast`), which is a change to that module's stated invariant ("no write endpoint is exposed") — its comment needs updating alongside the implementation.
 - The RCON credential remains full-access; nothing about this decision narrows what it *could* call, only what this codebase *chooses* to call. If a future feature wants a third write endpoint, ADR 0003's own advice still applies: ask explicitly, don't assume this ADR already opened the door.
 - A KickVote's crowd threshold and staff-cancel are the only safeguards against a bad kick — there is still no per-voter authentication, so this trades "a moderator has to be watching" for "enough anonymous browser sessions have to agree," which is a materially different trust model worth remembering if kick-vote abuse ever shows up in practice.
+
+> **Amended by [ADR 0007](./0007-players-sign-in-with-steam-to-start-kick-votes.md):** starting a KickVote now requires a Verified Player signed in with Steam. KickVoteBallots stay anonymous, per browser session.

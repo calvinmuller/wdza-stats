@@ -7,6 +7,7 @@ import {
   latestSnapshots,
   notifyKickVoteUpdated,
   servers,
+  steamProfiles,
   type Database,
   type KickVoteStatus,
 } from "@wdza-stats/db";
@@ -271,6 +272,10 @@ export interface ActiveKickVoteSummary {
   ballotCount: number;
   threshold: number;
   endsAt: Date;
+  /** Who started it - null for KickVotes started anonymously, before Steam sign-in. Staff-only (docs/adr/0007). */
+  initiatorSteamId: string | null;
+  /** Their cached Steam persona name, if any. */
+  initiatorName: string | null;
 }
 
 /** Every active KickVote across all Servers, oldest first, for the admin area. */
@@ -285,12 +290,15 @@ export async function listActiveKickVotes(db: Database): Promise<ActiveKickVoteS
       ballotCount: count(kickVoteBallots.sessionId),
       threshold: kickVotes.threshold,
       endsAt: kickVotes.endsAt,
+      initiatorSteamId: kickVotes.initiatorSteamId,
+      initiatorName: steamProfiles.personaName,
     })
     .from(kickVotes)
     .innerJoin(servers, eq(servers.id, kickVotes.serverId))
     .leftJoin(kickVoteBallots, eq(kickVoteBallots.kickVoteId, kickVotes.id))
+    .leftJoin(steamProfiles, eq(steamProfiles.steamId, kickVotes.initiatorSteamId))
     .where(eq(kickVotes.status, "active"))
-    .groupBy(kickVotes.id, servers.name)
+    .groupBy(kickVotes.id, servers.name, steamProfiles.personaName)
     .orderBy(asc(kickVotes.startedAt));
 }
 

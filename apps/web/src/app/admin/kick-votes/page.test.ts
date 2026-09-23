@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { staffMembers, type StaffRole } from "@wdza-stats/db";
+import { kickVotes, servers, staffMembers, steamProfiles, type StaffRole } from "@wdza-stats/db";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createStaffMember } from "@/lib/staff";
@@ -19,10 +19,18 @@ const PASSWORD = "correct horse battery";
 
 beforeEach(async () => {
   requestHeaders = new Headers();
+  await db.delete(kickVotes);
+  await db.delete(servers);
+  await db.delete(steamProfiles);
   await db.delete(staffMembers);
 });
 
 afterAll(async () => {
+  // kick_votes references servers: leaving rows behind would stop later files
+  // from clearing servers.
+  await db.delete(kickVotes);
+  await db.delete(servers);
+  await db.delete(steamProfiles);
   await db.delete(staffMembers);
   await db.$client.end();
 });
@@ -75,5 +83,34 @@ describe("KickVotesPage", () => {
     expect(html).toContain('name="thresholdBallots"');
     expect(html).not.toContain("disabled");
     expect(html).toContain("Save");
+  });
+
+  it("shows who started each active kick vote, and marks ones started before Steam sign-in", async () => {
+    await signInAs("moderator");
+    const vote = async (label: string, initiator: { initiatorSteamId?: string; initiatorSessionId?: string }) => {
+      const [server] = await db
+        .insert(servers)
+        .values({ name: label, baseUrl: `http://rcon-${crypto.randomUUID()}.test:9006` })
+        .returning();
+      await db.insert(kickVotes).values({
+        serverId: server.id,
+        targetSteamId: "1",
+        targetName: "Cheatermc",
+        reason: "wallhacks",
+        threshold: 25,
+        durationSeconds: 300,
+        endsAt: new Date(Date.now() + 300_000),
+        ...initiator,
+      });
+    };
+    await db.insert(steamProfiles).values({ steamId: "76561198000000100", personaName: "Alice", achievements: [], status: "ok", fetchedAt: new Date() });
+    await vote("Server A", { initiatorSteamId: "76561198000000100" });
+    await vote("Server B", { initiatorSessionId: "old-anonymous-session" });
+
+    const html = await renderPage();
+
+    expect(html).toContain('href="/players/76561198000000100"');
+    expect(html).toContain(">Alice<");
+    expect(html).toContain("anonymous (before Steam sign-in)");
   });
 });

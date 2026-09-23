@@ -47,6 +47,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                   <span className="block text-xs font-normal text-zinc-500">{vote.targetSteamId}</span>
                 </Link>
                 <span className="text-sm text-zinc-400">{vote.serverName}</span>
+                <span className="text-xs text-zinc-500">
+                  Started by{" "}
+                  {vote.initiatorSteamId ? (
+                    <Link href={`/players/${vote.initiatorSteamId}`} className="text-zinc-300 hover:text-zinc-100">
+                      {vote.initiatorName ?? vote.initiatorSteamId}
+                    </Link>
+                  ) : (
+                    "anonymous (before Steam sign-in)"
+                  )}
+                </span>
                 <span className="flex-1 text-sm text-zinc-400">{vote.reason}</span>
                 <span className="text-xs text-zinc-500">
                   {vote.ballotCount} / {vote.threshold} Ballots · {formatRemaining(vote.endsAt)}

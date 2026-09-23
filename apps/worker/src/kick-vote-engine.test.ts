@@ -118,7 +118,7 @@ describe("buildKickVoteBroadcast", () => {
     const message = buildKickVoteBroadcast({ id: 7, targetName: "Cheatermc", reason: "wallhacks" }, 1);
 
     expect(message).toBe(
-      "Kick vote started against Cheatermc - reason: wallhacks - vote now: stats.wardogsza.co.za/kick",
+      "Kick vote started against Cheatermc - reason: wallhacks - vote now: stats.wardogs.co.za/kick",
     );
   });
 
@@ -126,7 +126,7 @@ describe("buildKickVoteBroadcast", () => {
     const message = buildKickVoteBroadcast({ id: 7, targetName: "Cheatermc", reason: "wallhacks" }, 2);
 
     expect(message).toBe(
-      "Kick vote started against Cheatermc - reason: wallhacks - vote now: stats.wardogsza.co.za/kick/7",
+      "Kick vote started against Cheatermc - reason: wallhacks - vote now: stats.wardogs.co.za/kick/7",
     );
   });
 });
@@ -140,7 +140,7 @@ describe("announceKickVote", () => {
     await announceKickVote(db, client, vote.id);
 
     expect(client.broadcast).toHaveBeenCalledWith(
-      "Kick vote started against Cheatermc - reason: wallhacks - vote now: stats.wardogsza.co.za/kick",
+      "Kick vote started against Cheatermc - reason: wallhacks - vote now: stats.wardogs.co.za/kick",
     );
   });
 

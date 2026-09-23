@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Steam Auth: Verified Players start KickVotes
 

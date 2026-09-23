@@ -7,12 +7,14 @@ import {
   unbanPlayerFromForm,
   updateAchievementDefinitionFromForm,
   updateChallengeDefinitionFromForm,
+  updateKickVoteSettingsFromForm,
   updateLevelThresholdFromForm,
   updateNotificationRuleFromForm,
   updateNotificationSettingsFromForm,
   updateXpRewardFromForm,
 } from "@/lib/admin-config";
 import { generateFeedToken } from "@/lib/feed-token";
+import { cancelKickVote } from "@/lib/kick-vote";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { db } from "@/lib/db";
 import { requireStaffAction } from "@/lib/require-staff";
@@ -23,9 +25,9 @@ import { getServerByBaseUrl } from "@/lib/server-lookup";
 // whether the caller ever rendered the gated page (see the Next.js Server
 // Actions security guide) - render-time gating on page.tsx alone is not
 // enough, so every action here re-checks the signed-in Staff Member's Role
-// itself before touching the database. Ban and unban are moderator-level (and
-// so open to admins too); everything else here changes how the game behaves and
-// is admin-only. Each one records who did it (lib/staff-audit.ts) once it has
+// itself before touching the database. Ban, unban and cancelling a KickVote
+// are moderator-level (and so open to admins too); everything else here
+// changes how the game behaves and is admin-only. Each one records who did it (lib/staff-audit.ts) once it has
 // worked, and never puts a password or token in the record.
 
 export async function updateXpRewardAction(reason: XpReason, formData: FormData): Promise<void> {
@@ -68,6 +70,25 @@ export async function updateNotificationSettingsAction(formData: FormData): Prom
   await updateNotificationSettingsFromForm(db, formData);
   await recordStaffAction(db, staff, "update_notification_settings", { detail: formFields(formData) });
   redirect("/admin/notifications");
+}
+
+export async function updateKickVoteSettingsAction(formData: FormData): Promise<void> {
+  const staff = await requireStaffAction("admin");
+  const change = await updateKickVoteSettingsFromForm(db, formData);
+  await recordStaffAction(db, staff, "update_kick_vote_settings", { detail: change });
+  redirect("/admin/kick-votes");
+}
+
+export async function cancelKickVoteAction(kickVoteId: number): Promise<void> {
+  const staff = await requireStaffAction("moderator");
+  const result = await cancelKickVote(db, { kickVoteId, staffMemberId: staff.id });
+  if (!result.ok) {
+    // Usually the vote resolved between the page loading and the click. A
+    // thrown message would be hidden in production, so say so on the page.
+    redirect(`/admin/kick-votes?alreadyEnded=${kickVoteId}`);
+  }
+  await recordStaffAction(db, staff, "cancel_kick_vote", { target: String(kickVoteId) });
+  redirect("/admin/kick-votes");
 }
 
 export async function banPlayerAction(formData: FormData): Promise<void> {

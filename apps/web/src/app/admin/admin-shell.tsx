@@ -10,6 +10,8 @@ export const textInputClass =
   "w-full rounded-lg border border-white/10 bg-zinc-900/60 px-2 py-1.5 text-sm text-zinc-100 focus:border-brand-gold-500 focus:outline-none";
 export const buttonClass =
   "shrink-0 rounded-lg bg-brand-green-700 px-3 py-1.5 text-sm font-medium text-zinc-50 transition-colors hover:bg-brand-green-600";
+export const dangerButtonClass =
+  "shrink-0 rounded-lg bg-red-900/60 px-3 py-1.5 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-800/60";
 export const rowClass = "flex flex-wrap items-end gap-3 rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3";
 export const labelClass = "flex flex-col gap-1 text-xs text-zinc-500";
 

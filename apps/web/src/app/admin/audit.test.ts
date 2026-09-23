@@ -1,6 +1,15 @@
 import { desc, eq } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { bannedPlayers, staffAuditLog, staffMembers, xpRewards, type StaffRole } from "@wdza-stats/db";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  bannedPlayers,
+  kickVoteSettings,
+  kickVotes,
+  servers,
+  staffAuditLog,
+  staffMembers,
+  xpRewards,
+  type StaffRole,
+} from "@wdza-stats/db";
 import { ADMIN_PATH_SECRET } from "@/lib/admin-secret";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -100,6 +109,90 @@ describe("config edits", () => {
       action: "update_xp_reward",
       target: "kill",
       detail: { amount: String(reward.amount) },
+    });
+  });
+});
+
+describe("kick votes", () => {
+  let serverId: number;
+
+  beforeEach(async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Audit", baseUrl: `http://rcon-audit-${crypto.randomUUID()}.test:9006` })
+      .returning();
+    serverId = server.id;
+  });
+
+  afterEach(async () => {
+    await db.delete(kickVotes).where(eq(kickVotes.serverId, serverId));
+    await db.delete(servers).where(eq(servers.id, serverId));
+    await db
+      .update(kickVoteSettings)
+      .set({ thresholdBallots: 25, durationSeconds: 300, initiatorCooldownSeconds: 600 })
+      .where(eq(kickVoteSettings.id, 1));
+  });
+
+  async function activeVote() {
+    const [vote] = await db
+      .insert(kickVotes)
+      .values({
+        serverId,
+        targetSteamId: STEAM_ID,
+        targetName: "Cheatermc",
+        reason: "wallhacks",
+        initiatorSessionId: "initiator",
+        threshold: 25,
+        durationSeconds: 300,
+        endsAt: new Date(Date.now() + 300_000),
+      })
+      .returning();
+    return vote;
+  }
+
+  it("lets a moderator cancel an active KickVote, recording who did it", async () => {
+    const mod = await signInAs("moderator");
+    const vote = await activeVote();
+
+    await succeeds(() => actions.cancelKickVoteAction(vote.id));
+
+    const [row] = await db.select().from(kickVotes).where(eq(kickVotes.id, vote.id));
+    expect(row).toMatchObject({ status: "staffCancelled", cancelledByStaffMemberId: mod.id });
+    expect((await entries())[0]).toMatchObject({
+      staffMemberId: mod.id,
+      action: "cancel_kick_vote",
+      target: String(vote.id),
+    });
+  });
+
+  it("refuses to cancel a KickVote that has already resolved, and records nothing", async () => {
+    await signInAs("moderator");
+    const vote = await activeVote();
+    await db.update(kickVotes).set({ status: "expired", resolvedAt: new Date() }).where(eq(kickVotes.id, vote.id));
+
+    await expect(actions.cancelKickVoteAction(vote.id)).rejects.toThrow(/NEXT_REDIRECT/);
+
+    const [row] = await db.select().from(kickVotes).where(eq(kickVotes.id, vote.id));
+    expect(row.status).toBe("expired");
+    expect(await entries()).toHaveLength(0);
+  });
+
+  it("records the old and new KickVote settings an admin saved", async () => {
+    const admin = await signInAs("admin");
+
+    await succeeds(() =>
+      actions.updateKickVoteSettingsAction(
+        form({ thresholdBallots: "10", durationSeconds: "120", initiatorCooldownSeconds: "60" }),
+      ),
+    );
+
+    expect((await entries())[0]).toMatchObject({
+      staffMemberId: admin.id,
+      action: "update_kick_vote_settings",
+      detail: {
+        old: { thresholdBallots: 25, durationSeconds: 300, initiatorCooldownSeconds: 600 },
+        new: { thresholdBallots: 10, durationSeconds: 120, initiatorCooldownSeconds: 60 },
+      },
     });
   });
 });

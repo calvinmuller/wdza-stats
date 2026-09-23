@@ -3,14 +3,15 @@ import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format-date";
 import { requireStaffPage } from "@/lib/require-staff";
 import { banPlayerAction, unbanPlayerAction } from "./actions";
-import { AdminShell, buttonClass, labelClass, rowClass, textInputClass } from "./admin-shell";
+import { AdminShell, buttonClass, dangerButtonClass, labelClass, rowClass, textInputClass } from "./admin-shell";
 
 // A DB read via drizzle isn't a Request-time API, so Next won't otherwise
 // know this route needs fresh data on every request - force it dynamic so
 // edits are visible immediately on the next load, matching every other page.
 export const dynamic = "force-dynamic";
 
-// Moderators can reach only this section; every other admin page is admin-only.
+// Moderators can reach only this section and Kick Votes; every other admin
+// page is admin-only.
 // Render-time gating alone isn't a security boundary (see actions.ts's own
 // re-check), but it keeps this area unreachable, and unadvertised, for anyone
 // who isn't signed-in staff: they get the same 404 as any unknown URL.
@@ -40,10 +41,7 @@ export default async function AdminPage() {
                     Banned {formatDateTime(banned.bannedAt.toISOString())}
                   </span>
                   <form action={unbanPlayerAction.bind(null, banned.steamId)}>
-                    <button
-                      type="submit"
-                      className="shrink-0 rounded-lg bg-red-900/60 px-3 py-1.5 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-800/60"
-                    >
+                    <button type="submit" className={dangerButtonClass}>
                       Unban
                     </button>
                   </form>

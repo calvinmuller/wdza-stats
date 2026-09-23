@@ -5,17 +5,21 @@ import {
   kickVotes,
   latestSnapshots,
   servers,
+  staffMembers,
   type Database,
 } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { snapshotFixture } from "./live-snapshot-fixture";
+import { createStaffMember } from "./staff";
 import {
+  cancelKickVote,
   castBallot,
   getActiveKickVote,
   getBallotCount,
   getKickVote,
   hasCastBallot,
+  listActiveKickVotes,
   startKickVote,
 } from "./kick-vote";
 
@@ -26,6 +30,7 @@ afterEach(async () => {
   await db.delete(kickVotes);
   await db.delete(latestSnapshots);
   await db.delete(servers);
+  await db.delete(staffMembers);
   // Restore the migration-seeded defaults other tests rely on.
   await db
     .update(kickVoteSettings)
@@ -155,13 +160,13 @@ describe("startKickVote", () => {
   });
 });
 
-async function startedVote() {
+async function startedVote(initiatorSessionId = "initiator") {
   const server = await seedOnlineServer();
   const started = await startKickVote(db, {
     serverId: server.id,
     targetSteamId: "1",
     reason: "wallhacks",
-    initiatorSessionId: "initiator",
+    initiatorSessionId,
   });
   if (!started.ok) throw new Error("failed to start KickVote in test setup");
   return started.kickVoteId;
@@ -228,5 +233,59 @@ describe("getKickVote", () => {
     const vote = await getKickVote(db, kickVoteId);
 
     expect(vote).toMatchObject({ id: kickVoteId, targetName: "Cheatermc", reason: "wallhacks", status: "active" });
+  });
+});
+
+describe("listActiveKickVotes", () => {
+  it("lists only active KickVotes, with their Server, Ballot count and threshold", async () => {
+    const kickVoteId = await startedVote();
+    await castBallot(db, { kickVoteId, sessionId: "voter-1" });
+    const ended = await startedVote("another-initiator");
+    await db.update(kickVotes).set({ status: "expired", resolvedAt: new Date() }).where(eq(kickVotes.id, ended));
+
+    const rows = await listActiveKickVotes(db);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: kickVoteId,
+        serverName: "WDZA Test",
+        targetName: "Cheatermc",
+        targetSteamId: "1",
+        reason: "wallhacks",
+        ballotCount: 1,
+        threshold: 25,
+        endsAt: expect.any(Date),
+      }),
+    ]);
+  });
+});
+
+describe("cancelKickVote", () => {
+  async function moderator() {
+    return createStaffMember({ email: "mod@example.test", name: "Mod", password: "correct horse battery", role: "moderator" });
+  }
+
+  it("ends an active KickVote as staffCancelled, recording who cancelled it", async () => {
+    const kickVoteId = await startedVote();
+    const mod = await moderator();
+
+    const result = await cancelKickVote(db, { kickVoteId, staffMemberId: mod.id });
+
+    expect(result).toEqual({ ok: true, kickVoteId });
+    const [row] = await db.select().from(kickVotes).where(eq(kickVotes.id, kickVoteId));
+    expect(row).toMatchObject({ status: "staffCancelled", cancelledByStaffMemberId: mod.id, resolvedAt: expect.any(Date) });
+  });
+
+  it("refuses to overwrite a KickVote that has already resolved", async () => {
+    const kickVoteId = await startedVote();
+    const resolvedAt = new Date();
+    await db.update(kickVotes).set({ status: "succeeded", resolvedAt }).where(eq(kickVotes.id, kickVoteId));
+    const mod = await moderator();
+
+    const result = await cancelKickVote(db, { kickVoteId, staffMemberId: mod.id });
+
+    expect(result).toEqual({ ok: false, error: expect.any(String) });
+    const [row] = await db.select().from(kickVotes).where(eq(kickVotes.id, kickVoteId));
+    expect(row).toMatchObject({ status: "succeeded", cancelledByStaffMemberId: null, resolvedAt });
   });
 });

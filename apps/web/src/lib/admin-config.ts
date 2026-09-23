@@ -2,6 +2,7 @@ import {
   achievementDefinitions,
   bannedPlayers,
   challengeDefinitions,
+  kickVoteSettings,
   levelThresholds,
   notificationRules,
   notificationSettings,
@@ -19,8 +20,8 @@ import { desc, eq } from "drizzle-orm";
 // The Admin area's data access layer (ticket 15) - every read/write the
 // admin UI (app/admin) performs against the XP_REWARDS,
 // LEVEL_THRESHOLDS, CHALLENGE_DEFINITIONS, ACHIEVEMENT_DEFINITIONS,
-// NOTIFICATION_RULES, and NOTIFICATION_SETTINGS config tables lives here,
-// kept separate from the Server Actions in app/admin/actions.ts so
+// NOTIFICATION_RULES, NOTIFICATION_SETTINGS, and KICK_VOTE_SETTINGS config
+// tables lives here, kept separate from the Server Actions in app/admin/actions.ts so
 // it can be unit tested directly against a real database without going
 // through Next's form/action machinery. Every relevant engine
 // (apps/worker/src/*-engine.ts, wired up in apps/worker/src/match-tracker.ts)
@@ -32,6 +33,14 @@ function parseWholeNumber(formData: FormData, field: string): number {
   const value = typeof raw === "string" ? Number(raw) : NaN;
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`${field} must be a non-negative whole number`);
+  }
+  return value;
+}
+
+function parseWholeNumberAtLeast(formData: FormData, field: string, minimum: number): number {
+  const value = parseWholeNumber(formData, field);
+  if (value < minimum) {
+    throw new Error(`${field} must be at least ${minimum}`);
   }
   return value;
 }
@@ -215,6 +224,45 @@ export async function updateNotificationSettingsFromForm(db: Database, formData:
   if (!row) {
     throw new Error("Notification settings row is missing");
   }
+}
+
+// KickVote settings - the singleton (id 1) threshold/duration/cooldown. See
+// schema.ts's kickVoteSettings doc comment: each KickVote snapshots these at
+// start, so an edit here only affects KickVotes started after it.
+export interface KickVoteSettingsRow {
+  thresholdBallots: number;
+  durationSeconds: number;
+  initiatorCooldownSeconds: number;
+}
+
+export async function getKickVoteSettings(db: Database): Promise<KickVoteSettingsRow> {
+  const [row] = await db
+    .select({
+      thresholdBallots: kickVoteSettings.thresholdBallots,
+      durationSeconds: kickVoteSettings.durationSeconds,
+      initiatorCooldownSeconds: kickVoteSettings.initiatorCooldownSeconds,
+    })
+    .from(kickVoteSettings)
+    .where(eq(kickVoteSettings.id, 1));
+  if (!row) {
+    throw new Error("KickVote settings row is missing");
+  }
+  return row;
+}
+
+/** Saves the submitted settings, returning the values before and after for the audit log. */
+export async function updateKickVoteSettingsFromForm(
+  db: Database,
+  formData: FormData,
+): Promise<{ old: KickVoteSettingsRow; new: KickVoteSettingsRow }> {
+  const updated: KickVoteSettingsRow = {
+    thresholdBallots: parseWholeNumberAtLeast(formData, "thresholdBallots", 1),
+    durationSeconds: parseWholeNumber(formData, "durationSeconds"),
+    initiatorCooldownSeconds: parseWholeNumber(formData, "initiatorCooldownSeconds"),
+  };
+  const old = await getKickVoteSettings(db);
+  await db.update(kickVoteSettings).set(updated).where(eq(kickVoteSettings.id, 1));
+  return { old, new: updated };
 }
 
 // Banned players - see schema.ts's bannedPlayers doc comment. Unlike every

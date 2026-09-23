@@ -1,19 +1,21 @@
-import { and, count, eq, gt, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, sql } from "drizzle-orm";
 import {
   KICK_VOTE_STARTED_CHANNEL,
   kickVoteBallots,
-  kickVoteSettings,
   kickVotes,
   latestSnapshots,
   notifyKickVoteUpdated,
+  servers,
   type Database,
   type KickVoteStatus,
 } from "@wdza-stats/db";
+import { getKickVoteSettings } from "./admin-config";
 
 // KickVote's data access layer (ticket 01) - see CONTEXT.md's KickVote entry,
 // spec.md, and docs/adr/0006. Kept separate from app/kick-vote-actions.ts's
 // Server Action so it can be exercised directly against a real database, the
-// same split admin-config.ts uses for the admin area.
+// same split admin-config.ts uses for the admin area. Also backs the admin
+// area's list of active KickVotes and staff cancelling one (ticket 04).
 
 export type KickVoteResult = { ok: true; kickVoteId: number } | { ok: false; error: string };
 
@@ -23,14 +25,6 @@ export interface ActiveKickVoteView {
   reason: string;
   status: KickVoteStatus;
   endsAt: Date;
-}
-
-async function getSettings(db: Database) {
-  const [row] = await db.select().from(kickVoteSettings).where(eq(kickVoteSettings.id, 1));
-  if (!row) {
-    throw new Error("KickVote settings row is missing");
-  }
-  return row;
 }
 
 /** The Server's active KickVote, or null if it doesn't have one right now. */
@@ -98,7 +92,7 @@ export async function startKickVote(
     return { ok: false, error: "That player is not currently online on this Server." };
   }
 
-  const settings = await getSettings(db);
+  const settings = await getKickVoteSettings(db);
 
   const cooldownCutoff = new Date(Date.now() - settings.initiatorCooldownSeconds * 1000);
   const [recentStart] = await db
@@ -216,5 +210,62 @@ export async function castBallot(
     await notifyKickVoteUpdated(db, input.kickVoteId);
   }
 
+  return { ok: true, kickVoteId: input.kickVoteId };
+}
+
+// Ticket 04: staff cancelling an active KickVote from the admin area.
+
+export interface ActiveKickVoteSummary {
+  id: number;
+  serverName: string;
+  targetSteamId: string;
+  targetName: string;
+  reason: string;
+  ballotCount: number;
+  threshold: number;
+  endsAt: Date;
+}
+
+/** Every active KickVote across all Servers, oldest first, for the admin area. */
+export async function listActiveKickVotes(db: Database): Promise<ActiveKickVoteSummary[]> {
+  return db
+    .select({
+      id: kickVotes.id,
+      serverName: servers.name,
+      targetSteamId: kickVotes.targetSteamId,
+      targetName: kickVotes.targetName,
+      reason: kickVotes.reason,
+      ballotCount: count(kickVoteBallots.sessionId),
+      threshold: kickVotes.threshold,
+      endsAt: kickVotes.endsAt,
+    })
+    .from(kickVotes)
+    .innerJoin(servers, eq(servers.id, kickVotes.serverId))
+    .leftJoin(kickVoteBallots, eq(kickVoteBallots.kickVoteId, kickVotes.id))
+    .where(eq(kickVotes.status, "active"))
+    .groupBy(kickVotes.id, servers.name)
+    .orderBy(asc(kickVotes.startedAt));
+}
+
+/**
+ * Ends an active KickVote as staffCancelled. The same atomic
+ * `WHERE status = 'active'` claim the Worker's resolver uses, so a vote that
+ * has already resolved (or resolves at the same moment) keeps its own terminal
+ * status and this reports an error instead of overwriting it.
+ */
+export async function cancelKickVote(
+  db: Database,
+  input: { kickVoteId: number; staffMemberId: string },
+): Promise<KickVoteResult> {
+  const rows = await db
+    .update(kickVotes)
+    .set({ status: "staffCancelled", resolvedAt: new Date(), cancelledByStaffMemberId: input.staffMemberId })
+    .where(and(eq(kickVotes.id, input.kickVoteId), eq(kickVotes.status, "active")))
+    .returning({ id: kickVotes.id });
+  if (rows.length === 0) {
+    return { ok: false, error: "This KickVote has already ended." };
+  }
+  // Pushes the cancellation to every /kick/{id} page open on this vote.
+  await notifyKickVoteUpdated(db, input.kickVoteId);
   return { ok: true, kickVoteId: input.kickVoteId };
 }

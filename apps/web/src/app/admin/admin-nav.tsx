@@ -7,6 +7,7 @@ type NavItem = { href: string; label: string; adminOnly: boolean };
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/admin", label: "Players", adminOnly: false },
+  { href: "/admin/kick-votes", label: "Kick Votes", adminOnly: false },
   { href: "/admin/xp", label: "XP & Levels", adminOnly: true },
   { href: "/admin/challenges", label: "Challenges", adminOnly: true },
   { href: "/admin/achievements", label: "Achievements", adminOnly: true },

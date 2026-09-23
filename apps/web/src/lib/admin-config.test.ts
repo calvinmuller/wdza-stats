@@ -3,6 +3,7 @@ import {
   bannedPlayers,
   challengeDefinitions,
   createDb,
+  kickVoteSettings,
   levelThresholds,
   notificationRules,
   notificationSettings,
@@ -13,6 +14,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
   banPlayerFromForm,
+  getKickVoteSettings,
   getNotificationSettings,
   listAchievementDefinitions,
   listBannedPlayers,
@@ -23,6 +25,7 @@ import {
   unbanPlayerFromForm,
   updateAchievementDefinitionFromForm,
   updateChallengeDefinitionFromForm,
+  updateKickVoteSettingsFromForm,
   updateLevelThresholdFromForm,
   updateNotificationRuleFromForm,
   updateNotificationSettingsFromForm,
@@ -197,6 +200,45 @@ describe("Notification settings", () => {
         .set({ maxLowNormalPerMinute: original.maxLowNormalPerMinute })
         .where(eq(notificationSettings.id, 1));
     }
+  });
+});
+
+describe("KickVote settings", () => {
+  afterEach(async () => {
+    // Restore the migration-seeded defaults other tests rely on.
+    await db
+      .update(kickVoteSettings)
+      .set({ thresholdBallots: 25, durationSeconds: 300, initiatorCooldownSeconds: 600 })
+      .where(eq(kickVoteSettings.id, 1));
+  });
+
+  it("updates the threshold, duration and cooldown, returning the values before and after", async () => {
+    const change = await updateKickVoteSettingsFromForm(
+      db,
+      formData({ thresholdBallots: "10", durationSeconds: "120", initiatorCooldownSeconds: "0" }),
+    );
+
+    const expected = { thresholdBallots: 10, durationSeconds: 120, initiatorCooldownSeconds: 0 };
+    expect(change).toEqual({
+      old: { thresholdBallots: 25, durationSeconds: 300, initiatorCooldownSeconds: 600 },
+      new: expected,
+    });
+    expect(await getKickVoteSettings(db)).toEqual(expected);
+  });
+
+  it.each([
+    ["a threshold below 1", { thresholdBallots: "0", durationSeconds: "300", initiatorCooldownSeconds: "600" }],
+    ["a negative duration", { thresholdBallots: "25", durationSeconds: "-1", initiatorCooldownSeconds: "600" }],
+    ["a negative cooldown", { thresholdBallots: "25", durationSeconds: "300", initiatorCooldownSeconds: "-5" }],
+    ["a non-number", { thresholdBallots: "lots", durationSeconds: "300", initiatorCooldownSeconds: "600" }],
+  ])("rejects %s without writing anything", async (_label, fields) => {
+    await expect(updateKickVoteSettingsFromForm(db, formData(fields))).rejects.toThrow();
+
+    expect(await getKickVoteSettings(db)).toEqual({
+      thresholdBallots: 25,
+      durationSeconds: 300,
+      initiatorCooldownSeconds: 600,
+    });
   });
 });
 

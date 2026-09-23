@@ -13,7 +13,7 @@ vi.mock("next/navigation", async (importOriginal) => ({
   useRouter: () => ({}),
 }));
 
-const { default: AdminPage } = await import("./page");
+const { default: KickVotesPage } = await import("./page");
 
 const PASSWORD = "correct horse battery";
 
@@ -39,52 +39,41 @@ async function signInAs(role: StaffRole) {
   });
 }
 
-async function renderPage() {
-  return renderToStaticMarkup(await AdminPage());
+async function renderPage(searchParams: { alreadyEnded?: string } = {}) {
+  return renderToStaticMarkup(await KickVotesPage({ searchParams: Promise.resolve(searchParams) }));
 }
 
-describe("AdminPage", () => {
+describe("KickVotesPage", () => {
   it("redirects an anonymous visitor to sign in", async () => {
     await expect(renderPage()).rejects.toThrow(/NEXT_REDIRECT/);
   });
 
-  it("shows a moderator only the Players and Kick Votes sections in its nav", async () => {
+  it("shows a moderator the settings without letting them save", async () => {
     await signInAs("moderator");
 
     const html = await renderPage();
 
-    expect(html).toContain("Banned players");
-    expect(html).toContain("moderator@example.test");
-    expect(html).toContain("Kick Votes");
-    expect(html).not.toContain("Achievements");
-    expect(html).not.toContain("Server Token");
-    expect(html).not.toContain("Staff");
+    expect(html).toContain("Active kick votes");
+    expect(html).toContain('name="thresholdBallots"');
+    expect(html).toContain("disabled");
+    expect(html).not.toContain("Save");
   });
 
-  it("shows an admin the full sub nav and the Players section", async () => {
+  it("says when a cancel arrived after the kick vote had already ended", async () => {
+    await signInAs("moderator");
+
+    const html = await renderPage({ alreadyEnded: "42" });
+
+    expect(html).toContain("Kick vote #42 had already ended");
+  });
+
+  it("lets an admin edit the settings", async () => {
     await signInAs("admin");
 
     const html = await renderPage();
 
-    for (const label of ["Players", "Kick Votes", "XP &amp; Levels", "Challenges", "Achievements", "Notifications", "Server Token", "Staff"]) {
-      expect(html).toContain(label);
-    }
-    expect(html).toContain("Banned players");
-    expect(html).toContain("admin@example.test");
-    expect(html).toContain("Sign out");
-  });
-
-  it("never renders a password, Authorization header, or the Steam API key", async () => {
-    // apps/web/src/no-rcon-access.test.ts already enforces that no apps/web
-    // source file even references the RCON token env var by name, so this
-    // page structurally can't leak it - this covers the other credentials
-    // apps/web does have access to.
-    await signInAs("admin");
-
-    const html = await renderPage();
-
-    expect(html.toLowerCase()).not.toContain("authorization");
-    expect(html.toLowerCase()).not.toContain("steam_api_key");
-    expect(html).not.toContain(process.env.STEAM_API_KEY!);
+    expect(html).toContain('name="thresholdBallots"');
+    expect(html).not.toContain("disabled");
+    expect(html).toContain("Save");
   });
 });

@@ -21,6 +21,7 @@ import {
   getKickVote,
   hasCastBallot,
   listActiveKickVotes,
+  listPastKickVotes,
   startKickVote,
 } from "./kick-vote";
 
@@ -350,6 +351,29 @@ describe("listActiveKickVotes", () => {
         threshold: 25,
         endsAt: expect.any(Date),
       }),
+    ]);
+  });
+});
+
+describe("listPastKickVotes", () => {
+  it("lists only ended KickVotes, newest first, with who started them, the outcome and who cancelled", async () => {
+    // INITIATOR starts two KickVotes here.
+    await db.update(kickVoteSettings).set({ initiatorCooldownSeconds: 0 }).where(eq(kickVoteSettings.id, 1));
+    const active = await startedVote();
+    const expired = await startedVote(OTHER_INITIATOR);
+    await castBallot(db, { kickVoteId: expired, sessionId: "voter-1" });
+    await db.update(kickVotes).set({ status: "expired", resolvedAt: new Date(), startedAt: new Date(Date.now() - 60_000) }).where(eq(kickVotes.id, expired));
+    await db.update(kickVotes).set({ startedAt: new Date(Date.now() - 120_000) }).where(eq(kickVotes.id, active));
+    const mod = await createStaffMember({ email: "mod@example.test", name: "Mod", password: "correct horse battery", role: "moderator" });
+    await cancelKickVote(db, { kickVoteId: active, staffMemberId: mod.id });
+    const stillActive = await startedVote();
+
+    const rows = await listPastKickVotes(db);
+
+    expect(rows.map((row) => row.id)).not.toContain(stillActive);
+    expect(rows).toEqual([
+      expect.objectContaining({ id: expired, status: "expired", ballotCount: 1, initiatorSteamId: OTHER_INITIATOR, cancelledByName: null, resolvedAt: expect.any(Date) }),
+      expect.objectContaining({ id: active, status: "staffCancelled", ballotCount: 0, initiatorSteamId: INITIATOR, cancelledByName: "Mod" }),
     ]);
   });
 });

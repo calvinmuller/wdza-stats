@@ -113,4 +113,35 @@ describe("KickVotesPage", () => {
     expect(html).toContain(">Alice<");
     expect(html).toContain("anonymous (before Steam sign-in)");
   });
+
+  it("lists ended kick votes with who started them, their outcome, and who cancelled them", async () => {
+    await signInAs("moderator");
+    const [mod] = await db.select().from(staffMembers);
+    const [server] = await db.insert(servers).values({ name: "Server A", baseUrl: `http://rcon-${crypto.randomUUID()}.test:9006` }).returning();
+    const ended = (targetName: string, status: "succeeded" | "staffCancelled", cancelledByStaffMemberId?: string) => ({
+      serverId: server.id,
+      targetSteamId: "1",
+      targetName,
+      reason: "wallhacks",
+      initiatorSteamId: "76561198000000100",
+      threshold: 25,
+      durationSeconds: 300,
+      endsAt: new Date(),
+      status,
+      resolvedAt: new Date(),
+      cancelledByStaffMemberId,
+    });
+    await db.insert(steamProfiles).values({ steamId: "76561198000000100", personaName: "Alice", achievements: [], status: "ok", fetchedAt: new Date() });
+    await db.insert(kickVotes).values([ended("Kickedmc", "succeeded"), ended("Sparedmc", "staffCancelled", mod.id)]);
+
+    const html = await renderPage();
+
+    expect(html).toContain("Past kick votes");
+    expect(html).toContain("Kickedmc");
+    expect(html).toContain(">Kicked<");
+    expect(html).toContain("Sparedmc");
+    expect(html).toContain(">Cancelled<");
+    expect(html).toContain("by moderator");
+    expect(html).toContain(">Alice<");
+  });
 });

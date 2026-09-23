@@ -1,7 +1,8 @@
 import Link from "next/link";
+import type { KickVoteStatus } from "@wdza-stats/db";
 import { getKickVoteSettings } from "@/lib/admin-config";
 import { db } from "@/lib/db";
-import { listActiveKickVotes } from "@/lib/kick-vote";
+import { listActiveKickVotes, listPastKickVotes } from "@/lib/kick-vote";
 import { hasRole, requireStaffPage } from "@/lib/require-staff";
 import { cancelKickVoteAction, updateKickVoteSettingsAction } from "../actions";
 import { AdminShell, buttonClass, dangerButtonClass, inputClass, labelClass, rowClass } from "../admin-shell";
@@ -11,6 +12,32 @@ export const dynamic = "force-dynamic";
 function formatRemaining(endsAt: Date): string {
   const totalSeconds = Math.max(0, Math.floor((endsAt.getTime() - Date.now()) / 1000));
   return `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, "0")} left`;
+}
+
+const OUTCOME_LABELS: Record<Exclude<KickVoteStatus, "active">, { label: string; className: string }> = {
+  succeeded: { label: "Kicked", className: "text-brand-green-500" },
+  expired: { label: "Expired", className: "text-zinc-400" },
+  targetLeft: { label: "Target left", className: "text-zinc-400" },
+  staffCancelled: { label: "Cancelled", className: "text-brand-gold-500" },
+};
+
+function formatDateTime(date: Date): string {
+  return date.toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg" });
+}
+
+function Initiator({ steamId, name }: { steamId: string | null; name: string | null }) {
+  return (
+    <span className="text-xs text-zinc-500">
+      Started by{" "}
+      {steamId ? (
+        <Link href={`/players/${steamId}`} className="text-zinc-300 hover:text-zinc-100">
+          {name ?? steamId}
+        </Link>
+      ) : (
+        "anonymous (before Steam sign-in)"
+      )}
+    </span>
+  );
 }
 
 const SETTINGS_FIELDS = [
@@ -25,10 +52,14 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
   const { alreadyEnded } = await searchParams;
   const staff = await requireStaffPage("moderator");
   const canEditSettings = hasRole(staff, "admin");
-  const [activeKickVotes, settings] = await Promise.all([listActiveKickVotes(db), getKickVoteSettings(db)]);
+  const [activeKickVotes, pastKickVotes, settings] = await Promise.all([
+    listActiveKickVotes(db),
+    listPastKickVotes(db),
+    getKickVoteSettings(db),
+  ]);
 
   return (
-    <AdminShell staff={staff} title="Kick Votes" description="Cancel an active kick vote, and tune how kick votes run.">
+    <AdminShell staff={staff} title="Kick Votes" description="Cancel an active kick vote, review past ones, and tune how kick votes run.">
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-xl text-zinc-100">Active kick votes</h2>
         {alreadyEnded && (
@@ -47,16 +78,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                   <span className="block text-xs font-normal text-zinc-500">{vote.targetSteamId}</span>
                 </Link>
                 <span className="text-sm text-zinc-400">{vote.serverName}</span>
-                <span className="text-xs text-zinc-500">
-                  Started by{" "}
-                  {vote.initiatorSteamId ? (
-                    <Link href={`/players/${vote.initiatorSteamId}`} className="text-zinc-300 hover:text-zinc-100">
-                      {vote.initiatorName ?? vote.initiatorSteamId}
-                    </Link>
-                  ) : (
-                    "anonymous (before Steam sign-in)"
-                  )}
-                </span>
+                <Initiator steamId={vote.initiatorSteamId} name={vote.initiatorName} />
                 <span className="flex-1 text-sm text-zinc-400">{vote.reason}</span>
                 <span className="text-xs text-zinc-500">
                   {vote.ballotCount} / {vote.threshold} Ballots · {formatRemaining(vote.endsAt)}
@@ -68,6 +90,38 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                 </form>
               </div>
             ))
+          )}
+        </div>
+      </section>
+      <section className="flex flex-col gap-3">
+        <h2 className="font-display text-xl text-zinc-100">Past kick votes</h2>
+        <div className="flex flex-col gap-2">
+          {pastKickVotes.length === 0 ? (
+            <p className="text-sm text-zinc-500">No kick votes have ended yet.</p>
+          ) : (
+            pastKickVotes.map((vote) => {
+              const outcome = OUTCOME_LABELS[vote.status as Exclude<KickVoteStatus, "active">];
+              return (
+                <div key={vote.id} className={rowClass}>
+                  <Link href={`/kick/${vote.id}`} className="min-w-40 font-medium text-zinc-200 hover:text-zinc-50">
+                    {vote.targetName}
+                    <span className="block text-xs font-normal text-zinc-500">{vote.targetSteamId}</span>
+                  </Link>
+                  <span className="text-sm text-zinc-400">{vote.serverName}</span>
+                  <Initiator steamId={vote.initiatorSteamId} name={vote.initiatorName} />
+                  <span className="flex-1 text-sm text-zinc-400">{vote.reason}</span>
+                  <span className="text-xs text-zinc-500">
+                    {vote.ballotCount} / {vote.threshold} Ballots · {formatDateTime(vote.startedAt)}
+                  </span>
+                  <span className={`text-sm font-medium ${outcome.className}`}>
+                    {outcome.label}
+                    {vote.cancelledByName && (
+                      <span className="block text-xs font-normal text-zinc-500">by {vote.cancelledByName}</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })
           )}
         </div>
       </section>

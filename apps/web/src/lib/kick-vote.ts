@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gt, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, ne, sql } from "drizzle-orm";
 import {
   bannedPlayers,
   KICK_VOTE_STARTED_CHANNEL,
@@ -7,6 +7,7 @@ import {
   latestSnapshots,
   notifyKickVoteUpdated,
   servers,
+  staffMembers,
   steamProfiles,
   type Database,
   type KickVoteStatus,
@@ -303,6 +304,55 @@ export async function listActiveKickVotes(db: Database): Promise<ActiveKickVoteS
     .where(eq(kickVotes.status, "active"))
     .groupBy(kickVotes.id, servers.name, steamProfiles.personaName)
     .orderBy(asc(kickVotes.startedAt));
+}
+
+export interface PastKickVoteSummary {
+  id: number;
+  serverName: string;
+  targetSteamId: string;
+  targetName: string;
+  reason: string;
+  /** Its terminal status - never "active". */
+  status: KickVoteStatus;
+  ballotCount: number;
+  threshold: number;
+  startedAt: Date;
+  resolvedAt: Date | null;
+  /** Who started it - null for KickVotes started anonymously, before Steam sign-in. Staff-only (docs/adr/0007). */
+  initiatorSteamId: string | null;
+  /** Their cached Steam persona name, if any. */
+  initiatorName: string | null;
+  /** The Staff Member who cancelled it - set only for status "staffCancelled". */
+  cancelledByName: string | null;
+}
+
+/** The most recently ended KickVotes across all Servers, newest first, for the admin area. */
+export async function listPastKickVotes(db: Database, limit = 50): Promise<PastKickVoteSummary[]> {
+  return db
+    .select({
+      id: kickVotes.id,
+      serverName: servers.name,
+      targetSteamId: kickVotes.targetSteamId,
+      targetName: kickVotes.targetName,
+      reason: kickVotes.reason,
+      status: kickVotes.status,
+      ballotCount: count(kickVoteBallots.sessionId),
+      threshold: kickVotes.threshold,
+      startedAt: kickVotes.startedAt,
+      resolvedAt: kickVotes.resolvedAt,
+      initiatorSteamId: kickVotes.initiatorSteamId,
+      initiatorName: steamProfiles.personaName,
+      cancelledByName: staffMembers.name,
+    })
+    .from(kickVotes)
+    .innerJoin(servers, eq(servers.id, kickVotes.serverId))
+    .leftJoin(kickVoteBallots, eq(kickVoteBallots.kickVoteId, kickVotes.id))
+    .leftJoin(steamProfiles, eq(steamProfiles.steamId, kickVotes.initiatorSteamId))
+    .leftJoin(staffMembers, eq(staffMembers.id, kickVotes.cancelledByStaffMemberId))
+    .where(ne(kickVotes.status, "active"))
+    .groupBy(kickVotes.id, servers.name, steamProfiles.personaName, staffMembers.name)
+    .orderBy(desc(kickVotes.startedAt))
+    .limit(limit);
 }
 
 /**

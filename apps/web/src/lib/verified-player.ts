@@ -74,6 +74,16 @@ export async function getVerifiedPlayerSteamId(
   return row?.steamId ?? null;
 }
 
+/** Whether anyone has claimed this steamId by signing in with Steam. */
+export async function isVerifiedPlayer(db: Database, steamId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ steamId: verifiedPlayers.steamId })
+    .from(verifiedPlayers)
+    .where(eq(verifiedPlayers.steamId, steamId))
+    .limit(1);
+  return row !== undefined;
+}
+
 /** Ends this one browser's session; the Verified Player and other sessions stay. */
 export async function signOutVerifiedPlayer(db: Database, token: string): Promise<void> {
   await db.delete(verifiedPlayerSessions).where(eq(verifiedPlayerSessions.tokenHash, hashToken(token)));

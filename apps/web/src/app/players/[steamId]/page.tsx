@@ -16,6 +16,7 @@ import {
 import { getPlayerNotifications } from "@/lib/recent-notifications";
 import { getServerByBaseUrl } from "@/lib/server-lookup";
 import { getSteamProfile } from "@/lib/steam-profile-lookup";
+import { isVerifiedPlayer } from "@/lib/verified-player";
 
 // A DB read via drizzle isn't a Request-time API, so Next won't otherwise
 // know this route needs fresh data on every request - force it dynamic so
@@ -36,7 +37,7 @@ export default async function PlayerPage({
 
   const server = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
 
-  const [playerStats, achievements, challenges, matchHistory, recentEvents, steamProfile] =
+  const [playerStats, achievements, challenges, matchHistory, recentEvents, steamProfile, verified] =
     await Promise.all([
       getPlayerStats(db, CONFIGURED_SERVER_BASE_URL, steamId),
       getPlayerAchievements(db, CONFIGURED_SERVER_BASE_URL, steamId),
@@ -44,6 +45,7 @@ export default async function PlayerPage({
       getPlayerMatchHistory(db, CONFIGURED_SERVER_BASE_URL, steamId),
       server ? getPlayerNotifications(db, server.id, steamId) : Promise.resolve([]),
       getSteamProfile(db, steamId),
+      isVerifiedPlayer(db, steamId),
     ]);
 
   const stats = playerStats
@@ -75,6 +77,14 @@ export default async function PlayerPage({
           personaName={progression.personaName}
           countryCode={progression.countryCode}
         />
+        {verified && (
+          <span
+            title="This player has signed in with Steam and owns this Steam ID"
+            className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium tracking-wide text-emerald-400"
+          >
+            Verified
+          </span>
+        )}
       </h1>
 
       <div className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3">

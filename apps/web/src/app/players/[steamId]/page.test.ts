@@ -10,6 +10,7 @@ import {
   servers,
   steamAchievementSchema,
   steamProfiles,
+  verifiedPlayers,
   WARDOGS_STEAM_APP_ID,
   type Database,
 } from "@wdza-stats/db";
@@ -37,6 +38,7 @@ afterEach(async () => {
   await db.delete(servers);
   await db.delete(steamProfiles);
   await db.delete(steamAchievementSchema);
+  await db.delete(verifiedPlayers);
 });
 
 afterAll(async () => {
@@ -243,5 +245,24 @@ describe("PlayerPage gamification", () => {
     expect(html).toContain("No achievements unlocked yet.");
     expect(html).toContain("No active challenges right now.");
     expect(html).toContain("Nothing noteworthy has happened yet.");
+  });
+});
+
+describe("PlayerPage verified badge", () => {
+  it("shows a Verified badge once the steamId has been claimed", async () => {
+    await seedPlayer("1", "Alice");
+    await db.insert(verifiedPlayers).values({ steamId: "1" });
+
+    const html = await renderPage("1");
+
+    expect(html).toContain(">Verified<");
+  });
+
+  it("shows no badge for an unclaimed steamId", async () => {
+    await seedPlayer("1", "Alice");
+
+    const html = await renderPage("1");
+
+    expect(html).not.toContain(">Verified<");
   });
 });

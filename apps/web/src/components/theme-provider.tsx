@@ -1,9 +1,8 @@
 "use client";
 
-import { SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
 import { createContext, useContext, useEffect, useState } from "react";
 import { getLightingInfo, type ColorScheme } from "@/lib/lighting";
-import type { LiveSnapshotView } from "@/lib/live-snapshot";
+import { subscribeToLiveSnapshot } from "@/lib/live-snapshot-stream";
 
 // null means "follow the live server's lighting" - the toggle only ever
 // stores an explicit override.
@@ -51,34 +50,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setOverrideState(readStoredOverride());
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function pollLighting() {
-      try {
-        const response = await fetch("/api/live-snapshot");
-        if (!response.ok) {
-          return;
-        }
-        const data: LiveSnapshotView = await response.json();
-        if (!cancelled) {
-          const info = getLightingInfo(data.snapshot.lighting);
-          setAutoTheme(info.scheme);
-          setFoggy(info.weather === "fog" || info.weather === "grayFog");
-        }
-      } catch {
-        // Keep the last known auto theme/fog state until the next poll
-        // succeeds.
-      }
-    }
-
-    pollLighting();
-    const interval = setInterval(pollLighting, SNAPSHOT_POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  // Follows the live Server's lighting as each new Snapshot is pushed.
+  useEffect(
+    () =>
+      subscribeToLiveSnapshot((data) => {
+        const info = getLightingInfo(data.snapshot.lighting);
+        setAutoTheme(info.scheme);
+        setFoggy(info.weather === "fog" || info.weather === "grayFog");
+      }),
+    [],
+  );
 
   const resolved = override ?? autoTheme;
 

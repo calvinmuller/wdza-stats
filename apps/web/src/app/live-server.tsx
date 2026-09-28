@@ -3,13 +3,14 @@
 // Deep import, not the package root: the root barrel re-exports client.ts,
 // which pulls in the `postgres` driver (Node-only, uses `fs`/`tls`/etc.) -
 // that can't go in this Client Component's browser bundle.
-import { getRotationPreview, SNAPSHOT_POLL_INTERVAL_MS } from "@wdza-stats/db/snapshot";
+import { getRotationPreview } from "@wdza-stats/db/snapshot";
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CashInPlayChart } from "@/components/cash-in-play-chart";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { LightingBadge } from "@/components/lighting-badge";
 import { getLightingInfo } from "@/lib/lighting";
+import { subscribeToLiveSnapshot } from "@/lib/live-snapshot-stream";
 import { getMapArtUrl } from "@/lib/map-art";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { ActivityFeed } from "./activity-feed";
@@ -18,10 +19,7 @@ import { SortableTable, type SortableColumn } from "@/components/sortable-table"
 import type { KickVoteInitiator } from "@/lib/current-kick-vote-initiator";
 import type { LiveSnapshotPlayer, LiveSnapshotView } from "@/lib/live-snapshot";
 
-// No point refreshing faster than new Snapshots can actually arrive.
 const FACTION_SCORE_LIMIT = 100;
-
-export const REFRESH_INTERVAL_MS = SNAPSHOT_POLL_INTERVAL_MS;
 
 // A fixed UTC hh:mm:ss, pinned to a locale/timeZone so the server (whatever
 // it runs under) and the client always render identical text - avoids the
@@ -96,6 +94,8 @@ export function LiveServerView({
   const [isActivityOpen, setIsActivityOpen] = useState(true);
   const [showAllPlayers, setShowAllPlayers] = useState(false);
 
+  // One-off re-read, for changes made from this page (starting a KickVote)
+  // that shouldn't wait for the Worker's next Snapshot to show up.
   async function refresh() {
     try {
       const response = await fetch("/api/live-snapshot");
@@ -103,15 +103,12 @@ export function LiveServerView({
         setData(await response.json());
       }
     } catch {
-      // Keep showing the last known-good Snapshot until the next poll succeeds.
+      // Keep showing the last known-good Snapshot until the stream's next update.
     }
   }
 
-  useEffect(() => {
-    const interval = setInterval(refresh, REFRESH_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, []);
+  // Every new Snapshot, pushed as the Worker stores it - no polling.
+  useEffect(() => subscribeToLiveSnapshot(setData), []);
 
   const TOP_PLAYERS_COUNT = 10;
 

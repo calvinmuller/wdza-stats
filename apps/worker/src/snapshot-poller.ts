@@ -1,4 +1,10 @@
-import { latestSnapshots, type Database, type Snapshot, type SnapshotPlayer } from "@wdza-stats/db";
+import {
+  latestSnapshots,
+  notifySnapshotCaptured,
+  type Database,
+  type Snapshot,
+  type SnapshotPlayer,
+} from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
 import { ingestSnapshot } from "./match-tracker";
 import type {
@@ -125,6 +131,8 @@ export async function pollAndPersistSnapshot(
     .limit(1);
 
   await ingestSnapshot(db, serverId, snapshot, capturedAt);
+  // Wakes the homepage's live stream - before the Steam refreshes below, so they can't delay it.
+  await notifySnapshotCaptured(db, serverId);
 
   if (steamConfig) {
     const joinedSteamIds = newlyJoinedSteamIds(previousRow?.payload.players, snapshot.players);

@@ -8,6 +8,7 @@ export * from "./kick-vote";
 export * from "./level";
 export * from "./notification";
 export * from "./snapshot";
+export * from "./snapshot-captured";
 export * from "./staff";
 export * from "./steam-profile";
 export * from "./xp";

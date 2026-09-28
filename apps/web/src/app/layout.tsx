@@ -1,11 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
+import Script from "next/script";
 import { Barlow_Condensed } from "next/font/google";
 import { NavLinks } from "@/components/nav-links";
 import { PlayerSignIn } from "@/components/player-sign-in";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import "./globals.css";
+
+const GA_MEASUREMENT_ID = "G-BNZZV19NZB";
 
 const heading = Barlow_Condensed({
   subsets: ["latin"],
@@ -58,6 +61,19 @@ export default function RootLayout({
             WDZA Wardogs &middot; stats update automatically from the live server
           </footer>
         </ThemeProvider>
+
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${GA_MEASUREMENT_ID}');
+          `}
+        </Script>
       </body>
     </html>
   );

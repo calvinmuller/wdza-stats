@@ -18,7 +18,7 @@ import { getBannedSteamIds } from "./banned-players";
 import { kdRatio } from "./player-career-stats";
 import { getServerByBaseUrl } from "./server-lookup";
 import { getOnlineFactionColors } from "./live-snapshot";
-import { getSteamProfile } from "./steam-profile-lookup";
+import { getSteamProfile, type SteamAchievementView } from "./steam-profile-lookup";
 
 export interface PlayerProgressionView {
   steamId: string;
@@ -303,4 +303,75 @@ export async function getPlayerChallengeProgress(
     xpReward: instance.xpReward,
     completed: completedInstances.has(instance.instanceId),
   }));
+}
+
+// How many steamIds one bulk request may ask for - each one costs a handful
+// of queries, so the list is capped rather than left open-ended.
+export const MAX_BULK_STEAM_IDS = 50;
+
+export interface PlayerDetailView {
+  steamId: string;
+  progression: PlayerProgressionView;
+  stats: PlayerStatsView;
+  achievements: PlayerAchievementView[];
+  challenges: PlayerChallengeProgressView[];
+  steamAchievements: SteamAchievementView[];
+  playtimeMinutes: number | null;
+}
+
+/**
+ * Parses a comma-separated steamId list (the `?steamIds=` query param):
+ * trimmed, blanks dropped, duplicates removed, request order kept.
+ */
+export function parseSteamIdList(raw: string | null): string[] {
+  if (!raw) {
+    return [];
+  }
+  return Array.from(
+    new Set(raw.split(",").map((steamId) => steamId.trim()).filter(Boolean)),
+  );
+}
+
+/**
+ * Everything the single-player endpoints return, for many players at once -
+ * the `GET /api/players?steamIds=` payload. Composes the same per-player
+ * functions, so each player gets exactly what their own endpoints would
+ * show. A steamId with no progression (never seen on this Server, or
+ * banned) is listed in `notFound` instead of `players`.
+ */
+export async function getPlayerDetails(
+  db: Database,
+  baseUrl: string,
+  steamIds: string[],
+): Promise<{ players: PlayerDetailView[]; notFound: string[] }> {
+  const results = await Promise.all(
+    steamIds.map(async (steamId): Promise<PlayerDetailView | null> => {
+      const [progression, stats, achievements, challenges, steamProfile] = await Promise.all([
+        getPlayerProgression(db, baseUrl, steamId),
+        getPlayerStats(db, baseUrl, steamId),
+        getPlayerAchievements(db, baseUrl, steamId),
+        getPlayerChallengeProgress(db, baseUrl, steamId),
+        getSteamProfile(db, steamId),
+      ]);
+
+      if (!progression || !stats) {
+        return null;
+      }
+
+      return {
+        steamId,
+        progression,
+        stats,
+        achievements,
+        challenges,
+        steamAchievements: steamProfile?.achievements ?? [],
+        playtimeMinutes: steamProfile?.playtimeMinutes ?? null,
+      };
+    }),
+  );
+
+  return {
+    players: results.filter((player): player is PlayerDetailView => player !== null),
+    notFound: steamIds.filter((_, index) => results[index] === null),
+  };
 }

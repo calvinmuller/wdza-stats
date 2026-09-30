@@ -2,10 +2,12 @@ import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
 import { Barlow_Condensed } from "next/font/google";
+import { AdBanner } from "@/components/ad-banner";
 import { NavLinks } from "@/components/nav-links";
 import { PlayerSignIn } from "@/components/player-sign-in";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { getBanner } from "@/lib/banners";
 import "./globals.css";
 
 const GA_MEASUREMENT_ID = "G-BNZZV19NZB";
@@ -47,6 +49,7 @@ export default function RootLayout({
               </Link>
               <NavLinks />
               <div className="ml-auto flex items-center gap-2">
+                <AdBanner banner={getBanner("header")} className="mr-2 hidden lg:block" />
                 <PlayerSignIn />
                 <ThemeToggle />
               </div>
@@ -56,6 +59,8 @@ export default function RootLayout({
           <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6">
             {children}
           </main>
+
+          <AdBanner banner={getBanner("content")} className="mx-auto w-full max-w-[728px] px-4 pb-8 sm:px-6" />
 
           <footer className="border-t border-white/10 px-4 py-6 text-center text-xs text-zinc-500 sm:px-6">
             WDZA Wardogs &middot; stats update automatically from the live server

@@ -1,3 +1,4 @@
+import { getBanner } from "@/lib/banners";
 import { getCurrentKickVoteInitiator } from "@/lib/current-kick-vote-initiator";
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
@@ -15,5 +16,5 @@ export default async function HomePage() {
     getCurrentKickVoteInitiator(),
   ]);
 
-  return <LiveServerView initial={initial} viewer={viewer} />;
+  return <LiveServerView initial={initial} viewer={viewer} sidebarBanner={getBanner("sidebar")} />;
 }

@@ -6,6 +6,7 @@
 import { getRotationPreview } from "@wdza-stats/db/snapshot";
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AdBanner } from "@/components/ad-banner";
 import { CashInPlayChart } from "@/components/cash-in-play-chart";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { LightingBadge } from "@/components/lighting-badge";
@@ -16,6 +17,7 @@ import { PlayerAvatar } from "@/components/player-avatar";
 import { ActivityFeed } from "./activity-feed";
 import { canStartKickVote, KickVoteHint, KickVotePanel, StartKickVoteButton } from "./kick-vote-panel";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
+import type { Banner } from "@/lib/banners";
 import type { KickVoteInitiator } from "@/lib/current-kick-vote-initiator";
 import type { LiveSnapshotPlayer, LiveSnapshotView } from "@/lib/live-snapshot";
 
@@ -85,10 +87,13 @@ function useFlip(keys: string[]) {
 export function LiveServerView({
   initial,
   viewer,
+  sidebarBanner = null,
 }: {
   initial: LiveSnapshotView | null;
   /** Who may start a KickVote from this browser, or null - for the KickVote panel. */
   viewer: KickVoteInitiator | null;
+  /** The sponsor Banner shown under the activity feed, or null for none. */
+  sidebarBanner?: Banner | null;
 }) {
   const [data, setData] = useState(initial);
   const [isActivityOpen, setIsActivityOpen] = useState(true);
@@ -436,6 +441,7 @@ export function LiveServerView({
             factionColors={Object.fromEntries(snapshot.factions.map((faction) => [faction.name, faction.color]))}
             linkableSteamIds={new Set(snapshot.players.filter((player) => player.level !== null).map((player) => player.steamId))}
           />
+          <AdBanner banner={sidebarBanner} className="border-t border-white/10 p-4" />
         </aside>
       )}
     </div>

@@ -80,3 +80,7 @@ _Avoid_: Permission level, group
 **Verified Player**:
 A person proven, by signing in with Steam, to own a steamId. Signing in with Steam for the first time *is* claiming that steamId; there is no separate claim or approval step, and a steamId that has never appeared in any Snapshot can still be claimed. Owning a steamId is what lets a person start a **KickVote** and marks their player page as verified. A steamId nobody has signed in as is simply unclaimed — still fully present in the stats, just unowned.
 _Avoid_: Profile, claimed profile (see **SteamProfile** and **PlayerCareerStat**), User, Account
+
+**Banner**:
+A sponsor's image shown on the public site, linking out to the sponsor. Shown in a fixed set of placements (header, sidebar, content), never in the admin area, and loaded so that a visitor blocking ads can block it like any other ad — see [docs/adr/0009](./docs/adr/0009-banners-load-from-a-dedicated-ad-hostname.md). Not tied to any Server.
+_Avoid_: Ad (the word survives only where ad blockers look for it: the `/ads/` path, the `ADS_*` settings, the `ad-banner` class), advert, promo

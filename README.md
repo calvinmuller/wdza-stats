@@ -53,6 +53,27 @@ with `openssl rand -hex 32`), `BETTER_AUTH_URL` (the site's public origin) and
 `ADMIN_PATH_SECRET`. First-time setup: open the bootstrap page once and create
 your admin.
 
+## Sponsor banners
+
+The public site shows sponsor Banners in three placements: `header` (wordmark
+beside the sign-in button, desktop only), `sidebar` (under the live page's
+activity feed) and `content` (wide strip under the content of every page except
+the live page, which has the sidebar one). None show in the admin area. The images live in `apps/web/public/ads`; which image fills
+which placement is set in `apps/web/src/lib/banners.ts`.
+
+Three optional env vars on the web service control them:
+
+- `ADS_PLACEMENTS` - comma-separated placements to show. Empty shows all three;
+  `none` shows no Banners.
+- `ADS_CLICK_URL` - where a click lands (e.g. the sponsor's referral link).
+- `ADS_ORIGIN` - origin the images load from, e.g. `https://ads.example.com`.
+
+Pi-hole blocks by hostname, so Banners are only blockable there once
+`ADS_ORIGIN` names a separate hostname: add it as a second custom domain on the
+web service and set the variable. Without it they load from the site's own
+`/ads/` path, which browser ad blockers catch but Pi-hole cannot. See
+`docs/adr/0009-banners-load-from-a-dedicated-ad-hostname.md`.
+
 ## Testing
 
 ```sh

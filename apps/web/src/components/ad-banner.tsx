@@ -31,9 +31,6 @@ export function AdBanner({ banner, className = "" }: { banner: Banner | null; cl
   }, []);
 
   if (!banner || isBlocked || pathname.startsWith("/admin")) return null;
-  // The live page already ends on the sidebar Banner; a second one right
-  // under it would stack two.
-  if (banner.placement === "content" && pathname === "/") return null;
 
   const isHeader = banner.placement === "header";
 

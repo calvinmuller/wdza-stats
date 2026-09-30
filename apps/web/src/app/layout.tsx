@@ -56,11 +56,11 @@ export default function RootLayout({
             </div>
           </header>
 
+          <AdBanner banner={getBanner("content")} className="mx-auto w-full max-w-[728px] px-4 pt-6 sm:px-6" />
+
           <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6">
             {children}
           </main>
-
-          <AdBanner banner={getBanner("content")} className="mx-auto w-full max-w-[728px] px-4 pb-8 sm:px-6" />
 
           <footer className="border-t border-white/10 px-4 py-6 text-center text-xs text-zinc-500 sm:px-6">
             WDZA Wardogs &middot; stats update automatically from the live server

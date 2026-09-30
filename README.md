@@ -57,9 +57,10 @@ your admin.
 
 The public site shows sponsor Banners in three placements: `header` (wordmark
 beside the sign-in button, desktop only), `sidebar` (under the live page's
-activity feed) and `content` (wide strip under the content of every page except
-the live page, which has the sidebar one). None show in the admin area. The images live in `apps/web/public/ads`; which image fills
-which placement is set in `apps/web/src/lib/banners.ts`.
+activity feed) and `content` (wide strip centered under the header, above every
+page's content). None show in the admin area. The images live in
+`apps/web/public/ads`; which image fills which placement is set in
+`apps/web/src/lib/banners.ts`.
 
 Three optional env vars on the web service control them:
 

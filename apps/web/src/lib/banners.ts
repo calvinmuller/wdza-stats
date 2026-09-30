@@ -26,7 +26,7 @@ const CREATIVES: Record<BannerPlacement, { file: string; alt: string; width: num
   header: { file: "gearup-logo.png", alt: "GearUP", width: 620, height: 160 },
   // Animated 3:2 rectangle, shown in the live page's sidebar.
   sidebar: { file: "gearup-rectangle.gif", alt: "GearUP - Less Lag. More Fun.", width: 900, height: 600 },
-  // Wide strip, shown under the content of every page but the live page.
+  // Wide strip, shown centered under the header, above every page's content.
   content: { file: "gearup-banner.png", alt: "GearUP - rated Excellent on Trustpilot", width: 1053, height: 244 },
 };
 

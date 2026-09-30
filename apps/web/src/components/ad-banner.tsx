@@ -47,7 +47,7 @@ export function AdBanner({ banner, className = "" }: { banner: Banner | null; cl
             : "block"
         }
       >
-        {isHeader && <span>Sponsored by</span>}
+        {isHeader && <span>Affiliated with</span>}
         {/* Not next/image: its optimizer would re-serve the file from this
             site's own hostname, where a DNS ad blocker can't tell it apart
             from the page (docs/adr/0009). */}
@@ -63,7 +63,7 @@ export function AdBanner({ banner, className = "" }: { banner: Banner | null; cl
           className={IMAGE_CLASS[banner.placement]}
         />
       </a>
-      {!isHeader && <p className="mt-1 text-center text-[10px] uppercase tracking-wider text-zinc-500">Sponsored</p>}
+      {!isHeader && <p className="mt-1 text-center text-[10px] uppercase tracking-wider text-zinc-500">Affiliated</p>}
     </aside>
   );
 }

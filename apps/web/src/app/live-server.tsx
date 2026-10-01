@@ -160,6 +160,7 @@ export function LiveServerView({
       render: (player) => (
         <Link
           href={`/players/${player.steamId}`}
+          prefetch={false}
           className="flex items-center gap-2 hover:underline"
         >
           <PlayerAvatar avatarUrl={player.avatarUrl} size={24} />

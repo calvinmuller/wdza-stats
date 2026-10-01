@@ -130,6 +130,7 @@ export function ActivityFeed({
                   {item.notification.steamId ? (
                     <Link
                       href={`/players/${item.notification.steamId}`}
+                      prefetch={false}
                       className={`text-sm hover:underline ${NOTIFICATION_PRIORITY_CLASSNAME[item.notification.priority]}`}
                     >
                       {item.notification.message}

@@ -85,6 +85,7 @@ export function KillLine({
     return linkableSteamIds.has(party.steamId) ? (
       <Link
         href={`/players/${party.steamId}`}
+        prefetch={false}
         className="font-medium hover:underline"
         style={style}
       >

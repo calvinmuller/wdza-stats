@@ -9,6 +9,7 @@ import {
   notifications,
   playerAchievements,
   playerCareerStats,
+  playerSeasonStats,
   playerChallengeProgress,
   playerMatchStats,
   servers,
@@ -523,6 +524,7 @@ describe("GameEvent recording (integration)", () => {
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
     await db.delete(matches);

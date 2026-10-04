@@ -26,8 +26,16 @@ One player's kills/deaths/cash earned within one Match, computed as the delta be
 _Avoid_: Round stats, player match record
 
 **PlayerCareerStat**:
-A player's totals aggregated across every closed Match on one Server, keyed by steamId + Server — including both Wardogs-reported totals (kills, deaths, matchesPlayed) and gamification totals we invent ourselves (xp, level, currentKillStreak, highestKillStreak, mvpCount). One row per player per Server is the single source of truth for both; there is no separate progression table. Scoped per-Server by design: the same steamId can have separate career totals and separate XP/level on different Servers, since rules and communities differ between them.
+A player's totals aggregated across every closed Match on one Server, across every Season, keyed by steamId + Server — including both Wardogs-reported totals (kills, deaths, matchesPlayed) and gamification totals we invent ourselves (xp, level, currentKillStreak, highestKillStreak, mvpCount). One row per player per Server is the single source of truth for both; there is no separate progression table. Scoped per-Server by design: the same steamId can have separate career totals and separate XP/level on different Servers, since rules and communities differ between them.
 _Avoid_: Lifetime stats, player profile, PlayerProfile, progression record
+
+**Season**:
+A numbered period of play (Season 1, Season 2, …), optionally also named, shared by every Server. A Season begins when an admin starts it by hand: there is no scheduled start, so the date of a Season is whenever it was actually started. Seasons run back to back: each one ends exactly when the next begins, so there is always exactly one current Season and no gaps. Season 1 is everything before Season 2 began. A Match belongs to the Season that was current when it started, so a Match is never split across Seasons: one still in progress when a new Season begins counts towards the old one in full. A just-started Season can be withdrawn only until its first Match closes. A new Season never resets anything career-long: PlayerCareerStat, level, and Achievements carry straight on across it.
+_Avoid_: Period, split, ladder, reset, wipe (nothing is wiped; career totals continue)
+
+**PlayerSeasonStat**:
+A player's totals within one Season on one Server: kills, deaths, cash earned, matches played/won/lost, MVPs, highest KillStreak, and XP earned during that Season. The per-Season counterpart of PlayerCareerStat, which is the sum over all Seasons. A player has no PlayerSeasonStat for a Season in which they played no Match on that Server. Level is never per-Season: it is always derived from career XP.
+_Avoid_: Season record, season profile
 
 **SteamProfile**:
 A player's persona name, avatar, and unlocked WARDOGS achievements as reported by the Steam Web API, keyed by steamId alone. Unlike PlayerCareerStat, this is a property of the Steam account itself, not of any one Server, so it is never scoped or duplicated per-Server. Refreshed when the player appears in a newly-closed Match; cached as unavailable rather than retried when Steam reports the underlying data as private.

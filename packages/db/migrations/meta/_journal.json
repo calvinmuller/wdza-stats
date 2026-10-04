@@ -211,6 +211,13 @@
       "when": 1790146546748,
       "tag": "0029_staff_steam_id",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791150125204,
+      "tag": "0030_seasons",
+      "breakpoints": true
     }
   ]
 }

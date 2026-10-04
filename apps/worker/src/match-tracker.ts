@@ -18,6 +18,7 @@ import {
   playerCareerStats,
   playerChallengeProgress,
   playerMatchStats,
+  playerSeasonStats,
   xpRewards,
   xpTransactions,
   type ChallengeType,
@@ -244,7 +245,8 @@ export interface MatchCloseSummary {
  * Closes an open Match: computes each observed player's delta from its
  * retained matchSnapshots, writes PlayerMatchStat rows, rolls those deltas
  * into PlayerCareerStat (kills/deaths/cash/matchesPlayed, plus
- * matchesWon/matchesLost/mvpCount per ticket 07), stamps endedAt/
+ * matchesWon/matchesLost/mvpCount per ticket 07) and identically into the
+ * PlayerSeasonStat of the Match's own Season, stamps endedAt/
  * winningFaction/mvpPlayerSteamId/mvpScore, and drops the now-redundant raw
  * Snapshots for that Match. Returns a summary for the caller to log once the
  * enclosing transaction has actually committed.
@@ -265,7 +267,7 @@ export async function closeMatch(
     .update(matches)
     .set({ endedAt })
     .where(and(eq(matches.id, match.id), isNull(matches.endedAt)))
-    .returning({ id: matches.id });
+    .returning({ id: matches.id, seasonId: matches.seasonId });
 
   if (!claimed) {
     const [existing] = await tx.select().from(matches).where(eq(matches.id, match.id));
@@ -330,6 +332,33 @@ export async function closeMatch(
           mvpCount: sql`${playerCareerStats.mvpCount} + ${isMvp ? 1 : 0}`,
         },
       });
+
+    await tx
+      .insert(playerSeasonStats)
+      .values({
+        seasonId: claimed.seasonId,
+        serverId: match.serverId,
+        steamId: delta.steamId,
+        kills: delta.kills,
+        deaths: delta.deaths,
+        cash: delta.cash,
+        matchesPlayed: 1,
+        matchesWon: won ? 1 : 0,
+        matchesLost: lost ? 1 : 0,
+        mvpCount: isMvp ? 1 : 0,
+      })
+      .onConflictDoUpdate({
+        target: [playerSeasonStats.seasonId, playerSeasonStats.serverId, playerSeasonStats.steamId],
+        set: {
+          kills: sql`${playerSeasonStats.kills} + ${delta.kills}`,
+          deaths: sql`${playerSeasonStats.deaths} + ${delta.deaths}`,
+          cash: sql`${playerSeasonStats.cash} + ${delta.cash}`,
+          matchesPlayed: sql`${playerSeasonStats.matchesPlayed} + 1`,
+          matchesWon: sql`${playerSeasonStats.matchesWon} + ${won ? 1 : 0}`,
+          matchesLost: sql`${playerSeasonStats.matchesLost} + ${lost ? 1 : 0}`,
+          mvpCount: sql`${playerSeasonStats.mvpCount} + ${isMvp ? 1 : 0}`,
+        },
+      });
   }
 
   await tx
@@ -353,11 +382,14 @@ export async function closeMatch(
  * happens, so no playerCareerStats row may exist for them at all (see
  * ticket 01/closeMatch). highestKillStreak is raised via GREATEST rather
  * than overwritten, so it never regresses below a value persisted by an
- * earlier Match.
+ * earlier Match. highestKillStreak is raised the same way on the
+ * PlayerSeasonStat of `seasonId` - the open Match's Season, not necessarily
+ * the current one.
  */
 async function applyKillStreakUpdates(
   tx: Tx,
   serverId: number,
+  seasonId: number,
   updates: KillStreakUpdate[],
 ): Promise<void> {
   for (const update of updates) {
@@ -376,6 +408,16 @@ async function applyKillStreakUpdates(
           displayName: update.displayName,
           currentKillStreak: update.currentKillStreak,
           highestKillStreak: sql`GREATEST(${playerCareerStats.highestKillStreak}, ${update.highestKillStreak})`,
+        },
+      });
+
+    await tx
+      .insert(playerSeasonStats)
+      .values({ seasonId, serverId, steamId: update.steamId, highestKillStreak: update.highestKillStreak })
+      .onConflictDoUpdate({
+        target: [playerSeasonStats.seasonId, playerSeasonStats.serverId, playerSeasonStats.steamId],
+        set: {
+          highestKillStreak: sql`GREATEST(${playerSeasonStats.highestKillStreak}, ${update.highestKillStreak})`,
         },
       });
   }
@@ -429,7 +471,10 @@ async function buildXpTransactionContext(
 
 /**
  * Persists a batch of XpTransactionDrafts to the xp_transactions ledger and
- * rolls each actually-inserted amount into playerCareerStats.xp. The
+ * rolls each actually-inserted amount into playerCareerStats.xp, and into
+ * the xp of the PlayerSeasonStat for the Season of the Match its GameEvent
+ * belongs to (not the current Season - a Match keeps the Season it opened
+ * in). The
  * insert's (event_id, reason, steam_id) uniqueness is what makes a draft
  * idempotent: persisting the same draft twice (e.g. a reprocessed
  * GameEvent) inserts nothing the second time, via onConflictDoNothing, so
@@ -441,7 +486,9 @@ async function buildXpTransactionContext(
  * than an upsert: every reason here fires only after a step that already
  * guarantees the target playerCareerStats row exists (applyKillStreakUpdates
  * for kill/first_blood/streak reasons, closeMatch for
- * match_completed/match_win), unlike applyKillStreakUpdates itself. Returns
+ * match_completed/match_win), unlike applyKillStreakUpdates itself. The
+ * season row is upserted rather than updated anyway, so a season row that
+ * somehow doesn't exist yet can never silently swallow XP. Returns
  * the actually-inserted transactions for the caller to log once the
  * enclosing transaction has committed.
  *
@@ -485,6 +532,17 @@ export async function applyXpTransactionDrafts(
       eventId: xpTransactions.eventId,
     });
 
+  const eventIds = [...new Set(inserted.map((transaction) => transaction.eventId))];
+  const seasonRows =
+    eventIds.length > 0
+      ? await tx
+          .select({ eventId: gameEvents.id, seasonId: matches.seasonId })
+          .from(gameEvents)
+          .innerJoin(matches, eq(matches.id, gameEvents.matchId))
+          .where(inArray(gameEvents.id, eventIds))
+      : [];
+  const seasonIdByEventId = new Map(seasonRows.map((row) => [row.eventId, row.seasonId]));
+
   for (const transaction of inserted) {
     await tx
       .update(playerCareerStats)
@@ -495,6 +553,19 @@ export async function applyXpTransactionDrafts(
           eq(playerCareerStats.steamId, transaction.steamId),
         ),
       );
+
+    await tx
+      .insert(playerSeasonStats)
+      .values({
+        seasonId: seasonIdByEventId.get(transaction.eventId)!,
+        serverId: transaction.serverId,
+        steamId: transaction.steamId,
+        xp: transaction.amount,
+      })
+      .onConflictDoUpdate({
+        target: [playerSeasonStats.seasonId, playerSeasonStats.serverId, playerSeasonStats.steamId],
+        set: { xp: sql`${playerSeasonStats.xp} + ${transaction.amount}` },
+      });
   }
 
   return inserted;
@@ -1216,6 +1287,7 @@ export async function ingestSnapshot(
       !previousRow || detectMatchBoundary(previousRow.payload, snapshot);
 
     let currentMatchId: number;
+    let currentSeasonId: number;
 
     if (isBoundary) {
       if (openMatch && previousRow) {
@@ -1232,6 +1304,7 @@ export async function ingestSnapshot(
         })
         .returning();
       currentMatchId = newMatch.id;
+      currentSeasonId = newMatch.seasonId;
       openedMatch = { id: newMatch.id, map: newMatch.map };
 
       // Kill streaks are Match-scoped: every player on this Server resets to
@@ -1244,6 +1317,7 @@ export async function ingestSnapshot(
         .where(eq(playerCareerStats.serverId, serverId));
     } else {
       currentMatchId = openMatch!.id;
+      currentSeasonId = openMatch!.seasonId;
     }
 
     const [insertedSnapshot] = await tx
@@ -1332,7 +1406,7 @@ export async function ingestSnapshot(
         sourceSnapshotId: insertedSnapshot.id,
       });
       eventDrafts.push(...killStreakDiff.events);
-      await applyKillStreakUpdates(tx, serverId, killStreakDiff.updates);
+      await applyKillStreakUpdates(tx, serverId, currentSeasonId, killStreakDiff.updates);
     }
 
     recordedEvents = await insertGameEventDrafts(tx, eventDrafts);

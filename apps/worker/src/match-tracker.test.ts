@@ -15,8 +15,10 @@ import {
   notificationSettings,
   playerAchievements,
   playerCareerStats,
+  playerSeasonStats,
   playerChallengeProgress,
   playerMatchStats,
+  seasons,
   servers,
   xpRewards,
   xpTransactions,
@@ -25,7 +27,7 @@ import {
   type Snapshot,
   type SnapshotPlayer,
 } from "@wdza-stats/db";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, sum } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyAchievementUnlockDrafts,
@@ -259,6 +261,7 @@ describe("Match-boundary detection and persistence (integration)", () => {
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
     await db.delete(matches);
@@ -725,6 +728,7 @@ describe("Banned players (integration)", () => {
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
     await db.delete(matches);
@@ -808,6 +812,7 @@ describe("XP ledger and awards (integration)", () => {
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
     await db.delete(matches);
@@ -1049,6 +1054,7 @@ describe("Levels and level-up events (integration)", () => {
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
     await db.delete(matches);
@@ -1199,6 +1205,7 @@ describe("Match finalization: MVP + win/loss rollup (integration)", () => {
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
     await db.delete(matches);
@@ -1378,6 +1385,7 @@ describe("Achievement engine (integration)", () => {
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
     await db.delete(matches);
@@ -1547,6 +1555,7 @@ describe("Daily challenges (integration)", () => {
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
     await db.delete(matches);
@@ -1765,6 +1774,7 @@ describe("Notification engine (integration)", () => {
     await db.delete(gameEvents);
     await db.delete(challengeInstances);
     await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
     await db.delete(matches);
@@ -1951,6 +1961,7 @@ describe("Admin-configurable settings take effect without a redeploy (ticket 15 
       insertedChallengeDefinitionIds.length = 0;
     }
     await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
     await db.delete(playerCareerStats);
     await db.delete(matchSnapshots);
     await db.delete(matches);
@@ -2243,5 +2254,180 @@ describe("Admin-configurable settings take effect without a redeploy (ticket 15 
         .set({ maxLowNormalPerMinute: original.maxLowNormalPerMinute })
         .where(eq(notificationSettings.id, 1));
     }
+  });
+});
+
+describe("Seasons: PlayerSeasonStat alongside PlayerCareerStat (integration)", () => {
+  const db: Database = createDb(process.env.DATABASE_URL!);
+  let baselineSeasonNumber: number;
+
+  async function seedServer() {
+    const [server] = await db
+      .insert(servers)
+      .values({
+        name: "Test Server",
+        baseUrl: `http://rcon-seasons-${crypto.randomUUID()}.test:9006`,
+      })
+      .returning();
+    return server;
+  }
+
+  async function currentSeason() {
+    const [row] = await db.select().from(seasons).orderBy(desc(seasons.number)).limit(1);
+    return row;
+  }
+
+  // Stands in for an admin starting the next Season (ticket 02).
+  async function startNextSeason() {
+    const current = await currentSeason();
+    const [row] = await db.insert(seasons).values({ number: current.number + 1 }).returning();
+    return row;
+  }
+
+  async function seasonStatsFor(seasonId: number, serverId: number, steamId: string) {
+    const [row] = await db
+      .select()
+      .from(playerSeasonStats)
+      .where(
+        and(
+          eq(playerSeasonStats.seasonId, seasonId),
+          eq(playerSeasonStats.serverId, serverId),
+          eq(playerSeasonStats.steamId, steamId),
+        ),
+      );
+    return row;
+  }
+
+  async function careerStatsFor(serverId: number, steamId: string) {
+    const [row] = await db
+      .select()
+      .from(playerCareerStats)
+      .where(and(eq(playerCareerStats.serverId, serverId), eq(playerCareerStats.steamId, steamId)));
+    return row;
+  }
+
+  async function ledgerXpForMatch(matchId: number, steamId: string) {
+    const [row] = await db
+      .select({ total: sum(xpTransactions.amount).mapWith(Number) })
+      .from(xpTransactions)
+      .innerJoin(gameEvents, eq(gameEvents.id, xpTransactions.eventId))
+      .where(and(eq(gameEvents.matchId, matchId), eq(xpTransactions.steamId, steamId)));
+    return row.total ?? 0;
+  }
+
+  function alice(kills: number, deaths = 0) {
+    return playersFixture([
+      { steamId: "1", name: "Alice", faction: "Lonestar", kills, deaths, cash: kills * 100, pingMs: 40 },
+    ]);
+  }
+
+  afterEach(async () => {
+    await db.delete(challengeCompletions);
+    await db.delete(playerChallengeProgress);
+    await db.delete(playerAchievements);
+    await db.delete(xpTransactions);
+    await db.delete(notifications);
+    await db.delete(gameEvents);
+    await db.delete(challengeInstances);
+    await db.delete(playerMatchStats);
+    await db.delete(playerSeasonStats);
+    await db.delete(playerCareerStats);
+    await db.delete(matchSnapshots);
+    await db.delete(matches);
+    await db.delete(latestSnapshots);
+    await db.delete(servers);
+    await db.delete(seasons).where(gt(seasons.number, baselineSeasonNumber));
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("keeps a single Season's totals identical to career totals", async () => {
+    baselineSeasonNumber = (await currentSeason()).number;
+    const server = await seedServer();
+    const client = scriptedRconClient([
+      { status: statusFixture({ map: "Sandstorm" }), players: alice(0) },
+      { status: statusFixture({ map: "Sandstorm" }), players: alice(3) },
+      { status: statusFixture({ map: "Sandstorm" }), players: alice(4, 1) },
+      { status: statusFixture({ map: "Deadcity" }), players: playersFixture([]) },
+    ]);
+
+    for (let poll = 0; poll < 4; poll++) {
+      await pollAndPersistSnapshot(db, client, server.id);
+    }
+
+    const season = await currentSeason();
+    const career = await careerStatsFor(server.id, "1");
+    const seasonStats = await seasonStatsFor(season.id, server.id, "1");
+
+    expect(career.matchesPlayed).toBe(1);
+    expect(career.xp).toBeGreaterThan(0);
+    expect(seasonStats).toEqual({
+      seasonId: season.id,
+      serverId: server.id,
+      steamId: "1",
+      kills: career.kills,
+      deaths: career.deaths,
+      cash: career.cash,
+      matchesPlayed: career.matchesPlayed,
+      xp: career.xp,
+      matchesWon: career.matchesWon,
+      matchesLost: career.matchesLost,
+      highestKillStreak: career.highestKillStreak,
+      mvpCount: career.mvpCount,
+    });
+  });
+
+  it("credits a Match open when a new Season starts to the old Season in full, and the next Match to the new one", async () => {
+    baselineSeasonNumber = (await currentSeason()).number;
+    const server = await seedServer();
+    const oldSeason = await currentSeason();
+    const client = scriptedRconClient([
+      { status: statusFixture({ map: "Sandstorm" }), players: alice(0) }, // Match A opens
+      { status: statusFixture({ map: "Sandstorm" }), players: alice(1) },
+      { status: statusFixture({ map: "Sandstorm" }), players: alice(3) }, // after the new Season starts
+      { status: statusFixture({ map: "Deadcity" }), players: alice(0) }, // closes A, opens B
+      { status: statusFixture({ map: "Deadcity" }), players: alice(2) },
+      { status: statusFixture({ map: "Sandstorm" }), players: playersFixture([]) }, // closes B
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+    const xpBeforeNewSeason = (await seasonStatsFor(oldSeason.id, server.id, "1")).xp;
+
+    const newSeason = await startNextSeason();
+
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    // XP and the streak from Match A's kills after the new Season began
+    // still go to the old Season; nothing has reached the new one yet.
+    const oldMidway = await seasonStatsFor(oldSeason.id, server.id, "1");
+    expect(oldMidway.xp).toBeGreaterThan(xpBeforeNewSeason);
+    expect(oldMidway.highestKillStreak).toBe(3);
+    expect(await seasonStatsFor(newSeason.id, server.id, "1")).toBeUndefined();
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const [matchA, matchB] = await db
+      .select()
+      .from(matches)
+      .where(eq(matches.serverId, server.id))
+      .orderBy(matches.id);
+    expect(matchA.seasonId).toBe(oldSeason.id);
+    expect(matchB.seasonId).toBe(newSeason.id);
+
+    const oldStats = await seasonStatsFor(oldSeason.id, server.id, "1");
+    const newStats = await seasonStatsFor(newSeason.id, server.id, "1");
+    const career = await careerStatsFor(server.id, "1");
+
+    expect(oldStats).toMatchObject({ kills: 3, matchesPlayed: 1, highestKillStreak: 3 });
+    expect(oldStats.xp).toBe(await ledgerXpForMatch(matchA.id, "1"));
+    expect(newStats).toMatchObject({ kills: 2, matchesPlayed: 1, highestKillStreak: 2 });
+    expect(newStats.xp).toBe(await ledgerXpForMatch(matchB.id, "1"));
+    expect(career).toMatchObject({ kills: 5, matchesPlayed: 2, highestKillStreak: 3 });
+    expect(career.xp).toBe(oldStats.xp + newStats.xp);
   });
 });

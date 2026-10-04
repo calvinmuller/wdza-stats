@@ -46,6 +46,17 @@ export const latestSnapshots = pgTable("latest_snapshots", {
   payload: jsonb("payload").notNull().$type<Snapshot>(),
 });
 
+// Season: a numbered period of play shared by every Server - see
+// CONTEXT.md. Seasons run back to back, so the current Season is always the
+// one with the highest number; there is no end date. Season 1 is created by
+// its own migration (0030_seasons.sql), so one always exists.
+export const seasons = pgTable("seasons", {
+  id: serial("id").primaryKey(),
+  number: integer("number").notNull().unique(),
+  name: text("name"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // endedAt is null while the Match is still open. winningFaction is set only
 // when the Match closes (the sole Faction with a strictly-higher score than
 // every other in its final Snapshot, per the same strict-overtake rule as
@@ -56,12 +67,19 @@ export const latestSnapshots = pgTable("latest_snapshots", {
 // the same conditions plus a Match that closed with no participants.
 // steamId isn't a foreign key here (nor anywhere else a GameEvent or
 // PlayerMatchStat references one): playerCareerStats' key is a
-// (serverId, steamId) pair, not steamId alone.
+// (serverId, steamId) pair, not steamId alone. seasonId is the Season that
+// was current when the Match opened, filled in by the database itself via
+// current_season_id() (see 0030_seasons.sql) so no insert can forget it; a
+// Match never changes Season once open, even if a new Season starts mid-Match.
 export const matches = pgTable("matches", {
   id: serial("id").primaryKey(),
   serverId: integer("server_id")
     .notNull()
     .references(() => servers.id),
+  seasonId: integer("season_id")
+    .notNull()
+    .default(sql`current_season_id()`)
+    .references(() => seasons.id),
   map: text("map").notNull(),
   experiences: text("experiences").array().notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
@@ -137,6 +155,46 @@ export const playerCareerStats = pgTable(
     index("player_career_stats_server_kills_idx").on(table.serverId, table.kills),
     index("player_career_stats_server_wins_idx").on(table.serverId, table.matchesWon),
     index("player_career_stats_server_streak_idx").on(
+      table.serverId,
+      table.highestKillStreak,
+    ),
+  ],
+);
+
+// PlayerSeasonStat: the per-Season counterpart of playerCareerStats - see
+// CONTEXT.md. Kept as running totals updated alongside the career row, in
+// the same transaction, always against the Season of the Match the change
+// came from (matches.seasonId), never wall-clock time. No displayName (read
+// it from playerCareerStats), no level (always derived from career xp), no
+// currentKillStreak (Match-scoped live state, already on the career row).
+export const playerSeasonStats = pgTable(
+  "player_season_stats",
+  {
+    seasonId: integer("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => servers.id),
+    steamId: text("steam_id").notNull(),
+    kills: integer("kills").notNull().default(0),
+    deaths: integer("deaths").notNull().default(0),
+    cash: integer("cash").notNull().default(0),
+    matchesPlayed: integer("matches_played").notNull().default(0),
+    xp: integer("xp").notNull().default(0),
+    matchesWon: integer("matches_won").notNull().default(0),
+    matchesLost: integer("matches_lost").notNull().default(0),
+    highestKillStreak: integer("highest_kill_streak").notNull().default(0),
+    mvpCount: integer("mvp_count").notNull().default(0),
+  },
+  (table) => [
+    primaryKey({ columns: [table.seasonId, table.serverId, table.steamId] }),
+    // Same rankings sort columns as playerCareerStats' indexes.
+    index("player_season_stats_season_server_xp_idx").on(table.seasonId, table.serverId, table.xp),
+    index("player_season_stats_season_server_kills_idx").on(table.seasonId, table.serverId, table.kills),
+    index("player_season_stats_season_server_wins_idx").on(table.seasonId, table.serverId, table.matchesWon),
+    index("player_season_stats_season_server_streak_idx").on(
+      table.seasonId,
       table.serverId,
       table.highestKillStreak,
     ),

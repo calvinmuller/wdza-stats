@@ -10,6 +10,7 @@ import { and, asc, count, desc, eq, notInArray } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getBannedSteamIds } from "./banned-players";
 import type { SeasonScope } from "./season-param";
+import { seasonSummary, type SeasonSummary } from "./season-scope";
 import { careerStatOfSeasonStat, playedInSeason } from "./season-stats";
 import { getServerByBaseUrl } from "./server-lookup";
 
@@ -42,7 +43,7 @@ export type RankingsResult = {
   totalPages: number;
   rows: RankingRow[];
   /** Present only for a Season's rankings; absent for Career. */
-  season?: { number: number; name: string | null; startedAt: Date };
+  season?: SeasonSummary;
 };
 
 export function isRankingMetric(value: string): value is RankingMetric {
@@ -87,9 +88,7 @@ function emptyPage(metric: RankingMetric, page: number, scope: SeasonScope): Ran
 // Career responses carry no season field at all, so the public API's
 // default (Career) response is unchanged from before Seasons existed.
 function seasonField(scope: SeasonScope): Pick<RankingsResult, "season"> {
-  if (scope.kind === "career") return {};
-  const { number, name, startedAt } = scope.season;
-  return { season: { number, name, startedAt } };
+  return scope.kind === "career" ? {} : { season: seasonSummary(scope.season) };
 }
 
 /**

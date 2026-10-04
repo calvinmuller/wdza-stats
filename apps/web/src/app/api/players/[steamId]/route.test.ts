@@ -150,4 +150,19 @@ describe("GET /api/players/[steamId]", () => {
     expect(body.avatarUrl).toBe("https://example.com/avatar.jpg");
     expect(body.factionColor).toBe("#0000ff");
   });
+
+  it("ignores ?season=, since level and XP are always career-long", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+    await db.insert(playerCareerStats).values({ serverId: server.id, steamId: "1", displayName: "Alice", xp: 1300 });
+    const get = async (url: string) =>
+      (await GET(new Request(url), { params: Promise.resolve({ steamId: "1" }) })).json();
+
+    const career = await get("http://test/api/players/1");
+
+    expect(await get("http://test/api/players/1?season=current")).toEqual(career);
+    expect(await get("http://test/api/players/1?season=9999")).toEqual(career);
+  });
 });

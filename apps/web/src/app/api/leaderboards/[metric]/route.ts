@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { getRankings, isRankingMetric, parseRankingsPage } from "@/lib/rankings";
-import { resolveSeasonScope } from "@/lib/season-scope";
+import { apiSeasonScope } from "@/lib/season-scope";
 
 export async function GET(
   request: Request,
@@ -18,13 +18,8 @@ export async function GET(
 
   try {
     const searchParams = new URL(request.url).searchParams;
-    // Career by default, so clients written before Seasons existed see no
-    // change; ?season=current or ?season=N opts in.
-    const seasonParam = searchParams.get("season");
-    const scope = await resolveSeasonScope(db, seasonParam, "career");
-    if (!scope) {
-      return Response.json({ error: `Unknown season: ${seasonParam}` }, { status: 404 });
-    }
+    const scope = await apiSeasonScope(db, searchParams);
+    if (scope instanceof Response) return scope;
 
     const page = parseRankingsPage(searchParams.get("page"));
     const result = await getRankings(db, CONFIGURED_SERVER_BASE_URL, metric, page, scope);

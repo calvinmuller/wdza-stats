@@ -3,10 +3,13 @@ import {
   challengeDefinitions,
   challengeInstances,
   createDb,
+  currentSeason,
   dailyPeriodKey,
   playerAchievements,
   playerCareerStats,
   playerChallengeProgress,
+  playerSeasonStats,
+  seasons,
   servers,
   steamAchievementSchema,
   steamProfiles,
@@ -14,18 +17,29 @@ import {
   WARDOGS_STEAM_APP_ID,
   type Database,
 } from "@wdza-stats/db";
-import { inArray } from "drizzle-orm";
+import { gt, inArray } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import PlayerPage from "./page";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = process.env.RCON_BASE_URL!;
 
+const NOT_FOUND = /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/;
+
 const insertedDefinitionIds: number[] = [];
 
+// Season 1 comes from the migration; tests add Seasons above it.
+let baseline: number;
+
+beforeAll(async () => {
+  baseline = (await currentSeason(db)).number;
+});
+
 afterEach(async () => {
+  await db.delete(playerSeasonStats);
+  await db.delete(seasons).where(gt(seasons.number, baseline));
   await db.delete(challengeCompletions);
   await db.delete(playerChallengeProgress);
   await db.delete(challengeInstances);
@@ -45,10 +59,19 @@ afterAll(async () => {
   await db.$client.end();
 });
 
-async function renderPage(steamId: string) {
-  const element = await PlayerPage({ params: Promise.resolve({ steamId }) });
+// Most tests here seed only PlayerCareerStat rows, so they view Career; the
+// Seasons tests pass their own `season`.
+async function renderPage(steamId: string, searchParams: { season?: string } = { season: "career" }) {
+  const element = await PlayerPage({
+    params: Promise.resolve({ steamId }),
+    searchParams: Promise.resolve(searchParams),
+  });
   return renderToStaticMarkup(element);
 }
+
+// One stat tile, e.g. tile("Kills", 30), as the page renders it.
+const tile = (label: string, value: string | number) =>
+  new RegExp(`>${label}</dt><dd[^>]*>${value}</dd>`);
 
 async function seedPlayer(steamId: string, displayName: string) {
   const [server] = await db
@@ -264,5 +287,100 @@ describe("PlayerPage verified badge", () => {
     const html = await renderPage("1");
 
     expect(html).not.toContain(">Verified<");
+  });
+});
+
+describe("PlayerPage Seasons", () => {
+  // Alice played only in the earlier Season.
+  async function seedSeasonOnePlayer() {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+    const past = await currentSeason(db);
+    const [current] = await db.insert(seasons).values({ number: baseline + 1, name: "Dust Storm" }).returning();
+    await db.insert(playerCareerStats).values({
+      serverId: server.id,
+      steamId: "1",
+      displayName: "Alice",
+      xp: 1300,
+      kills: 40,
+      deaths: 8,
+      matchesPlayed: 5,
+    });
+    await db.insert(playerSeasonStats).values({
+      seasonId: past.id,
+      serverId: server.id,
+      steamId: "1",
+      xp: 900,
+      kills: 25,
+      deaths: 5,
+      matchesPlayed: 3,
+    });
+    await db.insert(playerAchievements).values({ serverId: server.id, steamId: "1", achievementId: "first_blood" });
+    return { past, current };
+  }
+
+  it("shows the empty state for a Season the player didn't play, and full tiles for one they did and for Career", async () => {
+    const { past, current } = await seedSeasonOnePlayer();
+
+    const thisSeason = await renderPage("1", {});
+    expect(thisSeason).toContain(`No matches yet in Season ${current.number}`);
+    expect(thisSeason).toContain('href="/players/1?season=career"');
+    expect(thisSeason).not.toMatch(tile("Kills", "\\d+"));
+
+    const lastSeason = await renderPage("1", { season: String(past.number) });
+    expect(lastSeason).not.toContain("No matches yet");
+    expect(lastSeason).toMatch(tile("Kills", 25));
+    expect(lastSeason).toMatch(tile("K/D", "5.00"));
+    expect(lastSeason).toMatch(tile("Matches played", 3));
+
+    const career = await renderPage("1", { season: "career" });
+    expect(career).toMatch(tile("Kills", 40));
+    expect(career).toMatch(tile("Matches played", 5));
+  });
+
+  it("keeps level, XP, and Achievements career-long whatever the Season", async () => {
+    const { past } = await seedSeasonOnePlayer();
+
+    for (const season of [undefined, String(past.number), "career"]) {
+      const html = await renderPage("1", { season });
+      expect(html).toContain("Level 2");
+      expect(html).toContain("1,300 XP total");
+      expect(html).toContain("First Blood");
+    }
+  });
+
+  it("offers the current Season, past Seasons, and Career as links to this player", async () => {
+    const { past, current } = await seedSeasonOnePlayer();
+
+    const html = await renderPage("1", {});
+
+    expect(html).toContain(`href="/players/1?season=${current.number}"`);
+    expect(html).toContain(`href="/players/1?season=${past.number}"`);
+    expect(html).toContain('href="/players/1?season=career"');
+    expect(html).toContain(`Season ${current.number} · Dust Storm`);
+  });
+
+  it("labels playtime as all-time in a Season view", async () => {
+    const { past } = await seedSeasonOnePlayer();
+    await db.insert(steamProfiles).values({
+      steamId: "1",
+      personaName: null,
+      avatarUrl: null,
+      achievements: [],
+      playtimeMinutes: 120,
+      status: "ok",
+      fetchedAt: new Date(),
+    });
+
+    expect(await renderPage("1", { season: String(past.number) })).toMatch(tile("Playtime \\(all-time\\)", "2h"));
+    expect(await renderPage("1", { season: "career" })).toMatch(tile("Playtime", "2h"));
+  });
+
+  it("is not found for a Season that doesn't exist", async () => {
+    await seedSeasonOnePlayer();
+
+    await expect(renderPage("1", { season: String(baseline + 5) })).rejects.toThrow(NOT_FOUND);
   });
 });

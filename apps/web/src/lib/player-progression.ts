@@ -9,6 +9,7 @@ import {
   playerAchievements,
   playerCareerStats,
   playerChallengeProgress,
+  playerSeasonStats,
   type ChallengeType,
   type Database,
 } from "@wdza-stats/db";
@@ -16,6 +17,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { describeChallenge } from "./active-challenges";
 import { getBannedSteamIds } from "./banned-players";
 import { kdRatio } from "./player-career-stats";
+import type { SeasonScope } from "./season-param";
+import { playedInSeason } from "./season-stats";
 import { getServerByBaseUrl } from "./server-lookup";
 import { getOnlineFactionColors } from "./live-snapshot";
 import { getSteamProfile, type SteamAchievementView } from "./steam-profile-lookup";
@@ -164,6 +167,16 @@ export async function getPlayerStats(
 
   const { row } = found;
 
+  return toStatsView(row, row.currentKillStreak);
+}
+
+// The PlayerStatsView of a PlayerCareerStat or PlayerSeasonStat row, which
+// share every stat column. currentKillStreak is passed separately: it's live
+// Match state, kept only on the career row.
+function toStatsView(
+  row: Omit<typeof playerSeasonStats.$inferSelect, "seasonId" | "serverId" | "xp">,
+  currentKillStreak: number,
+): PlayerStatsView {
   return {
     steamId: row.steamId,
     kills: row.kills,
@@ -174,9 +187,55 @@ export async function getPlayerStats(
     matchesWon: row.matchesWon,
     matchesLost: row.matchesLost,
     highestKillStreak: row.highestKillStreak,
-    currentKillStreak: row.currentKillStreak,
+    currentKillStreak,
     mvpCount: row.mvpCount,
   };
+}
+
+/**
+ * A known player's stats for a SeasonScope. `stats` is null only for a
+ * Season the player played no Match in.
+ */
+export interface PlayerStatsInScope {
+  stats: PlayerStatsView | null;
+}
+
+/**
+ * A player's stats for a SeasonScope: Career (exactly getPlayerStats), or
+ * their totals for one Season. Returns null when there is no such player
+ * (same conditions as getPlayerStats), and `{ stats: null }` for a player
+ * who played no Match in the Season - they still exist, they just have no
+ * Season stats to show. currentKillStreak is always the live KillStreak in
+ * the player's open Match, whatever the scope.
+ */
+export async function getPlayerStatsInScope(
+  db: Database,
+  baseUrl: string,
+  steamId: string,
+  scope: SeasonScope,
+): Promise<PlayerStatsInScope | null> {
+  if (scope.kind === "career") {
+    const stats = await getPlayerStats(db, baseUrl, steamId);
+    return stats && { stats };
+  }
+
+  const found = await getPlayerCareerRow(db, baseUrl, steamId);
+
+  if (!found) {
+    return null;
+  }
+
+  const { server, row: careerRow } = found;
+
+  const [row] = await db
+    .select()
+    .from(playerSeasonStats)
+    .where(
+      and(playedInSeason(scope.season.id, server.id), eq(playerSeasonStats.steamId, steamId)),
+    )
+    .limit(1);
+
+  return { stats: row ? toStatsView(row, careerRow.currentKillStreak) : null };
 }
 
 /**
@@ -312,7 +371,8 @@ export const MAX_BULK_STEAM_IDS = 50;
 export interface PlayerDetailView {
   steamId: string;
   progression: PlayerProgressionView;
-  stats: PlayerStatsView;
+  // Never null for Career; null for a Season the player played no Match in.
+  stats: PlayerStatsView | null;
   achievements: PlayerAchievementView[];
   challenges: PlayerChallengeProgressView[];
   steamAchievements: SteamAchievementView[];
@@ -336,32 +396,34 @@ export function parseSteamIdList(raw: string | null): string[] {
  * Everything the single-player endpoints return, for many players at once -
  * the `GET /api/players?steamIds=` payload. Composes the same per-player
  * functions, so each player gets exactly what their own endpoints would
- * show. A steamId with no progression (never seen on this Server, or
- * banned) is listed in `notFound` instead of `players`.
+ * show; `scope` picks Career or one Season's stats, and everything else is
+ * career-long whatever the scope. A steamId with no progression (never seen
+ * on this Server, or banned) is listed in `notFound` instead of `players`.
  */
 export async function getPlayerDetails(
   db: Database,
   baseUrl: string,
   steamIds: string[],
+  scope: SeasonScope,
 ): Promise<{ players: PlayerDetailView[]; notFound: string[] }> {
   const results = await Promise.all(
     steamIds.map(async (steamId): Promise<PlayerDetailView | null> => {
-      const [progression, stats, achievements, challenges, steamProfile] = await Promise.all([
+      const [progression, scoped, achievements, challenges, steamProfile] = await Promise.all([
         getPlayerProgression(db, baseUrl, steamId),
-        getPlayerStats(db, baseUrl, steamId),
+        getPlayerStatsInScope(db, baseUrl, steamId, scope),
         getPlayerAchievements(db, baseUrl, steamId),
         getPlayerChallengeProgress(db, baseUrl, steamId),
         getSteamProfile(db, steamId),
       ]);
 
-      if (!progression || !stats) {
+      if (!progression || !scoped) {
         return null;
       }
 
       return {
         steamId,
         progression,
-        stats,
+        stats: scoped.stats,
         achievements,
         challenges,
         steamAchievements: steamProfile?.achievements ?? [],

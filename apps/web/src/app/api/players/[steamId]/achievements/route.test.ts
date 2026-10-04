@@ -104,4 +104,20 @@ describe("GET /api/players/[steamId]/achievements", () => {
       },
     ]);
   });
+
+  it("ignores ?season=, since Achievements are unlocked once per Server, ever", async () => {
+    const [server] = await db
+      .insert(servers)
+      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .returning();
+    await db.insert(playerAchievements).values({ serverId: server.id, steamId: "1", achievementId: "first_blood" });
+    const get = async (url: string) =>
+      (await GET(new Request(url), { params: Promise.resolve({ steamId: "1" }) })).json();
+
+    const career = await get("http://test/api/players/1/achievements");
+
+    expect(career).toHaveLength(1);
+    expect(await get("http://test/api/players/1/achievements?season=current")).toEqual(career);
+    expect(await get("http://test/api/players/1/achievements?season=9999")).toEqual(career);
+  });
 });

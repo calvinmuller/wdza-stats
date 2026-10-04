@@ -1,6 +1,10 @@
+import { listSeasons } from "@wdza-stats/db";
+import Link from "next/link";
+import { notFound } from "next/navigation";
 import { AchievementBadges } from "@/components/achievement-badges";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { PlayerMatchHistoryTable } from "@/components/player-match-history-table";
+import { SeasonPicker } from "@/components/season-picker";
 import { SteamAvatar } from "@/components/steam-avatar";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format-date";
@@ -11,9 +15,11 @@ import {
   getPlayerAchievements,
   getPlayerChallengeProgress,
   getPlayerProgression,
-  getPlayerStats,
+  getPlayerStatsInScope,
 } from "@/lib/player-progression";
 import { getPlayerNotifications } from "@/lib/recent-notifications";
+import { seasonScopeParam } from "@/lib/season-param";
+import { resolveSeasonScope } from "@/lib/season-scope";
 import { getServerByBaseUrl } from "@/lib/server-lookup";
 import { getSteamProfile } from "@/lib/steam-profile-lookup";
 import { isVerifiedPlayer } from "@/lib/verified-player";
@@ -25,10 +31,18 @@ export const dynamic = "force-dynamic";
 
 export default async function PlayerPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ steamId: string }>;
+  searchParams: Promise<{ season?: string }>;
 }) {
   const { steamId } = await params;
+  const { season: rawSeason } = await searchParams;
+  // The Season picker scopes only the stat tiles; level, XP, and
+  // Achievements are career-long whatever it says.
+  const scope = await resolveSeasonScope(db, rawSeason, "current");
+  if (!scope) notFound();
+
   const progression = await getPlayerProgression(db, CONFIGURED_SERVER_BASE_URL, steamId);
 
   if (!progression) {
@@ -37,17 +51,28 @@ export default async function PlayerPage({
 
   const server = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
 
-  const [playerStats, achievements, challenges, matchHistory, recentEvents, steamProfile, verified] =
-    await Promise.all([
-      getPlayerStats(db, CONFIGURED_SERVER_BASE_URL, steamId),
-      getPlayerAchievements(db, CONFIGURED_SERVER_BASE_URL, steamId),
-      getPlayerChallengeProgress(db, CONFIGURED_SERVER_BASE_URL, steamId),
-      getPlayerMatchHistory(db, CONFIGURED_SERVER_BASE_URL, steamId),
-      server ? getPlayerNotifications(db, server.id, steamId) : Promise.resolve([]),
-      getSteamProfile(db, steamId),
-      isVerifiedPlayer(db, steamId),
-    ]);
+  const [
+    scopedStats,
+    achievements,
+    challenges,
+    matchHistory,
+    recentEvents,
+    steamProfile,
+    verified,
+    allSeasons,
+  ] = await Promise.all([
+    getPlayerStatsInScope(db, CONFIGURED_SERVER_BASE_URL, steamId, scope),
+    getPlayerAchievements(db, CONFIGURED_SERVER_BASE_URL, steamId),
+    getPlayerChallengeProgress(db, CONFIGURED_SERVER_BASE_URL, steamId),
+    getPlayerMatchHistory(db, CONFIGURED_SERVER_BASE_URL, steamId),
+    server ? getPlayerNotifications(db, server.id, steamId) : Promise.resolve([]),
+    getSteamProfile(db, steamId),
+    isVerifiedPlayer(db, steamId),
+    listSeasons(db),
+  ]);
 
+  const playerHref = (season: string) => `/players/${steamId}?${new URLSearchParams({ season })}`;
+  const playerStats = scopedStats?.stats ?? null;
   const stats = playerStats
     ? [
         { label: "Kills", value: playerStats.kills },
@@ -60,7 +85,13 @@ export default async function PlayerPage({
         { label: "Highest kill streak", value: playerStats.highestKillStreak },
         { label: "MVP count", value: playerStats.mvpCount },
         ...(steamProfile?.playtimeMinutes != null
-          ? [{ label: "Playtime", value: formatPlaytimeHours(steamProfile.playtimeMinutes) }]
+          ? [
+              {
+                // Steam's all-time figure; nothing records playtime per Season.
+                label: scope.kind === "career" ? "Playtime" : "Playtime (all-time)",
+                value: formatPlaytimeHours(steamProfile.playtimeMinutes),
+              },
+            ]
           : []),
       ]
     : [];
@@ -105,19 +136,30 @@ export default async function PlayerPage({
         </p>
       </div>
 
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3"
-          >
-            <dt className="text-xs uppercase tracking-wide text-zinc-500">
-              {stat.label}
-            </dt>
-            <dd className="font-display text-2xl text-zinc-50">{stat.value}</dd>
-          </div>
-        ))}
-      </dl>
+      <SeasonPicker seasons={allSeasons} selected={scope} hrefFor={playerHref} />
+
+      {scope.kind === "season" && !playerStats ? (
+        <p className="text-zinc-400">
+          No matches yet in Season {scope.season.number}.{" "}
+          <Link href={playerHref(seasonScopeParam({ kind: "career" }))} className="text-brand-gold-500 hover:underline">
+            See career stats
+          </Link>
+        </p>
+      ) : (
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {stats.map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3"
+            >
+              <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                {stat.label}
+              </dt>
+              <dd className="font-display text-2xl text-zinc-50">{stat.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
 
       <div className="flex flex-col gap-3">
         <h2 className="text-xl text-zinc-100">Achievements</h2>

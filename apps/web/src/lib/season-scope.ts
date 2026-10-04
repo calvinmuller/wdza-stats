@@ -1,4 +1,4 @@
-import { currentSeason, seasons, type Database } from "@wdza-stats/db";
+import { currentSeason, seasons, type Database, type Season } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
 import type { SeasonScope } from "./season-param";
 
@@ -28,4 +28,25 @@ export async function resolveSeasonScope(
   if (!/^[1-9]\d*$/.test(wanted)) return null;
   const [season] = await db.select().from(seasons).where(eq(seasons.number, Number(wanted))).limit(1);
   return season ? { kind: "season", season } : null;
+}
+
+/**
+ * The public API's reading of `?season=`: Career when absent, so clients
+ * written before Seasons existed see no change, and a 404 Response for a
+ * Season that doesn't exist. Callers return the Response as is.
+ */
+export async function apiSeasonScope(
+  db: Database,
+  searchParams: URLSearchParams,
+): Promise<SeasonScope | Response> {
+  const value = searchParams.get("season");
+  const scope = await resolveSeasonScope(db, value, "career");
+  return scope ?? Response.json({ error: `Unknown season: ${value}` }, { status: 404 });
+}
+
+export type SeasonSummary = Pick<Season, "number" | "name" | "startedAt">;
+
+/** How an API response names the Season it was scoped to. */
+export function seasonSummary({ number, name, startedAt }: Season): SeasonSummary {
+  return { number, name, startedAt };
 }

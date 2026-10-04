@@ -3,19 +3,23 @@ import {
   challengeDefinitions,
   challengeInstances,
   createDb,
+  currentSeason,
   playerAchievements,
   playerCareerStats,
   playerChallengeProgress,
+  playerSeasonStats,
+  seasons,
   servers,
   type Database,
 } from "@wdza-stats/db";
-import { inArray } from "drizzle-orm";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { gt, inArray } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   getPlayerAchievements,
   getPlayerChallengeProgress,
   getPlayerProgression,
   getPlayerStats,
+  getPlayerStatsInScope,
 } from "./player-progression";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
@@ -37,7 +41,16 @@ async function insertChallengeDefinition(values: {
   return row;
 }
 
+// Season 1 comes from the migration; tests add Seasons above it.
+let baseline: number;
+
+beforeAll(async () => {
+  baseline = (await currentSeason(db)).number;
+});
+
 afterEach(async () => {
+  await db.delete(playerSeasonStats);
+  await db.delete(seasons).where(gt(seasons.number, baseline));
   await db.delete(challengeCompletions);
   await db.delete(playerChallengeProgress);
   await db.delete(challengeInstances);
@@ -195,6 +208,95 @@ describe("getPlayerStats", () => {
       currentKillStreak: 0,
       mvpCount: 0,
     });
+  });
+});
+
+describe("getPlayerStatsInScope", () => {
+  async function seedSeasonOnePlayer() {
+    const server = await seedServer();
+    const past = await currentSeason(db);
+    const [current] = await db.insert(seasons).values({ number: baseline + 1 }).returning();
+    await db.insert(playerCareerStats).values({
+      serverId: server.id,
+      steamId: "1",
+      displayName: "Alice",
+      kills: 30,
+      deaths: 6,
+      cash: 2500,
+      matchesPlayed: 10,
+      matchesWon: 6,
+      matchesLost: 4,
+      highestKillStreak: 12,
+      currentKillStreak: 3,
+      mvpCount: 2,
+    });
+    await db.insert(playerSeasonStats).values({
+      seasonId: past.id,
+      serverId: server.id,
+      steamId: "1",
+      kills: 20,
+      deaths: 5,
+      cash: 2000,
+      matchesPlayed: 8,
+      matchesWon: 5,
+      matchesLost: 3,
+      highestKillStreak: 9,
+      mvpCount: 1,
+    });
+    return { server, past, current };
+  }
+
+  it("returns Career stats for the Career scope", async () => {
+    await seedSeasonOnePlayer();
+
+    const result = await getPlayerStatsInScope(db, BASE_URL, "1", { kind: "career" });
+
+    expect(result).toEqual({ stats: await getPlayerStats(db, BASE_URL, "1") });
+  });
+
+  it("returns the player's totals for a Season they played in", async () => {
+    const { past } = await seedSeasonOnePlayer();
+
+    const result = await getPlayerStatsInScope(db, BASE_URL, "1", { kind: "season", season: past });
+
+    expect(result).toEqual({
+      stats: {
+        steamId: "1",
+        kills: 20,
+        deaths: 5,
+        kd: 4,
+        cash: 2000,
+        matchesPlayed: 8,
+        matchesWon: 5,
+        matchesLost: 3,
+        highestKillStreak: 9,
+        // The live KillStreak in the player's open Match, not a Season total.
+        currentKillStreak: 3,
+        mvpCount: 1,
+      },
+    });
+  });
+
+  it("returns no stats, rather than no player, for a Season they played no Match in", async () => {
+    const { server, current } = await seedSeasonOnePlayer();
+    // A kill in a still-open Match creates the row before any Match is played.
+    await db.insert(playerSeasonStats).values({
+      seasonId: current.id,
+      serverId: server.id,
+      steamId: "1",
+      kills: 1,
+    });
+
+    const result = await getPlayerStatsInScope(db, BASE_URL, "1", { kind: "season", season: current });
+
+    expect(result).toEqual({ stats: null });
+  });
+
+  it("returns null for a player with no PlayerCareerStat, whatever the scope", async () => {
+    const { current } = await seedSeasonOnePlayer();
+
+    expect(await getPlayerStatsInScope(db, BASE_URL, "unknown", { kind: "season", season: current })).toBeNull();
+    expect(await getPlayerStatsInScope(db, BASE_URL, "unknown", { kind: "career" })).toBeNull();
   });
 });
 

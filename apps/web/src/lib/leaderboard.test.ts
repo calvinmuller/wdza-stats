@@ -1,13 +1,17 @@
 import {
   bannedPlayers,
   createDb,
+  currentSeason,
   latestSnapshots,
   playerCareerStats,
+  playerSeasonStats,
+  seasons,
   servers,
   steamProfiles,
   type Database,
 } from "@wdza-stats/db";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { gt } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getLeaderboard } from "./leaderboard";
 import { snapshotFixture } from "./live-snapshot-fixture";
 
@@ -15,7 +19,16 @@ const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = "http://leaderboard.test:9006";
 
+// Season 1 comes from the migration; tests add Seasons above it.
+let baseline: number;
+
+beforeAll(async () => {
+  baseline = (await currentSeason(db)).number;
+});
+
 afterEach(async () => {
+  await db.delete(playerSeasonStats);
+  await db.delete(seasons).where(gt(seasons.number, baseline));
   await db.delete(playerCareerStats);
   await db.delete(latestSnapshots);
   await db.delete(servers);
@@ -322,5 +335,48 @@ describe("getLeaderboard", () => {
     const result = await getLeaderboard(db, BASE_URL, "kills");
 
     expect(result.map((row) => row.displayName)).toEqual(["Alice"]);
+  });
+
+  describe("for a Season", () => {
+    it("lists only players who played a Match in it, with K/D shrunk using that Season's figures only", async () => {
+      const [server] = await db
+        .insert(servers)
+        .values({ name: "WDZA Test", baseUrl: BASE_URL })
+        .returning();
+      const past = await currentSeason(db);
+      const [current] = await db.insert(seasons).values({ number: baseline + 1 }).returning();
+
+      await db.insert(playerCareerStats).values([
+        { serverId: server.id, steamId: "1", displayName: "Alice", kills: 102, deaths: 14, cash: 900, matchesPlayed: 22 },
+        { serverId: server.id, steamId: "2", displayName: "Bob", kills: 50, deaths: 35, cash: 300, matchesPlayed: 30 },
+        { serverId: server.id, steamId: "3", displayName: "Carol", kills: 9, deaths: 3, cash: 50, matchesPlayed: 4 },
+        { serverId: server.id, steamId: "4", displayName: "Dave", kills: 40, deaths: 2, cash: 10, matchesPlayed: 5 },
+      ]);
+      await db.insert(playerSeasonStats).values([
+        { seasonId: past.id, serverId: server.id, steamId: "1", kills: 100, deaths: 10, cash: 800, matchesPlayed: 20 },
+        { seasonId: past.id, serverId: server.id, steamId: "2", kills: 30, deaths: 30, cash: 100, matchesPlayed: 20 },
+        { seasonId: past.id, serverId: server.id, steamId: "3", kills: 9, deaths: 3, cash: 50, matchesPlayed: 4 },
+        { seasonId: past.id, serverId: server.id, steamId: "4", kills: 39, deaths: 2, cash: 10, matchesPlayed: 5 },
+        { seasonId: current.id, serverId: server.id, steamId: "1", kills: 2, deaths: 4, cash: 100, matchesPlayed: 2 },
+        { seasonId: current.id, serverId: server.id, steamId: "2", kills: 20, deaths: 5, cash: 200, matchesPlayed: 10 },
+        // Dave got a kill in a still-open Match: a row, but no Match played
+        // yet. Carol hasn't played this Season at all.
+        { seasonId: current.id, serverId: server.id, steamId: "4", kills: 1, deaths: 0, cash: 0, matchesPlayed: 0 },
+      ]);
+
+      const rows = await getLeaderboard(db, BASE_URL, "kd", { kind: "season", season: current });
+
+      // This Season's average K/D is 22 kills / 9 deaths. Alice: (2 x 0.5 +
+      // 10 x 22/9) / 12; Bob: (10 x 4 + 10 x 22/9) / 20.
+      expect(rows.map((row) => row.displayName)).toEqual(["Bob", "Alice"]);
+      const [bob, alice] = rows;
+      expect(bob).toMatchObject({ kills: 20, deaths: 5, cash: 200, matchesPlayed: 10, kd: 4 });
+      expect(bob.adjustedKd).toBeCloseTo(3.2222, 3);
+      expect(alice).toMatchObject({ kills: 2, deaths: 4, cash: 100, matchesPlayed: 2, kd: 0.5 });
+      expect(alice.adjustedKd).toBeCloseTo(2.1204, 3);
+
+      const career = await getLeaderboard(db, BASE_URL, "kd", { kind: "career" });
+      expect(career.map((row) => row.displayName)).toEqual(["Dave", "Alice", "Carol", "Bob"]);
+    });
   });
 });

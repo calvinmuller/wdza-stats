@@ -1,8 +1,10 @@
-import { playerCareerStats, steamProfiles, type Database } from "@wdza-stats/db";
+import { playerCareerStats, playerSeasonStats, steamProfiles, type Database } from "@wdza-stats/db";
 import { and, eq, notInArray } from "drizzle-orm";
 import { getBannedSteamIds } from "./banned-players";
 import { getOnlineFactionColors } from "./live-snapshot";
 import { kdRatio, type PlayerCareerView } from "./player-career-stats";
+import type { SeasonScope } from "./season-param";
+import { careerStatOfSeasonStat, playedInSeason } from "./season-stats";
 import { getServerByBaseUrl } from "./server-lookup";
 
 export type LeaderboardSort = "kills" | "deaths" | "kd" | "cash" | "playtime";
@@ -32,7 +34,9 @@ const SORT_VALUE: Record<LeaderboardSort, (row: LeaderboardRow) => number> = {
 // game with zero deaths outranks a veteran with a great long-run record.
 // Shrink each player's K/D toward the server average, weighted by matches
 // played against this many "prior" matches of average performance, so a
-// K/D only pulls rank once it's backed by enough games to trust it.
+// K/D only pulls rank once it's backed by enough games to trust it. In a
+// Season view the rows are Season totals, so both the average and each
+// player's matches played are that Season's.
 const KD_SHRINKAGE_PRIOR_MATCHES = 10;
 
 function withAdjustedKd(rows: PlayerCareerView[]): LeaderboardRow[] {
@@ -50,14 +54,17 @@ function withAdjustedKd(rows: PlayerCareerView[]): LeaderboardRow[] {
 }
 
 /**
- * Ranks every player with a PlayerCareerStat on the given Server, highest
- * value of `sort` first. Returns an empty list when the Server isn't
- * seeded, or has no PlayerCareerStat rows yet.
+ * Ranks players on the given Server, highest value of `sort` first - by
+ * Career totals, or by one Season's totals, in which case only players who
+ * played a Match in that Season appear. Returns an empty list when the
+ * Server isn't seeded, or has no stats for the scope yet. Playtime is always
+ * the SteamProfile's all-time figure: nothing records it per Season.
  */
 export async function getLeaderboard(
   db: Database,
   baseUrl: string,
   sort: LeaderboardSort,
+  scope: SeasonScope = { kind: "career" },
 ): Promise<LeaderboardRow[]> {
   const server = await getServerByBaseUrl(db, baseUrl);
 
@@ -68,29 +75,9 @@ export async function getLeaderboard(
   const bannedSteamIds = await getBannedSteamIds(db);
 
   const [statRows, factionColors] = await Promise.all([
-    db
-      .select({
-        steamId: playerCareerStats.steamId,
-        displayName: playerCareerStats.displayName,
-        kills: playerCareerStats.kills,
-        deaths: playerCareerStats.deaths,
-        cash: playerCareerStats.cash,
-        matchesPlayed: playerCareerStats.matchesPlayed,
-        avatarUrl: steamProfiles.avatarUrl,
-        countryCode: steamProfiles.countryCode,
-        playtimeMinutes: steamProfiles.playtimeMinutes,
-      })
-      .from(playerCareerStats)
-      // A player without a cached SteamProfile still needs to appear on the
-      // leaderboard - a leftJoin keeps them in with null avatar/country/
-      // playtime rather than dropping the row.
-      .leftJoin(steamProfiles, eq(steamProfiles.steamId, playerCareerStats.steamId))
-      .where(
-        and(
-          eq(playerCareerStats.serverId, server.id),
-          notInArray(playerCareerStats.steamId, bannedSteamIds),
-        ),
-      ),
+    scope.kind === "career"
+      ? careerStatRows(db, server.id, bannedSteamIds)
+      : seasonStatRows(db, server.id, bannedSteamIds, scope.season.id),
     getOnlineFactionColors(db, server.id),
   ]);
 
@@ -112,4 +99,59 @@ export async function getLeaderboard(
 
   const value = SORT_VALUE[sort];
   return rows.sort((a, b) => value(b) - value(a));
+}
+
+function careerStatRows(db: Database, serverId: number, bannedSteamIds: string[]) {
+  return db
+    .select({
+      steamId: playerCareerStats.steamId,
+      displayName: playerCareerStats.displayName,
+      kills: playerCareerStats.kills,
+      deaths: playerCareerStats.deaths,
+      cash: playerCareerStats.cash,
+      matchesPlayed: playerCareerStats.matchesPlayed,
+      avatarUrl: steamProfiles.avatarUrl,
+      countryCode: steamProfiles.countryCode,
+      playtimeMinutes: steamProfiles.playtimeMinutes,
+    })
+    .from(playerCareerStats)
+    // A player without a cached SteamProfile still needs to appear on the
+    // leaderboard - a leftJoin keeps them in with null avatar/country/
+    // playtime rather than dropping the row.
+    .leftJoin(steamProfiles, eq(steamProfiles.steamId, playerCareerStats.steamId))
+    .where(
+      and(
+        eq(playerCareerStats.serverId, serverId),
+        notInArray(playerCareerStats.steamId, bannedSteamIds),
+      ),
+    );
+}
+
+function seasonStatRows(
+  db: Database,
+  serverId: number,
+  bannedSteamIds: string[],
+  seasonId: number,
+) {
+  return db
+    .select({
+      steamId: playerSeasonStats.steamId,
+      displayName: playerCareerStats.displayName,
+      kills: playerSeasonStats.kills,
+      deaths: playerSeasonStats.deaths,
+      cash: playerSeasonStats.cash,
+      matchesPlayed: playerSeasonStats.matchesPlayed,
+      avatarUrl: steamProfiles.avatarUrl,
+      countryCode: steamProfiles.countryCode,
+      playtimeMinutes: steamProfiles.playtimeMinutes,
+    })
+    .from(playerSeasonStats)
+    .innerJoin(playerCareerStats, careerStatOfSeasonStat)
+    .leftJoin(steamProfiles, eq(steamProfiles.steamId, playerSeasonStats.steamId))
+    .where(
+      and(
+        playedInSeason(seasonId, serverId),
+        notInArray(playerSeasonStats.steamId, bannedSteamIds),
+      ),
+    );
 }

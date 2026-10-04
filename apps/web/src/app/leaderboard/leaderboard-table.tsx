@@ -10,51 +10,53 @@ import type { LeaderboardRow, LeaderboardSort } from "@/lib/leaderboard";
 
 type RankedRow = { row: LeaderboardRow; rank: number };
 
-const COLUMNS: SortableColumn<RankedRow>[] = [
-  {
-    key: "rank",
-    label: "#",
-    value: ({ rank }) => rank,
-    numeric: true,
-    cellClassName: "font-display text-base text-zinc-500",
-  },
-  {
-    key: "displayName",
-    label: "Player",
-    value: ({ row }) => row.displayName,
-    cellClassName: "font-medium text-zinc-100",
-    render: ({ row }) => (
-      <Link
-        href={`/players/${row.steamId}`}
-        className="flex items-center gap-2 font-medium text-zinc-100 hover:text-brand-gold-500"
-      >
-        <PlayerAvatar avatarUrl={row.avatarUrl} size={24} />
-        {row.displayName}
-        <CountryFlag countryCode={row.countryCode} />
-      </Link>
-    ),
-  },
-  { key: "kills", label: "Kills", value: ({ row }) => row.kills, numeric: true },
-  { key: "deaths", label: "Deaths", value: ({ row }) => row.deaths, numeric: true },
-  {
-    key: "kd",
-    label: "K/D",
-    value: ({ row }) => row.adjustedKd,
-    numeric: true,
-    headerTitle:
-      "This K/D has been adjusted toward the server average — see the note below the table",
-    render: ({ row }) => row.adjustedKd.toFixed(2),
-  },
-  { key: "cash", label: "Cash", value: ({ row }) => row.cash, numeric: true },
-  {
-    key: "playtime",
-    label: "Playtime",
-    value: ({ row }) => row.playtimeMinutes ?? -1,
-    numeric: true,
-    render: ({ row }) =>
-      row.playtimeMinutes !== null ? formatPlaytimeHours(row.playtimeMinutes) : "—",
-  },
-];
+function buildColumns(playtimeLabel: string): SortableColumn<RankedRow>[] {
+  return [
+    {
+      key: "rank",
+      label: "#",
+      value: ({ rank }) => rank,
+      numeric: true,
+      cellClassName: "font-display text-base text-zinc-500",
+    },
+    {
+      key: "displayName",
+      label: "Player",
+      value: ({ row }) => row.displayName,
+      cellClassName: "font-medium text-zinc-100",
+      render: ({ row }) => (
+        <Link
+          href={`/players/${row.steamId}`}
+          className="flex items-center gap-2 font-medium text-zinc-100 hover:text-brand-gold-500"
+        >
+          <PlayerAvatar avatarUrl={row.avatarUrl} size={24} />
+          {row.displayName}
+          <CountryFlag countryCode={row.countryCode} />
+        </Link>
+      ),
+    },
+    { key: "kills", label: "Kills", value: ({ row }) => row.kills, numeric: true },
+    { key: "deaths", label: "Deaths", value: ({ row }) => row.deaths, numeric: true },
+    {
+      key: "kd",
+      label: "K/D",
+      value: ({ row }) => row.adjustedKd,
+      numeric: true,
+      headerTitle:
+        "This K/D has been adjusted toward the server average — see the note below the table",
+      render: ({ row }) => row.adjustedKd.toFixed(2),
+    },
+    { key: "cash", label: "Cash", value: ({ row }) => row.cash, numeric: true },
+    {
+      key: "playtime",
+      label: playtimeLabel,
+      value: ({ row }) => row.playtimeMinutes ?? -1,
+      numeric: true,
+      render: ({ row }) =>
+        row.playtimeMinutes !== null ? formatPlaytimeHours(row.playtimeMinutes) : "—",
+    },
+  ];
+}
 
 const DEFAULT_SORT_COLUMN: Record<LeaderboardSort, string> = {
   kills: "kills",
@@ -67,10 +69,13 @@ const DEFAULT_SORT_COLUMN: Record<LeaderboardSort, string> = {
 export function LeaderboardTable({
   rows,
   sort,
+  playtimeLabel,
 }: {
   rows: LeaderboardRow[];
   sort: LeaderboardSort;
+  playtimeLabel: string;
 }) {
+  const columns = useMemo(() => buildColumns(playtimeLabel), [playtimeLabel]);
   const [search, setSearch] = useState("");
 
   // Rank reflects each player's position in the full, unfiltered
@@ -107,7 +112,7 @@ export function LeaderboardTable({
         <p className="text-zinc-400">No players match &ldquo;{search}&rdquo;.</p>
       ) : (
         <SortableTable
-          columns={COLUMNS}
+          columns={columns}
           rows={visibleRows}
           rowKey={({ row }) => row.steamId}
           defaultSort={{ column: DEFAULT_SORT_COLUMN[sort], direction: "desc" }}

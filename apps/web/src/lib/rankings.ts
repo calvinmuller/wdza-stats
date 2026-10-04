@@ -6,10 +6,11 @@ import {
   steamProfiles,
   type Database,
 } from "@wdza-stats/db";
-import { and, asc, count, desc, eq, gt, notInArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, notInArray } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getBannedSteamIds } from "./banned-players";
 import type { SeasonScope } from "./season-param";
+import { careerStatOfSeasonStat, playedInSeason } from "./season-stats";
 import { getServerByBaseUrl } from "./server-lookup";
 
 export type RankingMetric = "xp" | "kills" | "wins" | "streaks";
@@ -215,12 +216,8 @@ function seasonQuery(
   seasonId: number,
 ): RankingsQuery {
   const where = and(
-    eq(playerSeasonStats.seasonId, seasonId),
-    eq(playerSeasonStats.serverId, serverId),
+    playedInSeason(seasonId, serverId),
     notInArray(playerSeasonStats.steamId, bannedSteamIds),
-    // A kill in a still-open Match creates the row before any Match has
-    // been played; only players who have played one belong in the Season.
-    gt(playerSeasonStats.matchesPlayed, 0),
   );
   const column = SEASON_METRIC_COLUMNS[metric];
 
@@ -240,16 +237,7 @@ function seasonQuery(
           value: column,
         })
         .from(playerSeasonStats)
-        // The career row is written in the same transaction as every season
-        // row, so it always exists; it holds the name and the career XP that
-        // level is derived from.
-        .innerJoin(
-          playerCareerStats,
-          and(
-            eq(playerCareerStats.serverId, playerSeasonStats.serverId),
-            eq(playerCareerStats.steamId, playerSeasonStats.steamId),
-          ),
-        )
+        .innerJoin(playerCareerStats, careerStatOfSeasonStat)
         .leftJoin(steamProfiles, eq(steamProfiles.steamId, playerSeasonStats.steamId))
         .where(where)
         .orderBy(desc(column), asc(playerSeasonStats.steamId))

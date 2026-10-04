@@ -1,18 +1,31 @@
 import {
   createDb,
+  currentSeason,
   playerCareerStats,
+  playerSeasonStats,
+  seasons,
   servers,
   steamProfiles,
   type Database,
 } from "@wdza-stats/db";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { gt } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getRankings, RANKINGS_PAGE_SIZE } from "./rankings";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = "http://rankings.test:9006";
 
+// Season 1 comes from the migration; tests add Seasons above it.
+let baseline: number;
+
+beforeAll(async () => {
+  baseline = (await currentSeason(db)).number;
+});
+
 afterEach(async () => {
+  await db.delete(playerSeasonStats);
+  await db.delete(seasons).where(gt(seasons.number, baseline));
   await db.delete(playerCareerStats);
   await db.delete(servers);
   await db.delete(steamProfiles);
@@ -188,5 +201,84 @@ describe("getRankings", () => {
     const [row] = (await getRankings(db, BASE_URL, "xp", 1)).rows;
 
     expect(row.countryCode).toBe("ZA");
+  });
+
+  describe("for a Season", () => {
+    async function seedTwoSeasons() {
+      const [server] = await db
+        .insert(servers)
+        .values({ name: "WDZA Test", baseUrl: BASE_URL })
+        .returning();
+      const past = await currentSeason(db);
+      const [current] = await db
+        .insert(seasons)
+        .values({ number: baseline + 1, name: "Dust Storm" })
+        .returning();
+
+      // Career is the sum of both Seasons.
+      await db.insert(playerCareerStats).values([
+        { serverId: server.id, steamId: "1", displayName: "Alice", xp: 5000, kills: 60, matchesPlayed: 6 },
+        { serverId: server.id, steamId: "2", displayName: "Bob", xp: 3000, kills: 30, matchesPlayed: 5 },
+        { serverId: server.id, steamId: "3", displayName: "Carol", xp: 2600, kills: 40, matchesPlayed: 4 },
+        { serverId: server.id, steamId: "4", displayName: "Dave", xp: 50, kills: 1, matchesPlayed: 1 },
+      ]);
+      await db.insert(playerSeasonStats).values([
+        { seasonId: past.id, serverId: server.id, steamId: "1", xp: 5000, kills: 60, matchesPlayed: 6 },
+        { seasonId: past.id, serverId: server.id, steamId: "2", xp: 2200, kills: 25, matchesPlayed: 3 },
+        { seasonId: past.id, serverId: server.id, steamId: "3", xp: 1700, kills: 10, matchesPlayed: 1 },
+        { seasonId: past.id, serverId: server.id, steamId: "4", xp: 50, kills: 1, matchesPlayed: 1 },
+        // Alice hasn't played this Season.
+        { seasonId: current.id, serverId: server.id, steamId: "2", xp: 800, kills: 5, matchesPlayed: 2 },
+        { seasonId: current.id, serverId: server.id, steamId: "3", xp: 900, kills: 30, matchesPlayed: 3 },
+        // Dave got a kill in a still-open Match: a row, but no Match played yet.
+        { seasonId: current.id, serverId: server.id, steamId: "4", xp: 0, kills: 1, matchesPlayed: 0 },
+      ]);
+
+      return { past, current };
+    }
+
+    it("ranks only players who played a Match in that Season, by their Season totals", async () => {
+      const { past, current } = await seedTwoSeasons();
+
+      const thisSeason = await getRankings(db, BASE_URL, "xp", 1, { kind: "season", season: current });
+      expect(thisSeason.rows.map((row) => [row.displayName, row.value])).toEqual([
+        ["Carol", 900],
+        ["Bob", 800],
+      ]);
+      expect(thisSeason.totalCount).toBe(2);
+      expect(thisSeason.season).toEqual({ number: current.number, name: "Dust Storm", startedAt: current.startedAt });
+
+      const byKills = await getRankings(db, BASE_URL, "kills", 1, { kind: "season", season: current });
+      expect(byKills.rows.map((row) => [row.displayName, row.value])).toEqual([
+        ["Carol", 30],
+        ["Bob", 5],
+      ]);
+
+      const lastSeason = await getRankings(db, BASE_URL, "xp", 1, { kind: "season", season: past });
+      expect(lastSeason.rows.map((row) => [row.displayName, row.value])).toEqual([
+        ["Alice", 5000],
+        ["Bob", 2200],
+        ["Carol", 1700],
+        ["Dave", 50],
+      ]);
+
+      const career = await getRankings(db, BASE_URL, "xp", 1, { kind: "career" });
+      expect(career.rows.map((row) => [row.displayName, row.value])).toEqual([
+        ["Alice", 5000],
+        ["Bob", 3000],
+        ["Carol", 2600],
+        ["Dave", 50],
+      ]);
+      expect(career).not.toHaveProperty("season");
+    });
+
+    it("shows each player's career level, never one derived from Season XP", async () => {
+      const { current } = await seedTwoSeasons();
+
+      const [carol] = (await getRankings(db, BASE_URL, "xp", 1, { kind: "season", season: current })).rows;
+
+      // 2,600 career XP is level 3; Carol's 900 Season XP alone would be level 1.
+      expect(carol).toMatchObject({ displayName: "Carol", value: 900, level: 3 });
+    });
   });
 });

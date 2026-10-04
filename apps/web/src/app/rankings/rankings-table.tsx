@@ -39,21 +39,24 @@ function buildColumns(valueLabel: string): SortableColumn<RankingRow>[] {
 export function RankingsTable({
   rows,
   metric,
+  seasonParam,
   valueLabel,
 }: {
   rows: RankingRow[];
   metric: RankingMetric;
+  seasonParam: string;
   valueLabel: string;
 }) {
   const columns = buildColumns(valueLabel);
 
   return (
     <SortableTable
-      // Rows for a different metric or page carry different steamIds in
-      // general, but a player can appear at the same rowKey position across
-      // pages - remounting on metric change resets the column sort back to
-      // the server's own ranking instead of carrying over a stale sort.
-      key={metric}
+      // Rows for a different metric, Season, or page carry different
+      // steamIds in general, but a player can appear at the same rowKey
+      // position across pages - remounting on metric or Season change
+      // resets the column sort back to the server's own ranking instead of
+      // carrying over a stale sort.
+      key={`${seasonParam}:${metric}`}
       columns={columns}
       rows={rows}
       rowKey={(row) => row.steamId}

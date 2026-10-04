@@ -82,7 +82,7 @@ A person who signs in to run the site: moderating players and, for admins, tunin
 _Avoid_: User, Account, Admin (that is a Role, not a kind of person)
 
 **Role**:
-What a Staff Member is allowed to do. `moderator` can ban and unban players. `admin` can do everything a moderator can, plus edit game configuration, generate feed tokens, and manage Staff Members and their Roles. The last remaining admin can never be removed or demoted.
+What a Staff Member is allowed to do. `moderator` can ban and unban players. `admin` can do everything a moderator can, plus edit game configuration, generate feed tokens, start Seasons, and manage Staff Members and their Roles. The last remaining admin can never be removed or demoted.
 _Avoid_: Permission level, group
 
 **Verified Player**:

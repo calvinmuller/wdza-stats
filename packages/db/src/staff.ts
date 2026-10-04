@@ -17,6 +17,7 @@ export const STAFF_ACTIONS = [
   "update_kick_vote_settings",
   "cancel_kick_vote",
   "generate_feed_token",
+  "start_season",
   "add_staff_member",
   "change_staff_role",
   "reset_staff_password",

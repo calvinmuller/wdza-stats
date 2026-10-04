@@ -18,7 +18,9 @@ import {
   playerSeasonStats,
   playerChallengeProgress,
   playerMatchStats,
+  currentSeason,
   seasons,
+  startNextSeason,
   servers,
   xpRewards,
   xpTransactions,
@@ -27,7 +29,7 @@ import {
   type Snapshot,
   type SnapshotPlayer,
 } from "@wdza-stats/db";
-import { and, desc, eq, gt, inArray, isNotNull, sum } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, sum } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyAchievementUnlockDrafts,
@@ -2272,16 +2274,11 @@ describe("Seasons: PlayerSeasonStat alongside PlayerCareerStat (integration)", (
     return server;
   }
 
-  async function currentSeason() {
-    const [row] = await db.select().from(seasons).orderBy(desc(seasons.number)).limit(1);
-    return row;
-  }
-
-  // Stands in for an admin starting the next Season (ticket 02).
-  async function startNextSeason() {
-    const current = await currentSeason();
-    const [row] = await db.insert(seasons).values({ number: current.number + 1 }).returning();
-    return row;
+  // What the admin's "Start Season N" button does.
+  async function startNextSeasonNow() {
+    const result = await startNextSeason(db, { number: (await currentSeason(db)).number + 1, name: "" });
+    if (!result.ok) throw new Error(result.error);
+    return result.season;
   }
 
   async function seasonStatsFor(seasonId: number, serverId: number, steamId: string) {
@@ -2344,7 +2341,7 @@ describe("Seasons: PlayerSeasonStat alongside PlayerCareerStat (integration)", (
   });
 
   it("keeps a single Season's totals identical to career totals", async () => {
-    baselineSeasonNumber = (await currentSeason()).number;
+    baselineSeasonNumber = (await currentSeason(db)).number;
     const server = await seedServer();
     const client = scriptedRconClient([
       { status: statusFixture({ map: "Sandstorm" }), players: alice(0) },
@@ -2357,7 +2354,7 @@ describe("Seasons: PlayerSeasonStat alongside PlayerCareerStat (integration)", (
       await pollAndPersistSnapshot(db, client, server.id);
     }
 
-    const season = await currentSeason();
+    const season = await currentSeason(db);
     const career = await careerStatsFor(server.id, "1");
     const seasonStats = await seasonStatsFor(season.id, server.id, "1");
 
@@ -2380,9 +2377,9 @@ describe("Seasons: PlayerSeasonStat alongside PlayerCareerStat (integration)", (
   });
 
   it("credits a Match open when a new Season starts to the old Season in full, and the next Match to the new one", async () => {
-    baselineSeasonNumber = (await currentSeason()).number;
+    baselineSeasonNumber = (await currentSeason(db)).number;
     const server = await seedServer();
-    const oldSeason = await currentSeason();
+    const oldSeason = await currentSeason(db);
     const client = scriptedRconClient([
       { status: statusFixture({ map: "Sandstorm" }), players: alice(0) }, // Match A opens
       { status: statusFixture({ map: "Sandstorm" }), players: alice(1) },
@@ -2396,7 +2393,7 @@ describe("Seasons: PlayerSeasonStat alongside PlayerCareerStat (integration)", (
     await pollAndPersistSnapshot(db, client, server.id);
     const xpBeforeNewSeason = (await seasonStatsFor(oldSeason.id, server.id, "1")).xp;
 
-    const newSeason = await startNextSeason();
+    const newSeason = await startNextSeasonNow();
 
     await pollAndPersistSnapshot(db, client, server.id);
 

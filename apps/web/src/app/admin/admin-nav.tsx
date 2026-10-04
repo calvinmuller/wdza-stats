@@ -12,6 +12,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/challenges", label: "Challenges", adminOnly: true },
   { href: "/admin/achievements", label: "Achievements", adminOnly: true },
   { href: "/admin/notifications", label: "Notifications", adminOnly: true },
+  { href: "/admin/seasons", label: "Seasons", adminOnly: true },
   { href: "/admin/server-token", label: "Server Token", adminOnly: true },
   { href: "/admin/staff", label: "Staff", adminOnly: true },
 ];

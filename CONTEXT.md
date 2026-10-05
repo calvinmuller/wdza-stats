@@ -34,7 +34,7 @@ A numbered period of play (Season 1, Season 2, …), optionally also named, shar
 _Avoid_: Period, split, ladder, reset, wipe (nothing is wiped; career totals continue)
 
 **PlayerSeasonStat**:
-A player's totals within one Season on one Server: kills, deaths, cash earned, matches played/won/lost, MVPs, highest KillStreak, and XP earned during that Season. The per-Season counterpart of PlayerCareerStat, which is the sum over all Seasons. A player has no PlayerSeasonStat for a Season in which they played no Match on that Server. Level is never per-Season: it is always derived from career XP.
+A player's totals within one Season on one Server: kills, deaths, cash earned, matches played/won/lost, MVPs, highest KillStreak, and XP earned during that Season. The per-Season counterpart of PlayerCareerStat, which is the sum over all Seasons. A player who played no Match in a Season on that Server is not counted in it (their PlayerSeasonStat, if any, is only one a still-open Match has started, with no Match played yet). Level is never per-Season: it is always derived from career XP.
 _Avoid_: Season record, season profile
 
 **SteamProfile**:
@@ -82,7 +82,7 @@ A person who signs in to run the site: moderating players and, for admins, tunin
 _Avoid_: User, Account, Admin (that is a Role, not a kind of person)
 
 **Role**:
-What a Staff Member is allowed to do. `moderator` can ban and unban players. `admin` can do everything a moderator can, plus edit game configuration, generate feed tokens, start Seasons, and manage Staff Members and their Roles. The last remaining admin can never be removed or demoted.
+What a Staff Member is allowed to do. `moderator` can ban and unban players. `admin` can do everything a moderator can, plus edit game configuration, generate feed tokens, start (and withdraw a just-started) Seasons, and manage Staff Members and their Roles. The last remaining admin can never be removed or demoted.
 _Avoid_: Permission level, group
 
 **Verified Player**:

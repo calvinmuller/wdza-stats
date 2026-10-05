@@ -21,6 +21,7 @@ import {
   currentSeason,
   seasons,
   startNextSeason,
+  withdrawSeason,
   servers,
   xpRewards,
   xpTransactions,
@@ -2426,5 +2427,37 @@ describe("Seasons: PlayerSeasonStat alongside PlayerCareerStat (integration)", (
     expect(newStats.xp).toBe(await ledgerXpForMatch(matchB.id, "1"));
     expect(career).toMatchObject({ kills: 5, matchesPlayed: 2, highestKillStreak: 3 });
     expect(career.xp).toBe(oldStats.xp + newStats.xp);
+  });
+
+  it("folds a withdrawn Season's open Match, and the XP it already earned, back into the previous Season", async () => {
+    baselineSeasonNumber = (await currentSeason(db)).number;
+    const server = await seedServer();
+    const previous = await currentSeason(db);
+    const started = await startNextSeasonNow();
+    const client = scriptedRconClient([
+      { status: statusFixture({ map: "Sandstorm" }), players: alice(0) }, // opens in the new Season
+      { status: statusFixture({ map: "Sandstorm" }), players: alice(2) },
+      { status: statusFixture({ map: "Sandstorm" }), players: alice(3) }, // after the withdrawal
+      { status: statusFixture({ map: "Deadcity" }), players: playersFixture([]) }, // closes it
+    ]);
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+    const earned = await seasonStatsFor(started.id, server.id, "1");
+    expect(earned.xp).toBeGreaterThan(0);
+
+    expect(await withdrawSeason(db, { number: started.number })).toMatchObject({ ok: true });
+
+    await pollAndPersistSnapshot(db, client, server.id);
+    await pollAndPersistSnapshot(db, client, server.id);
+
+    const [match] = await db.select().from(matches).where(eq(matches.serverId, server.id)).orderBy(matches.id);
+    expect(match.seasonId).toBe(previous.id);
+    const folded = await seasonStatsFor(previous.id, server.id, "1");
+    const career = await careerStatsFor(server.id, "1");
+    expect(folded).toMatchObject({ kills: 3, matchesPlayed: 1, highestKillStreak: 3 });
+    expect(folded.xp).toBeGreaterThan(earned.xp);
+    expect(folded.xp).toBe(await ledgerXpForMatch(match.id, "1"));
+    expect(career).toMatchObject({ kills: 3, matchesPlayed: 1, xp: folded.xp });
   });
 });

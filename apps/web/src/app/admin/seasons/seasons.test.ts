@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { desc, gt } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { currentSeason, seasons, staffAuditLog, staffMembers, type StaffRole } from "@wdza-stats/db";
+import { currentSeason, seasons, startNextSeason, staffAuditLog, staffMembers, type StaffRole } from "@wdza-stats/db";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createStaffMember } from "@/lib/staff";
@@ -14,7 +14,7 @@ vi.mock("next/navigation", async (importOriginal) => ({
   useRouter: () => ({}),
 }));
 
-const { startSeasonAction } = await import("./actions");
+const { startSeasonAction, withdrawSeasonAction } = await import("./actions");
 const { default: SeasonsPage } = await import("./page");
 
 const PASSWORD = "correct horse battery";
@@ -99,6 +99,52 @@ describe("startSeasonAction", () => {
   });
 });
 
+describe("withdrawSeasonAction", () => {
+  // Started directly, so only the withdrawal goes through the action.
+  async function startedSeason() {
+    const result = await startNextSeason(db, { number: baseline + 1, name: "Dust Storm" });
+    if (!result.ok) throw new Error(result.error);
+    return result.season;
+  }
+
+  const withdraw = (number: number) => withdrawSeasonAction(null, form({ number: String(number) }));
+
+  it("refuses an anonymous caller and a moderator, and withdraws nothing", async () => {
+    const season = await startedSeason();
+
+    await expect(withdraw(season.number)).rejects.toThrow("Forbidden");
+    await signInAs("moderator");
+    await expect(withdraw(season.number)).rejects.toThrow("Forbidden");
+
+    expect(await currentSeason(db)).toEqual(season);
+    expect(await db.select().from(staffAuditLog)).toHaveLength(0);
+  });
+
+  it("lets an admin withdraw the just-started Season, recorded in the audit log", async () => {
+    const season = await startedSeason();
+    const admin = await signInAs("admin");
+
+    expect(await withdraw(season.number)).toEqual({ ok: true });
+
+    expect((await currentSeason(db)).number).toBe(baseline);
+    const [entry] = await db.select().from(staffAuditLog).orderBy(desc(staffAuditLog.id));
+    expect(entry).toMatchObject({
+      staffMemberId: admin.id,
+      action: "withdraw_season",
+      target: String(season.number),
+      detail: { name: "Dust Storm" },
+    });
+  });
+
+  it("reports a refusal without recording anything", async () => {
+    await startedSeason();
+    await signInAs("admin");
+
+    expect(await withdraw(baseline)).toMatchObject({ ok: false });
+    expect(await db.select().from(staffAuditLog)).toHaveLength(0);
+  });
+});
+
 describe("SeasonsPage", () => {
   it("shows the current Season, offers the next, and lists every Season with its start", async () => {
     await signInAs("admin");
@@ -111,6 +157,16 @@ describe("SeasonsPage", () => {
     expect(html).toContain(`Start Season ${baseline + 2}`);
     expect(html).toContain("Season 1");
     expect(html).toMatch(/\d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}:\d{2} UTC/);
+  });
+
+  it("offers to withdraw the current Season only while it can be withdrawn", async () => {
+    await signInAs("admin");
+    const before = renderToStaticMarkup(await SeasonsPage());
+    if (baseline === 1) expect(before).not.toContain("Withdraw Season");
+
+    await startSeasonAction(null, form({ number: String(baseline + 1), name: "" }));
+
+    expect(renderToStaticMarkup(await SeasonsPage())).toContain(`Withdraw Season ${baseline + 1}`);
   });
 
   it("sends an anonymous visitor to sign in and 404s a moderator", async () => {

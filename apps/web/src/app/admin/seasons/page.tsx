@@ -1,9 +1,10 @@
-import { listSeasons, SEASON_NAME_MAX_LENGTH } from "@wdza-stats/db";
+import { listSeasons, SEASON_NAME_MAX_LENGTH, withdrawableSeason } from "@wdza-stats/db";
+import { ActionForm } from "@/components/action-form";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format-date";
 import { requireStaffPage } from "@/lib/require-staff";
-import { AdminShell } from "../admin-shell";
-import { startSeasonAction } from "./actions";
+import { AdminShell, dangerButtonClass, rowClass } from "../admin-shell";
+import { startSeasonAction, withdrawSeasonAction } from "./actions";
 import { StartSeasonForm } from "./start-season-form";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export default async function SeasonsPage() {
   // Admin-only: starting a Season switches every public leaderboard.
   const staff = await requireStaffPage("admin");
   // Newest first, and Season 1 always exists, so the first is the current one.
-  const seasons = await listSeasons(db);
+  const [seasons, withdrawable] = await Promise.all([listSeasons(db), withdrawableSeason(db)]);
   const current = seasons[0];
 
   return (
@@ -29,6 +30,28 @@ export default async function SeasonsPage() {
           <span className="text-zinc-500">, started {formatDateTime(current.startedAt.toISOString())}</span>
         </p>
       </section>
+
+      {withdrawable && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-xl text-zinc-100">Withdraw Season {withdrawable.number}</h2>
+          <p className="max-w-2xl text-xs text-zinc-500">
+            Started by mistake? Until one of its Matches closes, Season {withdrawable.number} can be withdrawn:
+            Season {withdrawable.number - 1} becomes current again, and Matches in progress, with the XP and
+            kill streaks they have earned so far, count towards Season {withdrawable.number - 1}.
+          </p>
+          <ActionForm
+            action={withdrawSeasonAction}
+            className={rowClass}
+            successMessage="The Season has been withdrawn."
+            confirm={`Withdraw Season ${withdrawable.number}${withdrawable.name ? ` (${withdrawable.name})` : ""}? Season ${withdrawable.number - 1} becomes current again, and every leaderboard will switch back to it.`}
+          >
+            <input type="hidden" name="number" value={withdrawable.number} />
+            <button type="submit" className={dangerButtonClass}>
+              Withdraw Season {withdrawable.number}
+            </button>
+          </ActionForm>
+        </section>
+      )}
 
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-xl text-zinc-100">Start Season {current.number + 1}</h2>

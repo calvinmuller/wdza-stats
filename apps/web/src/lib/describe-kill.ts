@@ -60,7 +60,7 @@ const WEAPON_NAMES: Record<string, string> = {
   "Id.Item.TAR21": "TAR-21",
 };
 
-function weaponName(cause: string | null): string | null {
+export function weaponName(cause: string | null): string | null {
   if (!cause) return null;
   return (
     WEAPON_NAMES[cause] ?? cause.replace(/^Id\.Item\./, "").replaceAll("_", " ")

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AchievementBadges } from "@/components/achievement-badges";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { PlayerMatchHistoryTable } from "@/components/player-match-history-table";
+import { PlayerWeapons } from "@/components/player-weapons";
 import { SeasonPicker } from "@/components/season-picker";
 import { SteamAvatar } from "@/components/steam-avatar";
 import { db } from "@/lib/db";
@@ -23,6 +24,7 @@ import { resolveSeasonScope } from "@/lib/season-scope";
 import { getServerByBaseUrl } from "@/lib/server-lookup";
 import { getSteamProfile } from "@/lib/steam-profile-lookup";
 import { isVerifiedPlayer } from "@/lib/verified-player";
+import { getPlayerWeaponStats } from "@/lib/weapon-stats";
 
 // A DB read via drizzle isn't a Request-time API, so Next won't otherwise
 // know this route needs fresh data on every request - force it dynamic so
@@ -60,6 +62,7 @@ export default async function PlayerPage({
     steamProfile,
     verified,
     allSeasons,
+    weapons,
   ] = await Promise.all([
     getPlayerStatsInScope(db, CONFIGURED_SERVER_BASE_URL, steamId, scope),
     getPlayerAchievements(db, CONFIGURED_SERVER_BASE_URL, steamId),
@@ -69,6 +72,7 @@ export default async function PlayerPage({
     getSteamProfile(db, steamId),
     isVerifiedPlayer(db, steamId),
     listSeasons(db),
+    server ? getPlayerWeaponStats(db, server.id, steamId, scope) : Promise.resolve([]),
   ]);
 
   const playerHref = (season: string) => `/players/${steamId}?${new URLSearchParams({ season })}`;
@@ -160,6 +164,8 @@ export default async function PlayerPage({
           ))}
         </dl>
       )}
+
+      <PlayerWeapons weapons={weapons} />
 
       <div className="flex flex-col gap-3">
         <h2 className="text-xl text-zinc-100">Achievements</h2>

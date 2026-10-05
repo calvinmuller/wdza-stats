@@ -5,6 +5,7 @@ import {
   createDb,
   currentSeason,
   dailyPeriodKey,
+  kills,
   playerAchievements,
   playerCareerStats,
   playerChallengeProgress,
@@ -49,6 +50,7 @@ afterEach(async () => {
   }
   await db.delete(playerAchievements);
   await db.delete(playerCareerStats);
+  await db.delete(kills);
   await db.delete(servers);
   await db.delete(steamProfiles);
   await db.delete(steamAchievementSchema);
@@ -121,6 +123,63 @@ describe("PlayerPage", () => {
     expect(html).toContain("5.00");
     expect(html).toContain("2500");
     expect(html).toContain("4");
+  });
+});
+
+describe("PlayerPage weapons", () => {
+  async function seedKills(causes: string[]) {
+    const [server] = await db.select().from(servers).limit(1);
+    await db.insert(kills).values(
+      causes.map((cause, n) => ({
+        serverId: server.id,
+        eventId: `event-${n}`,
+        instanceId: "boot",
+        gameMatchId: "game-match",
+        eventTime: n,
+        map: "Kavkazi",
+        killerSteamId: "1",
+        killerName: "Alice",
+        victimSteamId: "2",
+        victimName: "Bob",
+        cause,
+        headshot: n === 0,
+        distanceM: 50,
+        tags: [],
+      })),
+    );
+  }
+
+  it("shows the player's top three guns and every gun in a collapsed list", async () => {
+    await seedPlayer("1", "Alice");
+    await seedKills([
+      "Id.Item.AK74M",
+      "Id.Item.AK74M",
+      "Id.Item.AK74M",
+      "Id.Item.AK74M",
+      "Id.Item.SV98",
+      "Id.Item.SV98",
+      "Id.Item.SV98",
+      "Id.Item.M4",
+      "Id.Item.M4",
+      "Id.Item.Glock17",
+    ]);
+
+    const html = await renderPage("1");
+
+    const podium = html.slice(html.indexOf("Top guns"), html.indexOf("<details"));
+    expect(podium).toMatch(/1st.*AK-74M.*4 kills.*25% headshots.*2nd.*SV-98.*3rd.*M4/s);
+    expect(podium).not.toContain("Glock 17");
+    expect(html).toContain("Show all 4 weapons");
+    expect(html.slice(html.indexOf("<details"))).toContain("Glock 17");
+  });
+
+  it("says so when the kill feed has no Kills for the player", async () => {
+    await seedPlayer("1", "Alice");
+
+    const html = await renderPage("1");
+
+    expect(html).toContain("No kills recorded by the kill feed yet.");
+    expect(html).not.toContain("<details");
   });
 });
 

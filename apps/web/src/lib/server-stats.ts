@@ -3,6 +3,7 @@ import { and, eq, isNotNull, notInArray } from "drizzle-orm";
 import { getBannedSteamIds } from "./banned-players";
 import { getFactionColors } from "./live-snapshot";
 import type { SeasonScope } from "./season-param";
+import { playedInSeason } from "./season-stats";
 import { getServerByBaseUrl } from "./server-lookup";
 
 export interface FactionWins {
@@ -29,12 +30,11 @@ const EMPTY_STATS: ServerStatsView = {
 
 /**
  * Summarizes a Server's totals - all-time for Career, or one Season's:
- * closed Matches, kills/deaths (summed across every PlayerCareerStat or
- * PlayerSeasonStat row), unique players, and how many closed Matches each
- * Faction has won - highest win count first. Kills and deaths include those
- * from a still-open Match, in a Season as in Career, so the Seasons' totals
- * always add up to Career's; unique players in a Season are those who have
- * played a Match in it. A Match closed before `winningFaction` existed
+ * closed Matches, kills/deaths (summed across every PlayerCareerStat, or every
+ * PlayerSeasonStat of a player who has played a Match in the Season), unique
+ * players, and how many closed Matches each Faction has won - highest win
+ * count first. Kills and deaths only ever arrive when a Match closes, so the
+ * Seasons' totals add up to Career's. A Match closed before `winningFaction` existed
  * contributes to totalMatches but not to factionWins. Returns all-zero/empty
  * when the Server isn't seeded.
  */
@@ -54,11 +54,7 @@ export async function getServerStats(
   const [statRows, closedMatches, factionColors] = await Promise.all([
     scope.kind === "career"
       ? db
-          .select({
-            kills: playerCareerStats.kills,
-            deaths: playerCareerStats.deaths,
-            matchesPlayed: playerCareerStats.matchesPlayed,
-          })
+          .select({ kills: playerCareerStats.kills, deaths: playerCareerStats.deaths })
           .from(playerCareerStats)
           .where(
             and(
@@ -67,16 +63,11 @@ export async function getServerStats(
             ),
           )
       : db
-          .select({
-            kills: playerSeasonStats.kills,
-            deaths: playerSeasonStats.deaths,
-            matchesPlayed: playerSeasonStats.matchesPlayed,
-          })
+          .select({ kills: playerSeasonStats.kills, deaths: playerSeasonStats.deaths })
           .from(playerSeasonStats)
           .where(
             and(
-              eq(playerSeasonStats.seasonId, scope.season.id),
-              eq(playerSeasonStats.serverId, server.id),
+              playedInSeason(scope.season.id, server.id),
               notInArray(playerSeasonStats.steamId, bannedSteamIds),
             ),
           ),
@@ -116,12 +107,7 @@ export async function getServerStats(
     totalMatches: closedMatches.length,
     totalKills: statRows.reduce((sum, row) => sum + row.kills, 0),
     totalDeaths: statRows.reduce((sum, row) => sum + row.deaths, 0),
-    // Career counts every player seen on the Server, as before Seasons; a
-    // Season's row can exist before its player has played a Match in it.
-    uniquePlayers:
-      scope.kind === "career"
-        ? statRows.length
-        : statRows.filter((row) => row.matchesPlayed > 0).length,
+    uniquePlayers: statRows.length,
     factionWins,
   };
 }

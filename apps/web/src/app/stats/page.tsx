@@ -39,7 +39,7 @@ export default async function StatsPage({
       <SeasonPicker
         seasons={allSeasons}
         selected={scope}
-        hrefFor={(season) => `/stats?${new URLSearchParams({ season })}`}
+        hrefFor={(option) => `/stats?${new URLSearchParams({ season: option })}`}
       />
 
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">

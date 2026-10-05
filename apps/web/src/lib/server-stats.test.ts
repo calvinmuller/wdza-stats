@@ -242,16 +242,15 @@ describe("getServerStats", () => {
       await db.insert(playerCareerStats).values([
         { serverId: server.id, steamId: "1", displayName: "Alice", kills: 13, deaths: 6, matchesPlayed: 4 },
         { serverId: server.id, steamId: "2", displayName: "Bob", kills: 5, deaths: 9, matchesPlayed: 3 },
-        { serverId: server.id, steamId: "3", displayName: "Carol", kills: 2, deaths: 0, matchesPlayed: 0 },
+        { serverId: server.id, steamId: "3", displayName: "Carol", xp: 20, highestKillStreak: 2 },
       ]);
       await db.insert(playerSeasonStats).values([
         { seasonId: past.id, serverId: server.id, steamId: "1", kills: 10, deaths: 4, matchesPlayed: 3 },
         { seasonId: past.id, serverId: server.id, steamId: "2", kills: 5, deaths: 9, matchesPlayed: 3 },
         { seasonId: current.id, serverId: server.id, steamId: "1", kills: 3, deaths: 2, matchesPlayed: 1 },
-        // Carol's only kills are in the open Match: they count toward the
-        // Season's kills (as they do toward Career's), but she hasn't played
-        // a Match in it yet.
-        { seasonId: current.id, serverId: server.id, steamId: "3", kills: 2, deaths: 0, matchesPlayed: 0 },
+        // Carol's only play is in the still-open Match: XP and a streak so
+        // far, but no Match played - kills only arrive when a Match closes.
+        { seasonId: current.id, serverId: server.id, steamId: "3", xp: 20, highestKillStreak: 2 },
       ]);
 
       const lastSeason = await getServerStats(db, BASE_URL, { kind: "season", season: past });
@@ -263,7 +262,7 @@ describe("getServerStats", () => {
         ["Lonestar", 2],
         ["Valkyra", 1],
       ]);
-      expect(thisSeason).toMatchObject({ totalMatches: 1, totalKills: 5, totalDeaths: 2, uniquePlayers: 1 });
+      expect(thisSeason).toMatchObject({ totalMatches: 1, totalKills: 3, totalDeaths: 2, uniquePlayers: 1 });
       expect(thisSeason.factionWins.map(({ faction, wins }) => [faction, wins])).toEqual([["Valkyra", 1]]);
 
       expect(lastSeason.totalMatches + thisSeason.totalMatches).toBe(career.totalMatches);

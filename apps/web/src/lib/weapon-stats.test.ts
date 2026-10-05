@@ -72,8 +72,8 @@ describe("getPlayerWeaponStats", () => {
     const stats = await getPlayerWeaponStats(db, server.id, ALICE, { kind: "career" });
 
     expect(stats).toEqual([
-      { cause: "Id.Item.AK74M", weapon: "AK-74M", kills: 3, headshots: 1, longestM: 40, averageM: 30 },
-      { cause: "Id.Item.SV98", weapon: "SV-98", kills: 1, headshots: 1, longestM: 300, averageM: 300 },
+      { cause: "Id.Item.AK74M", weapon: "AK74", kills: 3, headshots: 1, longestM: 40, averageM: 30 },
+      { cause: "Id.Item.SV98", weapon: "SV98", kills: 1, headshots: 1, longestM: 300, averageM: 300 },
     ]);
   });
 
@@ -83,7 +83,7 @@ describe("getPlayerWeaponStats", () => {
 
     const [stat] = await getPlayerWeaponStats(db, server.id, ALICE, { kind: "career" });
 
-    expect(stat).toMatchObject({ weapon: "C4", longestM: null, averageM: null });
+    expect(stat).toMatchObject({ weapon: "C4 charge", longestM: null, averageM: null });
   });
 
   it("counts only Kills the player made, not deaths, suicides or causeless kills", async () => {
@@ -98,7 +98,7 @@ describe("getPlayerWeaponStats", () => {
     const stats = await getPlayerWeaponStats(db, server.id, ALICE, { kind: "career" });
 
     expect(stats.map(({ weapon, kills }) => ({ weapon, kills }))).toEqual([
-      { weapon: "AK-74M", kills: 1 },
+      { weapon: "AK74", kills: 1 },
     ]);
   });
 
@@ -141,8 +141,8 @@ describe("getPlayerWeaponStats", () => {
     const weapons = async (scope: Parameters<typeof getPlayerWeaponStats>[3]) =>
       (await getPlayerWeaponStats(db, server.id, ALICE, scope)).map((stat) => stat.weapon).sort();
 
-    expect(await weapons({ kind: "season", season: past })).toEqual(["SV-98"]);
-    expect(await weapons({ kind: "season", season: current })).toEqual(["AK-74M"]);
-    expect(await weapons({ kind: "career" })).toEqual(["AK-74M", "M4", "SV-98"]);
+    expect(await weapons({ kind: "season", season: past })).toEqual(["SV98"]);
+    expect(await weapons({ kind: "season", season: current })).toEqual(["AK74"]);
+    expect(await weapons({ kind: "career" })).toEqual(["AK74", "M4", "SV98"]);
   });
 });

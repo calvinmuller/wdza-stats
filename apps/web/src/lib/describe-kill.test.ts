@@ -34,7 +34,7 @@ describe("describeKill", () => {
       },
       victim: { steamId: "76561198000000002", name: "Bob", faction: "Valkyra" },
       verb: "killed",
-      weapon: "AK-74M",
+      weapon: "AK74",
       headshot: false,
       distanceM: null,
     });
@@ -45,12 +45,18 @@ describe("describeKill", () => {
     ["Id.Item.A91", "A-91"],
     ["Id.Item.WEPN_029", "Galil"],
     ["Id.Item.RPG7", "RPG-7"],
-    ["Id.Item.M67Grenade", "M67 grenade"],
+    ["Id.Item.M67Grenade", "M67 frag grenade"],
     ["Id.Buildable.BarbedWire", "Barbed wire"],
-    ["ID.Item.BuildTool.Hammer.Large", "Hammer (large)"],
-    ["Vehicle.Variant.Land.Wheeled.Kodiak.MachineGun", "Kodiak (machine gun)"],
-    ["Id.Vehicle.WeaponExtension.ROT_02.30mmCannon", "ROT 02 30 mm cannon"],
+    ["ID.Item.BuildTool.Hammer.Large", "Large hammer"],
+    ["Vehicle.Variant.Land.Wheeled.Kodiak.MachineGun", "Kodiak (M249)"],
+    ["Vehicle.Variant.Land.Wheeled.Humvee.MachineGun", "Humvee (M249)"],
+    ["Vehicle.Variant.Land.Tracked.TNK_01.AntiAir", "Flakpanzer Gepard"],
+    ["Vehicle.Variant.Air.Rotary.Littlebird.MountedMachineGuns", "AH-6M"],
+    ["Vehicle.Variant.Air.Rotary.ROT_04.Default", "Z20 Lakota"],
+    ["Id.Vehicle.WeaponExtension.ROT_02.30mmCannon", "Havoc 2A42 autocannon"],
     ["Id.Vehicle.WeaponExtension.STN_03.MainBarrel", "STN 03 main gun"],
+    ["Id.Vehicle.WeaponExtension.ROT_03.RocketPods", "AH-6R rockets"],
+    ["Id.Vehicle.WeaponExtension.TNK_01.Artillery", "SPH-2 artillery"],
   ])("names %s as %s", (cause, name) => {
     expect(describeKill(kill({ cause })).weapon).toBe(name);
   });

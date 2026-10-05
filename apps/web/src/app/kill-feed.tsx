@@ -64,7 +64,7 @@ export function useKillFeed(): KillView[] {
   return kills;
 }
 
-/** One Kill as a line of the feed: "X killed Y with an AK-74M", and so on. */
+/** One Kill as a line of the feed: "X killed Y with an AK74", and so on. */
 export function KillLine({
   kill,
   factionColors,

@@ -171,10 +171,10 @@ describe("PlayerPage weapons", () => {
     const html = await renderPage("1");
 
     const top = html.slice(html.indexOf("Top weapons"), html.indexOf("<details"));
-    expect(top).toMatch(/AK-74M.*4 kills, 1 headshot<.*SV-98.*3 kills, 0 headshots.*M4.*2 kills/s);
-    expect(top).not.toContain("Glock 17");
+    expect(top).toMatch(/AK74.*4 kills, 1 headshot<.*SV98.*3 kills, 0 headshots.*M4.*2 kills/s);
+    expect(top).not.toContain("GGX 17");
     expect(html).toContain("Show all 4 weapons");
-    expect(html.slice(html.indexOf("<details"))).toContain("Glock 17");
+    expect(html.slice(html.indexOf("<details"))).toContain("GGX 17");
   });
 
   it("says so when the kill feed has no Kills for the player", async () => {

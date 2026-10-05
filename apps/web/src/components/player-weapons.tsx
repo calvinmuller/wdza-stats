@@ -1,57 +1,76 @@
+import { StatPanel } from "@/components/stat-panel";
 import { WeaponStatsTable } from "@/components/weapon-stats-table";
-import { formatMetres, headshotPercent } from "@/lib/weapon-stat-format";
+import { getWeaponImageUrl } from "@/lib/weapon-images";
 import type { WeaponStat } from "@/lib/weapon-stats";
 
-const PODIUM = [
-  { place: "1st", accent: "border-brand-gold-500/60 text-brand-gold-500" },
-  { place: "2nd", accent: "border-zinc-300/40 text-zinc-300" },
-  { place: "3rd", accent: "border-amber-700/60 text-amber-600" },
-];
+const TOP_WEAPONS = 3;
 
-/**
- * A player's top three weapons by kills, with every weapon they've scored a
- * Kill with in a collapsible table below. `weapons` comes from
- * getPlayerWeaponStats, most kills first.
- */
-export function PlayerWeapons({ weapons }: { weapons: WeaponStat[] }) {
+const plural = (count: number, one: string, many: string) =>
+  `${count.toLocaleString("en-US")} ${count === 1 ? one : many}`;
+
+function WeaponThumbnail({ stat }: { stat: WeaponStat }) {
+  const imageUrl = getWeaponImageUrl(stat.cause);
   return (
-    <div className="flex flex-col gap-3">
-      <h2 className="text-xl text-zinc-100">Top guns</h2>
-      {weapons.length === 0 ? (
-        <p className="text-zinc-400">No kills recorded by the kill feed yet.</p>
+    <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded border border-white/10 bg-zinc-950/60">
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imageUrl} alt="" className="h-full w-full object-cover" />
       ) : (
-        <>
-          <ol className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {weapons.slice(0, PODIUM.length).map((stat, index) => (
-              <li
-                key={stat.cause}
-                className={`rounded-lg border bg-zinc-900/60 px-4 py-3 ${PODIUM[index].accent}`}
-              >
-                <p className="text-xs font-medium uppercase tracking-wide">{PODIUM[index].place}</p>
-                <p className="font-display text-xl text-zinc-50">{stat.weapon}</p>
-                <p className="text-sm text-zinc-300">
-                  {stat.kills} {stat.kills === 1 ? "kill" : "kills"}
-                </p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  {headshotPercent(stat)}% headshots &middot; longest {formatMetres(stat.longestM)}
-                </p>
-              </li>
-            ))}
-          </ol>
-
-          {weapons.length > PODIUM.length && (
-            <details className="group">
-              <summary className="cursor-pointer select-none text-sm text-zinc-400 hover:text-zinc-100">
-                <span className="group-open:hidden">Show all {weapons.length} weapons</span>
-                <span className="hidden group-open:inline">Hide all weapons</span>
-              </summary>
-              <div className="mt-3">
-                <WeaponStatsTable weapons={weapons} />
-              </div>
-            </details>
-          )}
-        </>
+        // No art for this weapon yet: a crosshair stands in.
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6 text-zinc-600" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <circle cx="12" cy="12" r="7" />
+          <path d="M12 2v5M12 17v5M2 12h5M17 12h5" />
+        </svg>
       )}
     </div>
+  );
+}
+
+/**
+ * The player's three most-used weapons by kills. `weapons` comes from
+ * getPlayerWeaponStats, most kills first.
+ */
+export function TopWeaponsPanel({ weapons }: { weapons: WeaponStat[] }) {
+  return (
+    <StatPanel title="Top weapons">
+      {weapons.length === 0 ? (
+        <p className="text-sm text-zinc-400">No kills recorded by the kill feed yet.</p>
+      ) : (
+        <ol className="flex flex-col divide-y divide-white/10">
+          {weapons.slice(0, TOP_WEAPONS).map((stat) => (
+            <li key={stat.cause} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
+              <WeaponThumbnail stat={stat} />
+              <div className="min-w-0">
+                <p className="font-display text-lg text-zinc-50">{stat.weapon}</p>
+                <p className="text-sm text-zinc-400">
+                  {plural(stat.kills, "kill", "kills")}, {plural(stat.headshots, "headshot", "headshots")}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+      <p className="text-xs text-zinc-500">
+        Weapon, distance and headshot counts only include kills made after the server&apos;s live kill feed was
+        turned on.
+      </p>
+    </StatPanel>
+  );
+}
+
+/** Every weapon the player has a Kill with, in a collapsed, sortable table. */
+export function AllWeapons({ weapons }: { weapons: WeaponStat[] }) {
+  if (weapons.length <= TOP_WEAPONS) return null;
+
+  return (
+    <details className="group">
+      <summary className="cursor-pointer select-none text-sm text-zinc-400 hover:text-zinc-100">
+        <span className="group-open:hidden">Show all {weapons.length} weapons</span>
+        <span className="hidden group-open:inline">Hide all weapons</span>
+      </summary>
+      <div className="mt-3">
+        <WeaponStatsTable weapons={weapons} />
+      </div>
+    </details>
   );
 }

@@ -6,9 +6,11 @@ import {
   currentSeason,
   dailyPeriodKey,
   kills,
+  matches,
   playerAchievements,
   playerCareerStats,
   playerChallengeProgress,
+  playerMatchStats,
   playerSeasonStats,
   seasons,
   servers,
@@ -51,6 +53,8 @@ afterEach(async () => {
   await db.delete(playerAchievements);
   await db.delete(playerCareerStats);
   await db.delete(kills);
+  await db.delete(playerMatchStats);
+  await db.delete(matches);
   await db.delete(servers);
   await db.delete(steamProfiles);
   await db.delete(steamAchievementSchema);
@@ -149,7 +153,7 @@ describe("PlayerPage weapons", () => {
     );
   }
 
-  it("shows the player's top three guns and every gun in a collapsed list", async () => {
+  it("shows the player's top three weapons and every weapon in a collapsed list", async () => {
     await seedPlayer("1", "Alice");
     await seedKills([
       "Id.Item.AK74M",
@@ -166,9 +170,9 @@ describe("PlayerPage weapons", () => {
 
     const html = await renderPage("1");
 
-    const podium = html.slice(html.indexOf("Top guns"), html.indexOf("<details"));
-    expect(podium).toMatch(/1st.*AK-74M.*4 kills.*25% headshots.*2nd.*SV-98.*3rd.*M4/s);
-    expect(podium).not.toContain("Glock 17");
+    const top = html.slice(html.indexOf("Top weapons"), html.indexOf("<details"));
+    expect(top).toMatch(/AK-74M.*4 kills, 1 headshot<.*SV-98.*3 kills, 0 headshots.*M4.*2 kills/s);
+    expect(top).not.toContain("Glock 17");
     expect(html).toContain("Show all 4 weapons");
     expect(html.slice(html.indexOf("<details"))).toContain("Glock 17");
   });
@@ -180,6 +184,49 @@ describe("PlayerPage weapons", () => {
 
     expect(html).toContain("No kills recorded by the kill feed yet.");
     expect(html).not.toContain("<details");
+  });
+});
+
+describe("PlayerPage personal bests", () => {
+  it("shows the player's best Match for kills, K/D and cash, linking to each", async () => {
+    await seedPlayer("1", "Alice");
+    const [server] = await db.select().from(servers).limit(1);
+    const match = async (kills: number, deaths: number, cash: number) => {
+      const [row] = await db
+        .insert(matches)
+        .values({
+          serverId: server.id,
+          map: "Bakurani",
+          experiences: ["Kinetic Diplomacy"],
+          startedAt: new Date("2026-09-23T15:00:00.000Z"),
+          endedAt: new Date("2026-09-23T16:07:00.000Z"),
+        })
+        .returning();
+      await db
+        .insert(playerMatchStats)
+        .values({ matchId: row.id, steamId: "1", faction: "Lonestar", kills, deaths, cash });
+      return row;
+    };
+    const killsMatch = await match(88, 20, 1000);
+    await match(72, 6, 500);
+    await match(10, 10, 289_090);
+
+    const html = await renderPage("1");
+
+    expect(html).toContain("88 kills");
+    expect(html).toContain("K/D 12.00 (72 to 6)");
+    expect(html).toContain("289,090 cash");
+    expect(html).toContain(`href="/matches/${killsMatch.id}"`);
+    expect(html).toContain("Bakurani on Kinetic Diplomacy, ");
+  });
+
+  it("says so when the player has no completed Matches", async () => {
+    await seedPlayer("1", "Alice");
+
+    const html = await renderPage("1");
+
+    const panel = html.slice(html.indexOf("Personal bests"), html.indexOf("Top weapons"));
+    expect(panel).toContain("No completed matches yet.");
   });
 });
 

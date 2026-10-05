@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { AchievementBadges } from "@/components/achievement-badges";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { PlayerMatchHistoryTable } from "@/components/player-match-history-table";
-import { PlayerWeapons } from "@/components/player-weapons";
+import { PersonalBestsPanel } from "@/components/personal-bests";
+import { AllWeapons, TopWeaponsPanel } from "@/components/player-weapons";
 import { SeasonPicker } from "@/components/season-picker";
 import { SteamAvatar } from "@/components/steam-avatar";
 import { db } from "@/lib/db";
@@ -12,6 +13,7 @@ import { formatDateTime } from "@/lib/format-date";
 import { formatPlaytimeHours } from "@/lib/format-playtime";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { getPlayerMatchHistory } from "@/lib/match-history";
+import { getPlayerPersonalBests } from "@/lib/personal-bests";
 import {
   getPlayerAchievements,
   getPlayerChallengeProgress,
@@ -63,6 +65,7 @@ export default async function PlayerPage({
     verified,
     allSeasons,
     weapons,
+    personalBests,
   ] = await Promise.all([
     getPlayerStatsInScope(db, CONFIGURED_SERVER_BASE_URL, steamId, scope),
     getPlayerAchievements(db, CONFIGURED_SERVER_BASE_URL, steamId),
@@ -73,6 +76,9 @@ export default async function PlayerPage({
     isVerifiedPlayer(db, steamId),
     listSeasons(db),
     server ? getPlayerWeaponStats(db, server.id, steamId, scope) : Promise.resolve([]),
+    server
+      ? getPlayerPersonalBests(db, server.id, steamId, scope)
+      : Promise.resolve({ mostKills: null, bestKd: null, mostCash: null }),
   ]);
 
   const playerHref = (season: string) => `/players/${steamId}?${new URLSearchParams({ season })}`;
@@ -150,22 +156,28 @@ export default async function PlayerPage({
           </Link>
         </p>
       ) : (
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {stats.map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3"
-            >
-              <dt className="text-xs uppercase tracking-wide text-zinc-500">
-                {stat.label}
-              </dt>
-              <dd className="font-display text-2xl text-zinc-50">{stat.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
+        <>
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {stats.map((stat) => (
+              <div
+                key={stat.label}
+                className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3"
+              >
+                <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                  {stat.label}
+                </dt>
+                <dd className="font-display text-2xl text-zinc-50">{stat.value}</dd>
+              </div>
+            ))}
+          </dl>
 
-      <PlayerWeapons weapons={weapons} />
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <PersonalBestsPanel bests={personalBests} />
+            <TopWeaponsPanel weapons={weapons} />
+          </div>
+          <AllWeapons weapons={weapons} />
+        </>
+      )}
 
       <div className="flex flex-col gap-3">
         <h2 className="text-xl text-zinc-100">Achievements</h2>

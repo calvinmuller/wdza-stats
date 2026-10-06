@@ -218,6 +218,13 @@
       "when": 1791150125204,
       "tag": "0030_seasons",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791276936772,
+      "tag": "0031_kills_weapon_index",
+      "breakpoints": true
     }
   ]
 }

@@ -8,8 +8,9 @@ const TOP_WEAPONS = 3;
 const plural = (count: number, one: string, many: string) =>
   `${count.toLocaleString("en-US")} ${count === 1 ? one : many}`;
 
-function WeaponThumbnail({ stat }: { stat: WeaponStat }) {
-  const imageUrl = getWeaponImageUrl(stat.cause);
+/** The weapon's art, or a crosshair stand-in, for a Kill's raw cause tag. */
+export function WeaponThumbnail({ cause }: { cause: string }) {
+  const imageUrl = getWeaponImageUrl(cause);
   return (
     <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded border border-white/10 bg-zinc-950/60">
       {imageUrl ? (
@@ -39,7 +40,7 @@ export function TopWeaponsPanel({ weapons }: { weapons: WeaponStat[] }) {
         <ol className="flex flex-col divide-y divide-white/10">
           {weapons.slice(0, TOP_WEAPONS).map((stat) => (
             <li key={stat.cause} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-              <WeaponThumbnail stat={stat} />
+              <WeaponThumbnail cause={stat.cause} />
               <div className="min-w-0">
                 <p className="font-display text-lg text-zinc-50">{stat.weapon}</p>
                 <p className="text-sm text-zinc-400">

@@ -594,6 +594,13 @@ export const kills = pgTable(
     unique("kills_server_event_unique").on(table.serverId, table.eventId),
     index("kills_killer_idx").on(table.killerSteamId),
     index("kills_victim_idx").on(table.victimSteamId),
+    // The weapon leaderboard lists a Server's weapons and counts one
+    // weapon's Kills inside a Window (by delivery time) - see CONTEXT.md.
+    index("kills_server_cause_received_idx").on(
+      table.serverId,
+      table.cause,
+      table.receivedAt,
+    ),
   ],
 );
 

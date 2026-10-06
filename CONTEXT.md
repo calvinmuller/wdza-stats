@@ -33,6 +33,10 @@ _Avoid_: Lifetime stats, player profile, PlayerProfile, progression record
 A numbered period of play (Season 1, Season 2, …), optionally also named, shared by every Server. A Season begins when an admin starts it by hand: there is no scheduled start, so the date of a Season is whenever it was actually started. Seasons run back to back: each one ends exactly when the next begins, so there is always exactly one current Season and no gaps. Season 1 is everything before Season 2 began. A Match belongs to the Season that was current when it started, so a Match is never split across Seasons: one still in progress when a new Season begins counts towards the old one in full. A just-started Season can be withdrawn only until its first Match closes. A new Season never resets anything career-long: PlayerCareerStat, level, and Achievements carry straight on across it.
 _Avoid_: Period, split, ladder, reset, wipe (nothing is wiped; career totals continue)
 
+**Window**:
+A rolling span of wall-clock time ending now (the last 7 days, the last 30 days) in which Kills are counted by the moment the kill feed delivered them. Unlike a Season it has no fixed start, is not tied to Matches, and shifts every time the page is opened. Only Kills, which carry a delivery time, can be scoped to a Window; Snapshot-derived stats never are.
+_Avoid_: Period (already avoided under **Season**), range, timeframe, "last week" (ambiguous with the calendar week)
+
 **PlayerSeasonStat**:
 A player's totals within one Season on one Server: kills, deaths, cash earned, matches played/won/lost, MVPs, highest KillStreak, and XP earned during that Season. The per-Season counterpart of PlayerCareerStat, which is the sum over all Seasons. A player who played no Match in a Season on that Server is not counted in it (their PlayerSeasonStat, if any, is only one a still-open Match has started, with no Match played yet). Level is never per-Season: it is always derived from career XP.
 _Avoid_: Season record, season profile

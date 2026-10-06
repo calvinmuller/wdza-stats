@@ -1,0 +1,1 @@
+CREATE INDEX "kills_server_cause_received_idx" ON "kills" USING btree ("server_id","cause","received_at");

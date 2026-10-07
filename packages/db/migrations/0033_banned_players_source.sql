@@ -1,0 +1,1 @@
+ALTER TABLE "banned_players" ADD COLUMN "source" text DEFAULT 'site' NOT NULL;

@@ -32,6 +32,21 @@ describe("kickPlayer", () => {
   });
 });
 
+describe("fetchBans", () => {
+  it("GETs /v1/bans with the bearer token", async () => {
+    const body = { bans: [{ steamId: "1", bannedAtUtc: "0001-01-01T00:00:00.000Z", bannedBy: "config", reason: null }], count: 1 };
+    const fetchMock = vi.fn().mockResolvedValue(Response.json(body));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createRconClient("http://rcon.test", "secret-token");
+
+    await expect(client.fetchBans()).resolves.toEqual(body);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("http://rcon.test/v1/bans");
+    expect(init.headers.Authorization).toBe("Bearer secret-token");
+  });
+});
+
 describe("broadcast", () => {
   it("POSTs to /v1/broadcast with the message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(okResponse());

@@ -26,7 +26,8 @@ export default async function AdminPage() {
           <p className="max-w-2xl text-xs text-zinc-500">
             A banned Steam ID is ignored everywhere: it never shows on the leaderboard, rankings,
             server stats, player search, or the live snapshot, and the Worker stops updating its
-            stats on the next poll.
+            stats on the next poll. Bans made on the game server itself are copied here on every
+            poll and can only be lifted there.
           </p>
 
           <div className="flex flex-col gap-2">
@@ -40,11 +41,15 @@ export default async function AdminPage() {
                   <span className="text-xs text-zinc-500">
                     Banned {formatDateTime(banned.bannedAt.toISOString())}
                   </span>
-                  <form action={unbanPlayerAction.bind(null, banned.steamId)}>
-                    <button type="submit" className={dangerButtonClass}>
-                      Unban
-                    </button>
-                  </form>
+                  {banned.source === "server" ? (
+                    <span className="text-xs text-zinc-500">Banned on the game server</span>
+                  ) : (
+                    <form action={unbanPlayerAction.bind(null, banned.steamId)}>
+                      <button type="submit" className={dangerButtonClass}>
+                        Unban
+                      </button>
+                    </form>
+                  )}
                 </div>
               ))
             )}

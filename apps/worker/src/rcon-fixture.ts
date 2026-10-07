@@ -44,6 +44,9 @@ export function scriptedRconClient(
         entries: entries.map((entry, i) => ({ index: i, map: entry.map, lighting: "Day" })),
       };
     },
+    async fetchBans() {
+      return { bans: [], count: 0 };
+    },
     async fetchPlayers() {
       const entry = script[index];
       index = Math.min(index + 1, script.length - 1);

@@ -6,6 +6,7 @@ import {
   type SnapshotPlayer,
 } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
+import { syncServerBans } from "./ban-sync";
 import { ingestSnapshot } from "./match-tracker";
 import type {
   RawPlayersResponse,
@@ -113,6 +114,11 @@ export async function pollAndPersistSnapshot(
   const rotation = await client.fetchRotation().catch((error) => {
     console.error("[worker] rotation fetch failed:", error);
     return null;
+  });
+  // Before ingestSnapshot, so a player banned in-game is filtered out of this
+  // same poll. A failure keeps the last synced list rather than stopping polling.
+  await syncServerBans(db, client).catch((error) => {
+    console.error("[worker] ban sync failed:", error);
   });
   const snapshot = mergeSnapshot(status, players, rotation);
   const capturedAt = new Date();

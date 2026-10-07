@@ -252,7 +252,7 @@ describe("Banned players", () => {
 
     const rows = await listBannedPlayers(db);
     expect(rows).toEqual([
-      { steamId: "1", reason: "cheating", bannedAt: rows[0].bannedAt },
+      { steamId: "1", reason: "cheating", bannedAt: rows[0].bannedAt, source: "site" },
     ]);
   });
 
@@ -270,6 +270,14 @@ describe("Banned players", () => {
     const rows = await listBannedPlayers(db);
     expect(rows).toHaveLength(1);
     expect(rows[0].reason).toBe("griefing");
+  });
+
+  it("banning a steamId the game server already bans turns it into a site ban", async () => {
+    await db.insert(bannedPlayers).values({ steamId: "1", reason: null, source: "server" });
+
+    await banPlayerFromForm(db, formData({ steamId: "1", reason: "cheating" }));
+
+    expect(await listBannedPlayers(db)).toMatchObject([{ steamId: "1", reason: "cheating", source: "site" }]);
   });
 
   it("unbans a steamId", async () => {

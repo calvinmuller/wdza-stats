@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { staffMembers, type StaffRole } from "@wdza-stats/db";
+import { bannedPlayers, staffMembers, type StaffRole } from "@wdza-stats/db";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createStaffMember } from "@/lib/staff";
@@ -20,6 +20,7 @@ const PASSWORD = "correct horse battery";
 beforeEach(async () => {
   requestHeaders = new Headers();
   await db.delete(staffMembers);
+  await db.delete(bannedPlayers);
 });
 
 afterAll(async () => {
@@ -59,6 +60,19 @@ describe("AdminPage", () => {
     expect(html).not.toContain("Achievements");
     expect(html).not.toContain("Server Token");
     expect(html).not.toContain("Staff");
+  });
+
+  it("offers Unban only for site bans, since a game server ban can only be lifted in-game", async () => {
+    await db.insert(bannedPlayers).values([
+      { steamId: "111", source: "site" },
+      { steamId: "222", source: "server" },
+    ]);
+    await signInAs("moderator");
+
+    const html = await renderPage();
+
+    expect(html.match(/>Unban</g)).toHaveLength(1);
+    expect(html).toContain("Banned on the game server");
   });
 
   it("shows an admin the full sub nav and the Players section", async () => {

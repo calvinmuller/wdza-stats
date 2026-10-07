@@ -36,6 +36,7 @@ function fakeRconClient(): RconClient & {
     fetchStatus: () => Promise.resolve(statusFixture()),
     fetchPlayers: () => Promise.resolve(playersFixture()),
     fetchRotation: () => Promise.resolve({ entries: [] }),
+    fetchBans: () => Promise.resolve({ bans: [], count: 0 }),
     kickPlayer: vi.fn(async () => {}),
     broadcast: vi.fn(async () => {}),
   };

@@ -11,7 +11,7 @@ describe("getWeaponImageUrl", () => {
   });
 
   it("is null for a weapon with no art", () => {
-    expect(getWeaponImageUrl("Id.Item.WEPN_026")).toBeNull();
+    expect(getWeaponImageUrl("Id.Item.M67Grenade")).toBeNull();
   });
 
   it("only names files that exist", () => {

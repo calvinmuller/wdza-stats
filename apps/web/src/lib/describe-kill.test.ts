@@ -44,6 +44,9 @@ describe("describeKill", () => {
   it.each([
     ["Id.Item.A91", "A-91"],
     ["Id.Item.WEPN_029", "Galil"],
+    ["Id.Item.WEPN_026", "M1911"],
+    ["Id.Item.SMG_03", "PP-19 Vityaz"],
+    ["Id.Item.Launcher_04", "9K333 Verba"],
     ["Id.Item.RPG7", "RPG-7"],
     ["Id.Item.M67Grenade", "M67 frag grenade"],
     ["Id.Buildable.BarbedWire", "Barbed wire"],

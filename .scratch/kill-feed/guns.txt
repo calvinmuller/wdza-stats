@@ -1,0 +1,36 @@
+Script name  Friendly name
+-----------  -------------
+A91          A-91
+AK74M        AK74
+WEPN_033     Bushmaster M17S
+WEPN_030     FAL
+WEPN_029     Galil
+KH2002       KH-2002
+M4           M4
+TAR21        T-21
+CombatBow    Compound bow
+Launcher_04  9K333 Verba
+CGM4         MAAWS
+MMGL         MGL-40
+RPG7         RPG-7
+M249         M249 SAW
+LMG_02       PKM
+RFB          BMR-308
+SKS          SKS
+SVDM         SVD
+WEPN_027     Deagle
+Glock17      GGX 17
+WEPN_032     GGX 18
+Judge        Judge
+WEPN_026     M1911
+M500         M500
+MP43         MP43
+MP9          AMP-9
+WEPN_028     MP5
+SMG_03       PP-19 Vityaz
+Vector       Super-45
+SR_04        AMR 50
+MK22         MK22
+Mosin        Mosin Nagant
+WEPN_035     Scout Rifle TD
+SV98         SV98

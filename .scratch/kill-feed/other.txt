@@ -1,0 +1,66 @@
+Explosives & tools
+Script name                                Friendly name
+-----------------------------------------  -------------
+M67Grenade                                 M67 frag grenade
+C4Explosive                                C4 charge
+IED.Explosive                              IED
+ATMine                                     AT mine
+Claymore                                   Claymore
+Crowbar                                    Halligan bar
+Fists                                      Fists
+Defibrillator.Standard                     Defibrillator
+BuildTool.Hammer.Large                     Large hammer
+BuildTool.Hammer.Medium                    Medium hammer
+BuildTool.Hammer.Small                     Small hammer
+VehicleSupplyCrate.Pallet.MunitionsSupply  Ammo supply pallet
+
+
+Buildables
+Script name  Friendly name
+-----------  -------------
+BremmerWall  Bremer wall
+BarbedWire   Barbed wire
+HBlock       H-block
+TallHBlock   Tall H-block
+
+Vehicles (crew/roadkill)
+Script name                               Friendly name
+----------------------------------------  -------------
+Air.Rotary.Littlebird.Default             MH-6
+Air.Rotary.Littlebird.MountedMachineGuns  AH-6M
+Air.Rotary.Littlebird.RocketPods          AH-6R
+Air.Rotary.ROT_04.Default                 Z20 Lakota
+Air.Rotary.ROT_04.MountedMachineGuns      Z20 Lakota (miniguns)
+Land.Tracked.TNK_01.AntiAir               Flakpanzer Gepard
+Land.Tracked.TNK_01.Heavy                 L2A6
+Land.Tracked.TNK_01.Artillery             SPH-2
+Land.Tracked.SpawnVehicle.Lonestar        M113 APC
+Land.Tracked.SpawnVehicle.Valkyra         M113 APC
+Land.Tracked.SpawnVehicle.Manticore       M113 APC
+Land.Wheeled.Humvee.MachineGun            Humvee (M249)
+Land.Wheeled.Humvee.Minigun               Humvee (minigun)
+Land.Wheeled.Kodiak.MachineGun            Kodiak (M249)
+Land.Wheeled.Kodiak.Pickup                Kodiak (pickup)
+Land.Wheeled.Ural.Battle                  Ural Defender
+Land.Wheeled.Ural.Attack                  Ural Defender (M249)
+Stationary.Phalanx                        Vanguard CIWS
+Stationary.Mortar                         L81 mortar
+Stationary.MistralAA                      Talon 9K-SAM
+
+Vehicle weapons
+Script name               Friendly name
+------------------------  -------------
+ROT_02.30mmCannon         Havoc 2A42 autocannon
+ROT_02.122mm              Havoc B-13 rockets
+ROT_03.MountedMachineGun  AH-6M miniguns
+ROT_03.RocketPods         AH-6R rockets
+ROT_04.MountedMachineGun  Z20 Lakota miniguns
+TNK_01.Artillery          SPH-2 artillery
+TNK_01.Heavy              L2A6 cannon
+TNK_01.MachineGun         L2A6 machine gun
+TNK_01.MountedMachineGun  L2A6 mounted MG
+WHL_02.SUV.RingTurret     Kodiak M249
+WHL_05.RingTurret         Humvee M249
+WHL_05.RingMinigun        Humvee minigun
+WHL_07.MachineGun         Ural Defender M249
+STN_01.MistralAA          Talon 9K-SAM

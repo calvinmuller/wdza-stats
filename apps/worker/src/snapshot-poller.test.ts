@@ -176,7 +176,6 @@ describe("pollOnce", () => {
       fetchStatus: () => Promise.reject(new Error("network error")),
       fetchPlayers: () => Promise.reject(new Error("network error")),
       fetchRotation: () => Promise.reject(new Error("network error")),
-      fetchBans: () => Promise.reject(new Error("network error")),
       kickPlayer: () => Promise.reject(new Error("network error")),
       broadcast: () => Promise.reject(new Error("network error")),
     };
@@ -205,7 +204,6 @@ describe("pollOnce", () => {
       },
       fetchPlayers: async () => playersFixture([]),
       fetchRotation: async () => ({ entries: [] }),
-      fetchBans: async () => ({ bans: [], count: 0 }),
       kickPlayer: async () => {},
       broadcast: async () => {},
     };

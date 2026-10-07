@@ -273,7 +273,7 @@ export interface BannedPlayerRow {
   steamId: string;
   reason: string | null;
   bannedAt: Date;
-  source: "site" | "server";
+  source: "site" | "warcon";
 }
 
 export async function listBannedPlayers(db: Database): Promise<BannedPlayerRow[]> {
@@ -287,8 +287,8 @@ export async function banPlayerFromForm(db: Database, formData: FormData): Promi
   await db
     .insert(bannedPlayers)
     .values({ steamId, reason })
-    // Banning a steamId the game server already bans takes the ban over as a
-    // site ban, so lifting it in-game no longer lifts it here.
+    // Banning a steamId Warcon already bans takes the ban over as a site ban,
+    // so lifting it in Warcon no longer lifts it here.
     .onConflictDoUpdate({ target: bannedPlayers.steamId, set: { reason, source: "site" } });
 }
 

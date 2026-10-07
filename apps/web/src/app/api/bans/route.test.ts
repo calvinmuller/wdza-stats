@@ -21,10 +21,10 @@ describe("GET /api/bans", () => {
     expect(body).toEqual({ bans: [] });
   });
 
-  it("lists every site and game server ban with its reason, ban time, and source, most recent first", async () => {
+  it("lists every site and Warcon ban with its reason, ban time, and source, most recent first", async () => {
     await db.insert(bannedPlayers).values([
       { steamId: "1", reason: "Aimbot", bannedAt: new Date("2026-01-01T00:00:00.000Z") },
-      { steamId: "2", reason: null, bannedAt: new Date("2026-02-01T00:00:00.000Z"), source: "server" },
+      { steamId: "2", reason: null, bannedAt: new Date("2026-02-01T00:00:00.000Z"), source: "warcon" },
     ]);
 
     const response = await GET();
@@ -33,7 +33,7 @@ describe("GET /api/bans", () => {
     expect(response.status).toBe(200);
     expect(body).toEqual({
       bans: [
-        { steamId: "2", reason: null, bannedAt: "2026-02-01T00:00:00.000Z", source: "server" },
+        { steamId: "2", reason: null, bannedAt: "2026-02-01T00:00:00.000Z", source: "warcon" },
         { steamId: "1", reason: "Aimbot", bannedAt: "2026-01-01T00:00:00.000Z", source: "site" },
       ],
     });

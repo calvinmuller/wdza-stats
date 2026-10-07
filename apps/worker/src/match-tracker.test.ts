@@ -40,7 +40,6 @@ import {
   detectMatchBoundary,
   winningFaction,
 } from "./match-tracker";
-import type { RconClient } from "./rcon-client";
 import { playersFixture, scriptedRconClient, statusFixture } from "./rcon-fixture";
 import { pollAndPersistSnapshot } from "./snapshot-poller";
 
@@ -777,30 +776,6 @@ describe("Banned players (integration)", () => {
     expect(careerRows).toEqual([]);
   });
 
-  it("filters out a player banned on the game server in the same poll that first sees the ban", async () => {
-    const server = await seedServer();
-    const client: RconClient = {
-      ...scriptedRconClient([
-        {
-          status: statusFixture(),
-          players: playersFixture([
-            { steamId: "cheater", name: "Cheater", faction: "Lonestar", kills: 999, deaths: 0, cash: 0, pingMs: 20 },
-            { steamId: "1", name: "Alice", faction: "Lonestar", kills: 1, deaths: 0, cash: 0, pingMs: 40 },
-          ]),
-        },
-      ]),
-      fetchBans: async () => ({
-        bans: [{ steamId: "cheater", bannedAtUtc: "0001-01-01T00:00:00.000Z", bannedBy: "config", reason: null }],
-        count: 1,
-      }),
-    };
-
-    await pollAndPersistSnapshot(db, client, server.id);
-
-    const [latest] = await db.select().from(latestSnapshots).where(eq(latestSnapshots.serverId, server.id));
-    expect(latest.payload.players.map((player) => player.steamId)).toEqual(["1"]);
-    expect(await db.select().from(bannedPlayers)).toMatchObject([{ steamId: "cheater", source: "server" }]);
-  });
 });
 
 // Integration: runs the real ingestion pipeline against a real test

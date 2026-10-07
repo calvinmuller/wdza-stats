@@ -272,8 +272,8 @@ describe("Banned players", () => {
     expect(rows[0].reason).toBe("griefing");
   });
 
-  it("banning a steamId the game server already bans turns it into a site ban", async () => {
-    await db.insert(bannedPlayers).values({ steamId: "1", reason: null, source: "server" });
+  it("banning a steamId Warcon already bans turns it into a site ban", async () => {
+    await db.insert(bannedPlayers).values({ steamId: "1", reason: null, source: "warcon" });
 
     await banPlayerFromForm(db, formData({ steamId: "1", reason: "cheating" }));
 

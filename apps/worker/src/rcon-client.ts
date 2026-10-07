@@ -31,18 +31,6 @@ export interface RawRotationResponse {
   entries: Array<{ index: number; map: string; lighting: string }>;
 }
 
-// GET /v1/bans: the game server's own ban list. A ban from the server's
-// config file has no real date - its bannedAtUtc is 0001-01-01.
-export interface RawBansResponse {
-  bans: Array<{
-    steamId: string;
-    bannedAtUtc: string;
-    bannedBy: string;
-    reason: string | null;
-  }>;
-  count: number;
-}
-
 export interface RawPlayersResponse {
   players: Array<{
     steamId: string;
@@ -56,7 +44,7 @@ export interface RawPlayersResponse {
 }
 
 /**
- * Wraps GET /v1/status, /v1/players, /v1/rotation and /v1/bans, plus the two KickVote
+ * Wraps GET /v1/status, /v1/players and /v1/rotation, plus the two KickVote
  * write endpoints, for one Server. This is the only code in the system that
  * calls the RCON API.
  */
@@ -64,7 +52,6 @@ export interface RconClient {
   fetchStatus(): Promise<RawStatusResponse>;
   fetchPlayers(): Promise<RawPlayersResponse>;
   fetchRotation(): Promise<RawRotationResponse>;
-  fetchBans(): Promise<RawBansResponse>;
   kickPlayer(steamId: string): Promise<void>;
   broadcast(message: string): Promise<void>;
 }
@@ -105,7 +92,6 @@ export function createRconClient(baseUrl: string, token: string): RconClient {
     fetchStatus: () => get<RawStatusResponse>("/v1/status"),
     fetchPlayers: () => get<RawPlayersResponse>("/v1/players"),
     fetchRotation: () => get<RawRotationResponse>("/v1/rotation"),
-    fetchBans: () => get<RawBansResponse>("/v1/bans"),
     kickPlayer: (steamId) => post(`/v1/players/${steamId}/kick`, {}),
     broadcast: (message) => post("/v1/broadcast", { message }),
   };

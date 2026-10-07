@@ -382,15 +382,15 @@ export const mvpFormulaWeights = pgTable("mvp_formula_weights", {
 // history from before the ban stays in place; banning only stops future
 // updates and future visibility, it doesn't retroactively purge the past.
 // `source` says who owns the row: "site" for a Staff Member's ban from the
-// admin area, "server" for one the Worker copied from the game server's own
-// RCON /v1/bans list (apps/worker/src/ban-sync.ts), which it also deletes
-// once the game server lifts it. A site ban wins over a server ban for the
-// same steamId, so lifting it in-game never undoes a moderator's ban.
+// admin area, "warcon" for one the Worker copied from the WDZA org's ban list
+// in Warcon (apps/worker/src/ban-sync.ts), which it also deletes once Warcon
+// lifts it. A site ban wins over a Warcon ban for the same steamId, so
+// lifting it in Warcon never undoes a moderator's ban here.
 export const bannedPlayers = pgTable("banned_players", {
   steamId: text("steam_id").primaryKey(),
   reason: text("reason"),
   bannedAt: timestamp("banned_at", { withTimezone: true }).notNull().defaultNow(),
-  source: text("source").$type<"site" | "server">().notNull().default("site"),
+  source: text("source").$type<"site" | "warcon">().notNull().default("site"),
 });
 
 // The 7 initial Achievements' data - name/description plus the

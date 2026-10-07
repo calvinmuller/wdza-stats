@@ -62,17 +62,17 @@ describe("AdminPage", () => {
     expect(html).not.toContain("Staff");
   });
 
-  it("offers Unban only for site bans, since a game server ban can only be lifted in-game", async () => {
+  it("offers Unban only for site bans, since a Warcon ban can only be lifted in Warcon", async () => {
     await db.insert(bannedPlayers).values([
       { steamId: "111", source: "site" },
-      { steamId: "222", source: "server" },
+      { steamId: "222", source: "warcon" },
     ]);
     await signInAs("moderator");
 
     const html = await renderPage();
 
     expect(html.match(/>Unban</g)).toHaveLength(1);
-    expect(html).toContain("Banned on the game server");
+    expect(html).toContain("Banned in Warcon");
   });
 
   it("shows an admin the full sub nav and the Players section", async () => {

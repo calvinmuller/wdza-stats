@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 
 // Public list of BannedPlayers - see schema.ts's bannedPlayers doc comment.
 // One list for both sources: bans made in the admin area ("site") and the
-// game server's own bans, which the Worker copies in ("server").
+// WDZA org's Warcon ban list, which the Worker copies in ("warcon").
 // Fields are picked explicitly so a column later added for staff eyes only
 // (e.g. who issued the ban) never leaks here by default.
 export async function GET() {

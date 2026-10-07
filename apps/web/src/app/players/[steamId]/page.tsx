@@ -2,12 +2,14 @@ import { listSeasons } from "@wdza-stats/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AchievementBadges } from "@/components/achievement-badges";
+import { DailyCashPanel } from "@/components/daily-cash";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { PlayerMatchHistoryTable } from "@/components/player-match-history-table";
 import { PersonalBestsPanel } from "@/components/personal-bests";
 import { AllWeapons, TopWeaponsPanel } from "@/components/player-weapons";
 import { SeasonPicker } from "@/components/season-picker";
 import { SteamAvatar } from "@/components/steam-avatar";
+import { getPlayerDailyCash } from "@/lib/daily-cash";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format-date";
 import { formatPlaytimeHours } from "@/lib/format-playtime";
@@ -66,6 +68,7 @@ export default async function PlayerPage({
     allSeasons,
     weapons,
     personalBests,
+    dailyCash,
   ] = await Promise.all([
     getPlayerStatsInScope(db, CONFIGURED_SERVER_BASE_URL, steamId, scope),
     getPlayerAchievements(db, CONFIGURED_SERVER_BASE_URL, steamId),
@@ -79,6 +82,7 @@ export default async function PlayerPage({
     server
       ? getPlayerPersonalBests(db, server.id, steamId, scope)
       : Promise.resolve({ mostKills: null, bestKd: null, mostCash: null }),
+    server ? getPlayerDailyCash(db, server.id, steamId, scope) : Promise.resolve([]),
   ]);
 
   const playerHref = (season: string) => `/players/${steamId}?${new URLSearchParams({ season })}`;
@@ -176,6 +180,7 @@ export default async function PlayerPage({
             <TopWeaponsPanel weapons={weapons} />
           </div>
           <AllWeapons weapons={weapons} />
+          <DailyCashPanel days={dailyCash} />
         </>
       )}
 

@@ -230,6 +230,49 @@ describe("PlayerPage personal bests", () => {
   });
 });
 
+describe("PlayerPage cash per day", () => {
+  it("shows the cash the player earned on each day they played", async () => {
+    await seedPlayer("1", "Alice");
+    const [server] = await db.select().from(servers).limit(1);
+    for (const [endedAt, cash] of [
+      ["2026-09-23T10:00:00.000Z", 1000],
+      ["2026-09-23T18:00:00.000Z", 2500],
+      ["2026-09-24T09:00:00.000Z", 400],
+    ] as const) {
+      const [row] = await db
+        .insert(matches)
+        .values({
+          serverId: server.id,
+          map: "Bakurani",
+          experiences: ["Kinetic Diplomacy"],
+          startedAt: new Date("2026-09-23T00:00:00.000Z"),
+          endedAt: new Date(endedAt),
+        })
+        .returning();
+      await db
+        .insert(playerMatchStats)
+        .values({ matchId: row.id, steamId: "1", faction: "Lonestar", kills: 0, deaths: 0, cash });
+    }
+
+    const html = await renderPage("1");
+
+    const panel = html.slice(html.indexOf("Cash per day"));
+    expect(panel).toContain("Thu, 24 Sept 2026");
+    expect(panel).toContain("400 cash");
+    expect(panel).toContain("Wed, 23 Sept 2026");
+    expect(panel).toContain("3,500 cash");
+    expect(panel).toContain("2 matches");
+  });
+
+  it("says so when the player has no completed Matches", async () => {
+    await seedPlayer("1", "Alice");
+
+    const html = await renderPage("1");
+
+    expect(html.slice(html.indexOf("Cash per day"))).toContain("No completed matches yet.");
+  });
+});
+
 describe("PlayerPage Steam enrichment", () => {
   it("renders the avatar, persona name, and achievement badges when a SteamProfile is cached", async () => {
     await seedPlayer("1", "Alice");

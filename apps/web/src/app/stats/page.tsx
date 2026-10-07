@@ -2,10 +2,19 @@ import { listSeasons } from "@wdza-stats/db";
 import { notFound } from "next/navigation";
 import { FactionWinsChart } from "@/components/faction-wins-chart";
 import { SeasonPicker } from "@/components/season-picker";
+import { StatPanel } from "@/components/stat-panel";
+import { getBannedSteamIds } from "@/lib/banned-players";
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
-import { resolveSeasonScope } from "@/lib/season-scope";
+import { getMostActivePlayers } from "@/lib/most-active-players";
+import { getLongestKills, getServerWeaponStats, getTopKillers } from "@/lib/server-kill-stats";
+import { getServerByBaseUrl } from "@/lib/server-lookup";
 import { getServerStats } from "@/lib/server-stats";
+import { resolveSeasonScope } from "@/lib/season-scope";
+import { LongestKillsPanel } from "./longest-kills-panel";
+import { MostActivePlayersTable } from "./most-active-players-table";
+import { ServerWeaponsPanel } from "./server-weapons-panel";
+import { TopKillersTable } from "./top-killers-table";
 
 // A DB read via drizzle isn't a Request-time API, so Next won't otherwise
 // know this route needs fresh data on every request - force it dynamic so
@@ -21,10 +30,20 @@ export default async function StatsPage({
   const scope = await resolveSeasonScope(db, rawSeason, "current");
   if (!scope) notFound();
 
-  const [stats, allSeasons] = await Promise.all([
+  const [stats, mostActivePlayers, allSeasons, server, bannedSteamIds] = await Promise.all([
     getServerStats(db, CONFIGURED_SERVER_BASE_URL, scope),
+    getMostActivePlayers(db, CONFIGURED_SERVER_BASE_URL, scope),
     listSeasons(db),
+    getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL),
+    getBannedSteamIds(db),
   ]);
+  const [weapons, longestKills, topKillers] = server
+    ? await Promise.all([
+        getServerWeaponStats(db, server.id, scope, bannedSteamIds),
+        getLongestKills(db, server.id, scope, bannedSteamIds),
+        getTopKillers(db, server.id, scope, bannedSteamIds),
+      ])
+    : [[], [], []];
 
   const tiles = [
     { label: "Matches played", value: stats.totalMatches },
@@ -62,6 +81,19 @@ export default async function StatsPage({
         <h2 className="text-xl text-zinc-100">Match wins by faction</h2>
         <FactionWinsChart factionWins={stats.factionWins} />
       </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ServerWeaponsPanel weapons={weapons} />
+        <LongestKillsPanel kills={longestKills} />
+      </div>
+
+      <StatPanel title="Top killers">
+        <TopKillersTable rows={topKillers} />
+      </StatPanel>
+
+      <StatPanel title="Most active players">
+        <MostActivePlayersTable rows={mostActivePlayers} />
+      </StatPanel>
     </div>
   );
 }

@@ -31,6 +31,7 @@ export function SortableTable<Row>({
   defaultSort,
   minWidthClassName = "min-w-[480px]",
   emptyMessage = "No data yet.",
+  highlightRow,
 }: {
   columns: SortableColumn<Row>[];
   rows: Row[];
@@ -38,6 +39,8 @@ export function SortableTable<Row>({
   defaultSort: SortState;
   minWidthClassName?: string;
   emptyMessage?: string;
+  // Rows to pick out in gold, e.g. players with a worrying number of team kills.
+  highlightRow?: (row: Row) => boolean;
 }) {
   const [sort, setSort] = useState<SortState>(defaultSort);
 
@@ -165,7 +168,7 @@ export function SortableTable<Row>({
               {columns.map((column) => (
                 <td
                   key={column.key}
-                  className={`px-4 py-2.5 ${column.cellClassName ?? "text-zinc-300"}`}
+                  className={`px-4 py-2.5 ${column.cellClassName ?? "text-zinc-300"} ${highlightRow?.(row) ? "text-brand-gold-500!" : ""}`}
                 >
                   {column.render ? column.render(row) : column.value(row)}
                 </td>

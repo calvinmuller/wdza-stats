@@ -80,7 +80,7 @@ function weaponKills(serverId: number, bannedSteamIds: string[]): SQL[] {
  * feed delivered the Kill, a Match open or not; a Season counts the Kills of
  * that Season's Matches; all time counts everything.
  */
-function inScope(scope: KillScope): SQL[] {
+export function killsInScope(scope: KillScope): SQL[] {
   switch (scope.kind) {
     case "window":
       return [gte(kills.receivedAt, sql`now() - make_interval(days => ${scope.days})`)];
@@ -135,7 +135,7 @@ export async function mostUsedWeapon(
   const [row] = await db
     .select({ cause: kills.cause, kills: killCount })
     .from(kills)
-    .where(and(...weaponKills(serverId, bannedSteamIds), ...inScope(scope)))
+    .where(and(...weaponKills(serverId, bannedSteamIds), ...killsInScope(scope)))
     .groupBy(kills.cause)
     .orderBy(desc(killCount), asc(kills.cause))
     .limit(1);
@@ -160,7 +160,7 @@ export async function getWeaponLeaderboard(
   const where = and(
     ...weaponKills(serverId, bannedSteamIds),
     eq(kills.cause, cause),
-    ...inScope(scope),
+    ...killsInScope(scope),
   );
 
   const [[summary], rows] = await Promise.all([

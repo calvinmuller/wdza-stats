@@ -270,7 +270,16 @@ export const gameEvents = pgTable("game_events", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   sourceSnapshotId: integer("source_snapshot_id").notNull(),
   idempotencyKey: text("idempotency_key").notNull().unique(),
-});
+}, (table) => [
+  // Most active players pairs each player's PlayerJoined with their next
+  // PlayerLeft on one Server - see apps/web/src/lib/most-active-players.ts.
+  index("game_events_server_type_steam_timestamp_idx").on(
+    table.serverId,
+    table.type,
+    table.steamId,
+    table.timestamp,
+  ),
+]);
 
 // The XP_REWARDS config table: the amount awarded per XpReason, seeded with
 // the spec's defaults in this table's own migration - see CONTEXT.md's
@@ -372,10 +381,16 @@ export const mvpFormulaWeights = pgTable("mvp_formula_weights", {
 // rankings, player search/profile) built from those tables. Already-recorded
 // history from before the ban stays in place; banning only stops future
 // updates and future visibility, it doesn't retroactively purge the past.
+// `source` says who owns the row: "site" for a Staff Member's ban from the
+// admin area, "server" for one the Worker copied from the game server's own
+// RCON /v1/bans list (apps/worker/src/ban-sync.ts), which it also deletes
+// once the game server lifts it. A site ban wins over a server ban for the
+// same steamId, so lifting it in-game never undoes a moderator's ban.
 export const bannedPlayers = pgTable("banned_players", {
   steamId: text("steam_id").primaryKey(),
   reason: text("reason"),
   bannedAt: timestamp("banned_at", { withTimezone: true }).notNull().defaultNow(),
+  source: text("source").$type<"site" | "server">().notNull().default("site"),
 });
 
 // The 7 initial Achievements' data - name/description plus the

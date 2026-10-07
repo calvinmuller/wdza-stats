@@ -1,0 +1,1 @@
+CREATE INDEX "game_events_server_type_steam_timestamp_idx" ON "game_events" USING btree ("server_id","type","steam_id","timestamp");

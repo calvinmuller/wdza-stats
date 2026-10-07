@@ -225,6 +225,20 @@
       "when": 1791276936772,
       "tag": "0031_kills_weapon_index",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791404879726,
+      "tag": "0032_game_events_presence_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791405822489,
+      "tag": "0033_banned_players_source",
+      "breakpoints": true
     }
   ]
 }

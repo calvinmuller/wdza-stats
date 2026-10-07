@@ -1,6 +1,8 @@
 import {
   createDb,
   currentSeason,
+  gameEvents,
+  kills,
   matches,
   playerCareerStats,
   playerSeasonStats,
@@ -8,7 +10,7 @@ import {
   servers,
   type Database,
 } from "@wdza-stats/db";
-import { gt } from "drizzle-orm";
+import { eq, gt } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import StatsPage from "./page";
@@ -26,6 +28,8 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  await db.delete(kills);
+  await db.delete(gameEvents);
   await db.delete(playerSeasonStats);
   await db.delete(playerCareerStats);
   await db.delete(matches);
@@ -107,6 +111,67 @@ describe("StatsPage", () => {
     expect(html).toContain(`href="/stats?season=${past.number}"`);
     expect(html).toContain('href="/stats?season=career"');
     expect(html).toContain(`Season ${current.number} · Dust Storm`);
+  });
+
+  it("lists the most active players with their playtime in the picked Season", async () => {
+    const { current } = await seedTwoSeasons();
+    const [match] = await db.select().from(matches).limit(1);
+    const presence = (type: "PlayerJoined" | "PlayerLeft", at: Date) => ({
+      serverId: match.serverId,
+      matchId: match.id,
+      type,
+      timestamp: at,
+      steamId: "1",
+      sourceSnapshotId: 0,
+      idempotencyKey: `${type}:1:${at.toISOString()}`,
+    });
+    const joinedAt = new Date(current.startedAt.getTime() + 60_000);
+    await db
+      .insert(gameEvents)
+      .values([
+        presence("PlayerJoined", joinedAt),
+        presence("PlayerLeft", new Date(joinedAt.getTime() + 90 * 60_000)),
+      ]);
+
+    const html = await renderPage();
+
+    expect(html).toContain("Most active players");
+    expect(html).toMatch(/href="\/players\/1"[^>]*>Alice</);
+    expect(html).toContain("1.5 h");
+  });
+
+  it("shows the picked Season's weapons and longest kills from the kill feed", async () => {
+    const { current } = await seedTwoSeasons();
+    const [match] = await db.select().from(matches).where(eq(matches.seasonId, current.id));
+    const kill = (eventId: string, cause: string, distanceM: number, matchRow: number | null) => ({
+      serverId: match.serverId,
+      eventId,
+      instanceId: "boot",
+      gameMatchId: "game-match",
+      eventTime: 1,
+      map: "Kavkazi",
+      matchRow,
+      killerSteamId: "1",
+      killerName: "Alice",
+      victimSteamId: "2",
+      victimName: "Bob",
+      cause,
+      distanceM,
+      tags: [],
+    });
+    await db.insert(kills).values([
+      kill("a", "Id.Vehicle.WeaponExtension.TNK_01.Artillery", 2577, match.id),
+      kill("b", "Id.Item.SVDM", 9999, null),
+    ]);
+
+    const html = await renderPage();
+
+    expect(html).toContain("Weapons and vehicles");
+    expect(html).toContain("SPH-2 artillery");
+    expect(html).toContain("2,577 m");
+    expect(html).toContain("Top killers");
+    // Not in one of the current Season's Matches.
+    expect(html).not.toContain("9,999 m");
   });
 
   it("is not found for a Season that doesn't exist", async () => {

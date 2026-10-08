@@ -315,3 +315,29 @@ describe("HomePage KickVote panel", () => {
     expect(html).not.toContain("Start a KickVote against Cheatermc");
   });
 });
+
+describe("HomePage Steam link banner", () => {
+  async function seedServer() {
+    const [server] = await db.insert(servers).values({ name: "WDZA Test", baseUrl: BASE_URL }).returning();
+    await db.insert(latestSnapshots).values({ serverId: server.id, capturedAt: new Date(), payload: snapshotFixture() });
+  }
+
+  it("asks a visitor who isn't a Verified Player to link their Steam account, above the server heading", async () => {
+    await seedServer();
+
+    const html = renderToStaticMarkup(await HomePage());
+
+    expect(html).toContain("Link your Steam account to join the Pack");
+    expect(html).toContain('href="/api/steam/sign-in?returnTo=%2F"');
+    expect(html.indexOf("Link your Steam account")).toBeLessThan(html.indexOf("WDZA Test"));
+  });
+
+  it("leaves a Verified Player alone", async () => {
+    await seedServer();
+    playerCookie = (await signInVerifiedPlayer(db, "76561198000000001")).token;
+
+    const html = renderToStaticMarkup(await HomePage());
+
+    expect(html).not.toContain("Link your Steam account");
+  });
+});

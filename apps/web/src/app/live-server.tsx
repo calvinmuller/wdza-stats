@@ -14,6 +14,7 @@ import { getLightingInfo } from "@/lib/lighting";
 import { subscribeToLiveSnapshot } from "@/lib/live-snapshot-stream";
 import { getMapArtUrl } from "@/lib/map-art";
 import { PlayerAvatar } from "@/components/player-avatar";
+import { SteamLinkBanner } from "@/components/steam-link-banner";
 import { ActivityFeed } from "./activity-feed";
 import { canStartKickVote, KickVoteHint, KickVotePanel, StartKickVoteButton } from "./kick-vote-panel";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
@@ -87,11 +88,14 @@ function useFlip(keys: string[]) {
 export function LiveServerView({
   initial,
   viewer,
+  showSteamLink = false,
   sidebarBanner = null,
 }: {
   initial: LiveSnapshotView | null;
   /** Who may start a KickVote from this browser, or null - for the KickVote panel. */
   viewer: KickVoteInitiator | null;
+  /** Whether to ask this browser to sign in with Steam - it isn't a Verified Player yet. */
+  showSteamLink?: boolean;
   /** The sponsor Banner shown under the activity feed, or null for none. */
   sidebarBanner?: Banner | null;
 }) {
@@ -226,6 +230,7 @@ export function LiveServerView({
   return (
     <div className="flex flex-col items-start gap-6 lg:flex-row">
       <div className="flex min-w-0 flex-1 flex-col gap-8">
+      {showSteamLink && <SteamLinkBanner returnTo="/" />}
       <section className="rounded-xl border border-white/10 bg-zinc-900/60 p-6">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-3xl">{serverName}</h1>

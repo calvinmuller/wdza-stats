@@ -23,18 +23,9 @@ export function PlayerSignIn() {
 
   if (state.status === "loading") return null;
 
+  // Signing in is offered by the home page's SteamLinkBanner, not here.
   if (state.status === "signedOut") {
-    return (
-      <span className="flex items-center gap-2 text-xs">
-        {state.failed && <span className="text-red-400">Steam sign-in failed</span>}
-        <a
-          href={`/api/steam/sign-in?${new URLSearchParams({ returnTo: pathname })}`}
-          className="rounded-full border border-white/10 px-3 py-1 text-zinc-300 hover:text-zinc-50"
-        >
-          Sign in with Steam
-        </a>
-      </span>
-    );
+    return state.failed ? <span className="text-xs text-red-400">Steam sign-in failed</span> : null;
   }
 
   return (

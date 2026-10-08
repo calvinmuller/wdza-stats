@@ -1,5 +1,6 @@
 import { getBanner } from "@/lib/banners";
 import { getCurrentKickVoteInitiator } from "@/lib/current-kick-vote-initiator";
+import { getCurrentVerifiedPlayerSteamId } from "@/lib/current-verified-player";
 import { db } from "@/lib/db";
 import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { getLiveSnapshot } from "@/lib/live-snapshot";
@@ -11,10 +12,18 @@ import { LiveServerView } from "./live-server";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [initial, viewer] = await Promise.all([
+  const [initial, viewer, playerSteamId] = await Promise.all([
     getLiveSnapshot(db, CONFIGURED_SERVER_BASE_URL),
     getCurrentKickVoteInitiator(),
+    getCurrentVerifiedPlayerSteamId(),
   ]);
 
-  return <LiveServerView initial={initial} viewer={viewer} sidebarBanner={getBanner("sidebar")} />;
+  return (
+    <LiveServerView
+      initial={initial}
+      viewer={viewer}
+      showSteamLink={playerSteamId === null}
+      sidebarBanner={getBanner("sidebar")}
+    />
+  );
 }

@@ -2,12 +2,10 @@ import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
 import { Barlow_Condensed } from "next/font/google";
-import { AdBanner } from "@/components/ad-banner";
 import { NavLinks } from "@/components/nav-links";
 import { PlayerSignIn } from "@/components/player-sign-in";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { getBanner } from "@/lib/banners";
 import "./globals.css";
 
 const GA_MEASUREMENT_ID = "G-BNZZV19NZB";
@@ -49,14 +47,11 @@ export default function RootLayout({
               </Link>
               <NavLinks />
               <div className="ml-auto flex items-center gap-2">
-                <AdBanner banner={getBanner("header")} className="mr-2 hidden lg:block" />
                 <PlayerSignIn />
                 <ThemeToggle />
               </div>
             </div>
           </header>
-
-          <AdBanner banner={getBanner("content")} className="mx-auto w-full max-w-[728px] px-4 pt-6 sm:px-6" />
 
           <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6">
             {children}

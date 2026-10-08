@@ -10,7 +10,7 @@ export function SteamLinkBanner({ returnTo }: { returnTo: string }) {
       </p>
       <a
         href={`/api/steam/sign-in?${new URLSearchParams({ returnTo })}`}
-        className="mt-4 block rounded-md bg-lime-400 px-4 py-3 text-center font-mono text-sm font-semibold uppercase tracking-[0.2em] text-black hover:bg-lime-300"
+        className="mt-4 block rounded-md bg-sky-300 px-4 py-3 text-center font-mono text-sm font-semibold uppercase tracking-[0.2em] text-black hover:bg-sky-200"
       >
         Sign in through Steam
       </a>

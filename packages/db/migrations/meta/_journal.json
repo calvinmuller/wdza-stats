@@ -253,6 +253,13 @@
       "when": 1791528234619,
       "tag": "0035_servers_managed_in_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791575882039,
+      "tag": "0036_reserved_slots",
+      "breakpoints": true
     }
   ]
 }

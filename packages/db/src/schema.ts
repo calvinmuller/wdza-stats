@@ -413,6 +413,19 @@ export const bannedPlayers = pgTable("banned_players", {
   source: text("source").$type<"site" | "warcon">().notNull().default("site"),
 });
 
+// ReservedSlot: a steamId on the WDZA org's reserved-slot list in Warcon,
+// which lets that player in when the Server is full. Keyed by steamId alone
+// like bannedPlayers, and owned entirely by Warcon: the Worker replaces the
+// whole table on every sync (apps/worker/src/reserved-slot-sync.ts), so nothing here is
+// edited by hand. `name` is the last name Warcon saw for the steamId, kept for
+// players who have never appeared in a Snapshot. Warcon's reason is never
+// stored, since this table backs a public page - see docs/adr/0013.
+export const reservedSlots = pgTable("reserved_slots", {
+  steamId: text("steam_id").primaryKey(),
+  name: text("name"),
+  addedAt: timestamp("added_at", { withTimezone: true }).notNull(),
+});
+
 // The 7 initial Achievements' data - name/description plus the
 // trigger/threshold pair apps/worker/src/achievement-engine.ts checks each
 // relevant GameEvent's observed counter against, seeded in this table's own

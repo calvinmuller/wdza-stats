@@ -8,6 +8,7 @@ import {
 import { startWarconBanSync } from "./ban-sync";
 import { bootstrapEnvServer } from "./heartbeat";
 import { startKickVoteAnnouncer, startKickVoteResolver } from "./kick-vote-engine";
+import { startWarconReservedSlotSync } from "./reserved-slot-sync";
 import { startServerSupervisor } from "./server-supervisor";
 import type { SteamRefreshConfig } from "./snapshot-poller";
 import { createSteamClient } from "./steam-client";
@@ -19,9 +20,10 @@ loadRootEnv();
 const databaseUrl = requireEnv("DATABASE_URL");
 const db = createDb(databaseUrl);
 
-// Bans change rarely and Warcon is a third-party service, so it is read far
-// less often than RCON. A new Warcon ban starts filtering Snapshots within this.
-const WARCON_BAN_SYNC_INTERVAL_MS = 60_000;
+// Bans and reserved slots change rarely and Warcon is a third-party service,
+// so it is read far less often than RCON. A new Warcon ban starts filtering
+// Snapshots within this.
+const WARCON_LIST_SYNC_INTERVAL_MS = 60_000;
 
 // The servers table is re-read this often in case a servers_changed
 // notification from /admin/servers was missed.
@@ -80,7 +82,7 @@ if (steamConfig) {
 }
 
 // Optional like STEAM_API_KEY: without a Warcon key, banned_players holds only
-// the bans Staff Members make in the admin area.
+// the bans Staff Members make in the admin area, and reserved_slots stays empty.
 const warconApiKey = process.env.WARCON_API_KEY;
 const warconOrgId = process.env.WARCON_ORG_ID;
 if (warconApiKey && warconOrgId) {
@@ -89,8 +91,9 @@ if (warconApiKey && warconOrgId) {
     warconApiKey,
     warconOrgId,
   );
-  startWarconBanSync(db, warconClient, WARCON_BAN_SYNC_INTERVAL_MS);
-  console.log(`[worker] syncing Warcon bans every ${WARCON_BAN_SYNC_INTERVAL_MS / 1000}s`);
+  startWarconBanSync(db, warconClient, WARCON_LIST_SYNC_INTERVAL_MS);
+  startWarconReservedSlotSync(db, warconClient, WARCON_LIST_SYNC_INTERVAL_MS);
+  console.log(`[worker] syncing Warcon bans and reserved slots every ${WARCON_LIST_SYNC_INTERVAL_MS / 1000}s`);
 } else {
-  console.log("[worker] WARCON_API_KEY or WARCON_ORG_ID not set - Warcon ban sync disabled");
+  console.log("[worker] WARCON_API_KEY or WARCON_ORG_ID not set - Warcon ban and reserved-slot sync disabled");
 }

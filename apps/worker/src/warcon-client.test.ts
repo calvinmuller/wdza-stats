@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWarconClient, type WarconBanEntry } from "./warcon-client";
+import { createWarconClient, type WarconListEntry } from "./warcon-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function entry(overrides: Partial<WarconBanEntry>): WarconBanEntry {
+function entry(overrides: Partial<WarconListEntry>): WarconListEntry {
   return {
     steamId: "1",
     name: "Player",
@@ -56,5 +56,24 @@ describe("fetchBans", () => {
     const client = createWarconClient("https://warcon.test", "wck_test", "org-1");
 
     await expect(client.fetchBans()).rejects.toThrow(/failed with status 403/);
+  });
+});
+
+describe("fetchReservedSlots", () => {
+  it("GETs the org's reserved-slot list, leaving out removed entries", async () => {
+    const active = entry({ steamId: "1", reason: "member @alice" });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ ok: true, entries: [active, entry({ steamId: "2", removedAt: "2026-10-07T10:00:00.000Z" })] }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createWarconClient("https://warcon.test", "wck_test", "org-1");
+
+    await expect(client.fetchReservedSlots()).resolves.toEqual([active]);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://warcon.test/api/orgs/org-1/lists/reserve/entries");
+    expect(init.headers.Authorization).toBe("Bearer wck_test");
   });
 });

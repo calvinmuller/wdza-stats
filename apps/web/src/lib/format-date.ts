@@ -30,3 +30,15 @@ const timeOfDayFormatter = new Intl.DateTimeFormat("en-GB", {
 export function formatTimeOfDay(iso: string): string {
   return `${timeOfDayFormatter.format(new Date(iso))} UTC`;
 }
+
+// The same fix for a calendar date alone, as dd/mm/yyyy.
+const dateFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+export function formatDate(iso: string): string {
+  return dateFormatter.format(new Date(iso));
+}

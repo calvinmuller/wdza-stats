@@ -101,6 +101,10 @@ _Avoid_: Permission level, group
 A person proven, by signing in with Steam, to own a steamId. Signing in with Steam for the first time *is* claiming that steamId; there is no separate claim or approval step, and a steamId that has never appeared in any Snapshot can still be claimed. Owning a steamId is what lets a person start a **KickVote** and marks their player page as verified. A steamId nobody has signed in as is simply unclaimed — still fully present in the stats, just unowned.
 _Avoid_: Profile, claimed profile (see **SteamProfile** and **PlayerCareerStat**), User, Account
 
+**Reserved Slot**:
+A steamId that can still join a Server when it is full, kept on WDZA's reserved-slot list in Warcon and copied in by the Worker. Like a BannedPlayer it is keyed by steamId alone, so it applies to every Server. Shown publicly on `/whitelist`, without Warcon's reason. Warcon owns the list, so it is never edited here. See [docs/adr/0013](./docs/adr/0013-worker-mirrors-warcon-reserved-slots.md).
+_Avoid_: VIP, Whitelist (that word is only the public page's name, because it is what players call it)
+
 **Banner**:
 A sponsor's image shown on the public site, linking out to the sponsor. Shown in a fixed set of placements (header, sidebar, content), never in the admin area, and loaded so that a visitor blocking ads can block it like any other ad — see [docs/adr/0009](./docs/adr/0009-banners-load-from-a-dedicated-ad-hostname.md). Not tied to any Server.
 _Avoid_: Ad (the word survives only where ad blockers look for it: the `/ads/` path, the `ADS_*` settings, the `ad-banner` class), advert, promo

@@ -2,7 +2,7 @@ import { bannedPlayers, createDb, type Database } from "@wdza-stats/db";
 import { asc } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { syncWarconBans } from "./ban-sync";
-import type { WarconBanEntry, WarconClient } from "./warcon-client";
+import type { WarconListEntry, WarconClient } from "./warcon-client";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
@@ -14,7 +14,7 @@ afterAll(async () => {
   await db.$client.end();
 });
 
-function ban(steamId: string, overrides: Partial<WarconBanEntry> = {}): WarconBanEntry {
+function ban(steamId: string, overrides: Partial<WarconListEntry> = {}): WarconListEntry {
   return {
     steamId,
     name: `Player ${steamId}`,
@@ -27,8 +27,8 @@ function ban(steamId: string, overrides: Partial<WarconBanEntry> = {}): WarconBa
   };
 }
 
-function warcon(bans: WarconBanEntry[]): WarconClient {
-  return { fetchBans: async () => bans };
+function warcon(bans: WarconListEntry[]): WarconClient {
+  return { fetchBans: async () => bans, fetchReservedSlots: async () => [] };
 }
 
 function rows() {
@@ -87,7 +87,10 @@ describe("syncWarconBans", () => {
 
   it("throws and keeps the last synced list when Warcon can't be read", async () => {
     await syncWarconBans(db, warcon([ban("1")]));
-    const failing: WarconClient = { fetchBans: () => Promise.reject(new Error("network error")) };
+    const failing: WarconClient = {
+      fetchBans: () => Promise.reject(new Error("network error")),
+      fetchReservedSlots: async () => [],
+    };
 
     await expect(syncWarconBans(db, failing)).rejects.toThrow("network error");
     expect((await rows()).map((row) => row.steamId)).toEqual(["1"]);

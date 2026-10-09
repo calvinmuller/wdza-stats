@@ -1,4 +1,4 @@
-import { createDb, latestSnapshots, matches, servers, type Database } from "@wdza-stats/db";
+import { createDb, latestSnapshots, matches, servers, steamProfiles, type Database } from "@wdza-stats/db";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import LegacyMatchPage from "@/app/matches/[id]/page";
@@ -10,6 +10,7 @@ import { parseServerPath, serverPath } from "./server-path";
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 afterEach(async () => {
+  await db.delete(steamProfiles);
   await db.delete(latestSnapshots);
   await db.delete(matches);
   await db.delete(servers);
@@ -116,12 +117,21 @@ describe("getServerDirectory", () => {
           { name: "Valkyra", color: "#0000ff", score: 37 },
         ],
         players: [
-          { steamId: "1", displayName: "Alice", faction: "Lonestar", kills: 3, deaths: 4, cash: 0, ping: 40 },
+          { steamId: "1", displayName: "Alice", faction: "Lonestar", kills: 3, deaths: 4, cash: 1500, ping: 40 },
           { steamId: "2", displayName: "Bob", faction: "Valkyra", kills: 9, deaths: 1, cash: 0, ping: 40 },
           { steamId: "3", displayName: "Carol", faction: "Manticore", kills: 3, deaths: 2, cash: 0, ping: 40 },
         ],
         playerSlots: { current: 2, max: 64 },
       }),
+    });
+    await db.insert(steamProfiles).values({
+      steamId: "2",
+      personaName: "Bob",
+      avatarUrl: null,
+      countryCode: "ZA",
+      achievements: [],
+      status: "ok",
+      fetchedAt: new Date(),
     });
 
     const directory = await getServerDirectory(db);
@@ -139,11 +149,12 @@ describe("getServerDirectory", () => {
         { name: "Valkyra", color: "#0000ff", score: 37 },
         { name: "Lonestar", color: "#ff0000", score: 12 },
       ],
-      // Most kills first, then fewest deaths; no color for a Faction the Snapshot doesn't list.
+      // Most kills first, then fewest deaths; no color for a Faction the Snapshot doesn't list,
+      // and a flag only for a cached Steam profile with a country.
       players: [
-        { steamId: "2", displayName: "Bob", factionColor: "#0000ff", kills: 9, deaths: 1 },
-        { steamId: "3", displayName: "Carol", factionColor: null, kills: 3, deaths: 2 },
-        { steamId: "1", displayName: "Alice", factionColor: "#ff0000", kills: 3, deaths: 4 },
+        { steamId: "2", displayName: "Bob", factionColor: "#0000ff", countryCode: "ZA", kills: 9, deaths: 1, cash: 0, ping: 40 },
+        { steamId: "3", displayName: "Carol", factionColor: null, countryCode: null, kills: 3, deaths: 2, cash: 0, ping: 40 },
+        { steamId: "1", displayName: "Alice", factionColor: "#ff0000", countryCode: null, kills: 3, deaths: 4, cash: 1500, ping: 40 },
       ],
     });
     expect(directory[1].live).toBeNull();

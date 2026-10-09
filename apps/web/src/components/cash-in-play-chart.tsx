@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { CashHistoryPoint } from "@/lib/cash-history";
+import { compactMoney } from "@/lib/format-cash";
 
 const WIDTH = 1000;
 const HEIGHT = 240;
@@ -16,10 +17,6 @@ const timeFormatter = new Intl.DateTimeFormat("en-GB", {
 });
 
 const money = (value: number) => `$${Math.round(value).toLocaleString("en-US")}`;
-
-function compactMoney(value: number): string {
-  return value >= 1000 ? `$${Math.round(value / 1000)}k` : `$${value}`;
-}
 
 // Round the axis max up to a "nice" 1/2/5 x 10^n so gridlines land on clean values.
 function niceMax(value: number): number {

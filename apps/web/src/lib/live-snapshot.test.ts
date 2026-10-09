@@ -82,7 +82,7 @@ describe("getLiveSnapshot", () => {
       capturedAt: capturedAt.toISOString(),
       snapshot: {
         ...snapshot,
-        players: snapshot.players.map((player) => ({ ...player, avatarUrl: null, level: null })),
+        players: snapshot.players.map((player) => ({ ...player, avatarUrl: null, countryCode: null, level: null })),
       },
       activeChallenges: [],
       recentNotifications: [],
@@ -92,7 +92,7 @@ describe("getLiveSnapshot", () => {
     });
   });
 
-  it("joins in each online player's cached Steam avatar", async () => {
+  it("joins in each online player's cached Steam avatar and country", async () => {
     const [server] = await db
       .insert(servers)
       .values({ name: "WDZA Test", baseUrl: "http://rcon.test:9006" })
@@ -118,6 +118,7 @@ describe("getLiveSnapshot", () => {
       steamId: "1",
       personaName: "Alice",
       avatarUrl: "https://avatars.steamstatic.com/alice.jpg",
+      countryCode: "ZA",
       achievements: [],
       playtimeMinutes: null,
       status: "ok",
@@ -130,6 +131,7 @@ describe("getLiveSnapshot", () => {
       {
         ...snapshot.players[0],
         avatarUrl: "https://avatars.steamstatic.com/alice.jpg",
+        countryCode: "ZA",
         level: null,
       },
     ]);

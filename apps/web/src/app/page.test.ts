@@ -78,7 +78,7 @@ describe("HomePage", () => {
     expect(html).toContain("Valkyra");
     expect(html).toContain("Online players");
     expect(html).toContain("Alice");
-    expect(html).toContain("3 / 1");
+    expect(html).toMatch(/>3<\/td><td[^>]*>1<\/td><td[^>]*>\$500<\/td><td[^>]*>40<\/td>/);
   });
 
   it("puts the Season's Podium first, each place linking to the player's overview", async () => {

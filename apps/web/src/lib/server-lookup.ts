@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { serverPath } from "./server-path";
 import { serverLiveOf, type ServerLive } from "./server-live";
+import { getCountryCodesBySteamId } from "./steam-profile-lookup";
 
 export async function getServerByBaseUrl(db: Database, baseUrl: string) {
   const [server] = await db
@@ -93,8 +94,25 @@ export async function getServerDirectory(db: Database): Promise<ServerDirectoryE
     .where(eq(servers.enabled, true))
     .orderBy(asc(servers.id));
 
+  const countryCodes = await getCountryCodesBySteamId(
+    db,
+    rows.flatMap(({ payload }) => payload?.players.map((player) => player.steamId) ?? []),
+  );
+
   return rows.map(({ capturedAt, payload, ...server }) => ({
     ...server,
-    live: capturedAt && payload ? serverLiveOf(payload, capturedAt.toISOString()) : null,
+    live:
+      capturedAt && payload
+        ? serverLiveOf(
+            {
+              ...payload,
+              players: payload.players.map((player) => ({
+                ...player,
+                countryCode: countryCodes.get(player.steamId) ?? null,
+              })),
+            },
+            capturedAt.toISOString(),
+          )
+        : null,
   }));
 }

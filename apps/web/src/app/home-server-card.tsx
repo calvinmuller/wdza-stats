@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { CountryFlag } from "@/components/country-flag";
 import { FactionScoreBar } from "@/components/faction-score-bar";
 import { FactionSwatch } from "@/components/faction-swatch";
+import { compactMoney } from "@/lib/format-cash";
 import { formatTimeOfDay } from "@/lib/format-date";
 import { subscribeToLiveSnapshot } from "@/lib/live-snapshot-stream";
 import { getMapArtUrl } from "@/lib/map-art";
@@ -106,24 +108,39 @@ export function HomeServerCard({ slug, name, initial }: { slug: string; name: st
             </ul>
           )}
           {live.players.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between text-xs uppercase tracking-wide text-zinc-500">
-                <span>Online players</span>
-                <span>K / D</span>
-              </div>
-              <ul className="max-h-56 overflow-y-auto pr-1 text-sm">
-                {live.players.map((player) => (
-                  <li key={player.steamId} className="flex items-center justify-between gap-3 py-0.5">
-                    <span className="flex min-w-0 items-center text-zinc-200">
-                      {player.factionColor && <FactionSwatch color={player.factionColor} />}
-                      <span className="truncate">{player.displayName}</span>
-                    </span>
-                    <span className="shrink-0 tabular-nums text-zinc-400">
-                      {player.kills} / {player.deaths}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+            <div className="max-h-56 overflow-y-auto">
+              <table className="w-full table-fixed text-sm">
+                <thead className="sticky top-0 bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
+                  <tr>
+                    <th className="px-2 py-1.5 font-medium">Online players</th>
+                    <th className="w-9 px-2 py-1.5 text-right font-medium">K</th>
+                    <th className="w-9 px-2 py-1.5 text-right font-medium">D</th>
+                    <th className="w-14 px-2 py-1.5 text-right font-medium">Cash</th>
+                    <th className="w-12 px-2 py-1.5 text-right font-medium">Ping</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {live.players.map((player) => (
+                    <tr key={player.steamId}>
+                      <td className="px-2 py-1">
+                        <span className="flex min-w-0 items-center text-zinc-200">
+                          {player.factionColor && <FactionSwatch color={player.factionColor} />}
+                          <span className="truncate">{player.displayName}</span>
+                          {player.countryCode && (
+                            <span className="ml-1.5 shrink-0">
+                              <CountryFlag countryCode={player.countryCode} />
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums text-zinc-200">{player.kills}</td>
+                      <td className="px-2 py-1 text-right tabular-nums text-zinc-400">{player.deaths}</td>
+                      <td className="px-2 py-1 text-right tabular-nums text-zinc-200">{compactMoney(player.cash)}</td>
+                      <td className="px-2 py-1 text-right tabular-nums text-zinc-500">{player.ping}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
           <span className="mt-auto text-xs text-zinc-500">

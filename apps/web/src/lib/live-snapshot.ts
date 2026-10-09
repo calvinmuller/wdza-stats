@@ -14,10 +14,11 @@ import { getActiveChallenges, type ActiveChallengeView } from "./active-challeng
 import { getActiveKickVote } from "./kick-vote";
 import { getStaffSteamIds } from "./staff-steam-link";
 import { getRecentNotifications, type RecentNotificationView } from "./recent-notifications";
-import { getAvatarUrlsBySteamId } from "./steam-profile-lookup";
+import { getAvatarUrlsBySteamId, getCountryCodesBySteamId } from "./steam-profile-lookup";
 
 export interface LiveSnapshotPlayer extends SnapshotPlayer {
   avatarUrl: string | null;
+  countryCode: string | null;
   level: number | null;
 }
 
@@ -103,9 +104,10 @@ export async function getLiveSnapshot(
   }
 
   const steamIds = row.payload.players.map((player) => player.steamId);
-  const [avatarUrls, levels, activeChallenges, recentNotifications, cashHistory, activeKickVote, staffSteamIds] =
+  const [avatarUrls, countryCodes, levels, activeChallenges, recentNotifications, cashHistory, activeKickVote, staffSteamIds] =
     await Promise.all([
     getAvatarUrlsBySteamId(db, steamIds),
+    getCountryCodesBySteamId(db, steamIds),
     getLevelsBySteamId(db, row.serverId, steamIds),
     getActiveChallenges(db, row.serverId, row.capturedAt),
     getRecentNotifications(db, row.serverId),
@@ -124,6 +126,7 @@ export async function getLiveSnapshot(
       players: row.payload.players.map((player) => ({
         ...player,
         avatarUrl: avatarUrls.get(player.steamId) ?? null,
+        countryCode: countryCodes.get(player.steamId) ?? null,
         level: levels.get(player.steamId) ?? null,
       })),
     },

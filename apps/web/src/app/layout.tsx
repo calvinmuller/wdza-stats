@@ -10,6 +10,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import "./globals.css";
 
 const GA_MEASUREMENT_ID = "G-BNZZV19NZB";
+const DONATE_URL = "https://www.paypal.com/ncp/payment/TDMRPS6W7HB6E";
 
 const heading = Barlow_Condensed({
   subsets: ["latin"],
@@ -50,7 +51,6 @@ export default function RootLayout({
               <div className="ml-auto flex items-center gap-2">
                 <ServerPicker />
                 <PlayerSignIn />
-                <ThemeToggle />
               </div>
             </div>
           </header>
@@ -59,8 +59,23 @@ export default function RootLayout({
             {children}
           </main>
 
-          <footer className="border-t border-white/10 px-4 py-6 text-center text-xs text-zinc-500 sm:px-6">
-            WDZA Wardogs &middot; stats update automatically from the live server
+          <footer className="sticky bottom-0 z-20 border-t border-white/10 bg-zinc-950/90 backdrop-blur">
+            <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2 text-xs text-zinc-500 sm:px-6">
+              <span className="hidden sm:inline">
+                WDZA Wardogs &middot; stats update automatically from the live server
+              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <a
+                  href={DONATE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-full border border-brand-gold-500/40 px-3 py-1 font-medium text-brand-gold-500 transition-colors hover:bg-brand-gold-500/10"
+                >
+                  Donate
+                </a>
+                <ThemeToggle />
+              </div>
+            </div>
           </footer>
         </ThemeProvider>
 

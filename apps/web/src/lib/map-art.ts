@@ -3,6 +3,8 @@
 // Ozeti -> Europe). Add a map here when it shows up without art.
 const MAP_TERRAIN: Record<string, "Kavkazi" | "Europe" | "NorthAmerica"> = {
   Ozeti: "Europe",
+  Bakurani: "Kavkazi",
+  Zestafona: "NorthAmerica",
   // Some maps are named after their terrain folder.
   Kavkazi: "Kavkazi",
   Europe: "Europe",

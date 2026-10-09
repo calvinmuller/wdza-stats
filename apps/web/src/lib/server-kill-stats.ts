@@ -62,6 +62,33 @@ function playerKills(serverId: number, scope: KillScope, bannedSteamIds: string[
 }
 
 /**
+ * The most-used causes among the Kills `where` picks, most kills first, ties
+ * by cause tag, the top `size` only. Shared by a Server's stats page and the
+ * home page's top weapons across every Server.
+ */
+export async function weaponStatsWhere(db: Database, where: SQL[], size: number): Promise<ServerWeaponStat[]> {
+  const killCount = count();
+  const rows = await db
+    .select({
+      cause: kills.cause,
+      kills: killCount,
+      headshots: sql<number>`count(*) filter (where ${kills.headshot})`.mapWith(Number),
+    })
+    .from(kills)
+    .where(and(...where, isNotNull(kills.cause)))
+    .groupBy(kills.cause)
+    .orderBy(desc(killCount), kills.cause)
+    .limit(size);
+
+  return rows.map((row) => ({
+    cause: row.cause!,
+    weapon: weaponName(row.cause)!,
+    kills: row.kills,
+    headshots: row.headshots,
+  }));
+}
+
+/**
  * The Server's most-used weapons and vehicles in the scope, most kills first,
  * ties by cause tag, the top SERVER_WEAPONS_SIZE only.
  */
@@ -71,25 +98,7 @@ export async function getServerWeaponStats(
   scope: KillScope,
   bannedSteamIds: string[],
 ): Promise<ServerWeaponStat[]> {
-  const killCount = count();
-  const rows = await db
-    .select({
-      cause: kills.cause,
-      kills: killCount,
-      headshots: sql<number>`count(*) filter (where ${kills.headshot})`.mapWith(Number),
-    })
-    .from(kills)
-    .where(and(...playerKills(serverId, scope, bannedSteamIds), isNotNull(kills.cause)))
-    .groupBy(kills.cause)
-    .orderBy(desc(killCount), kills.cause)
-    .limit(SERVER_WEAPONS_SIZE);
-
-  return rows.map((row) => ({
-    cause: row.cause!,
-    weapon: weaponName(row.cause)!,
-    kills: row.kills,
-    headshots: row.headshots,
-  }));
+  return weaponStatsWhere(db, playerKills(serverId, scope, bannedSteamIds), SERVER_WEAPONS_SIZE);
 }
 
 /**

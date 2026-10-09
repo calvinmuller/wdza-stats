@@ -17,3 +17,16 @@ const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
 export function formatDateTime(iso: string): string {
   return `${dateTimeFormatter.format(new Date(iso))} UTC`;
 }
+
+// The same fix for a time of day alone, as hh:mm:ss.
+const timeOfDayFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+export function formatTimeOfDay(iso: string): string {
+  return `${timeOfDayFormatter.format(new Date(iso))} UTC`;
+}

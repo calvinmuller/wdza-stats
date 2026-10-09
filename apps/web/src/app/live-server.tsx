@@ -8,8 +8,10 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AdBanner } from "@/components/ad-banner";
 import { CashInPlayChart } from "@/components/cash-in-play-chart";
+import { FactionScoreBar } from "@/components/faction-score-bar";
 import { FactionSwatch } from "@/components/faction-swatch";
 import { LightingBadge } from "@/components/lighting-badge";
+import { formatTimeOfDay } from "@/lib/format-date";
 import { getLightingInfo } from "@/lib/lighting";
 import { subscribeToLiveSnapshot } from "@/lib/live-snapshot-stream";
 import { getMapArtUrl } from "@/lib/map-art";
@@ -22,23 +24,6 @@ import { SortableTable, type SortableColumn } from "@/components/sortable-table"
 import type { Banner } from "@/lib/banners";
 import type { KickVoteInitiator } from "@/lib/current-kick-vote-initiator";
 import type { LiveSnapshotPlayer, LiveSnapshotView } from "@/lib/live-snapshot";
-
-const FACTION_SCORE_LIMIT = 100;
-
-// A fixed UTC hh:mm:ss, pinned to a locale/timeZone so the server (whatever
-// it runs under) and the client always render identical text - avoids the
-// hydration mismatch `Date.prototype.toLocaleTimeString()` would produce.
-const capturedAtFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-
-function formatCapturedAt(iso: string): string {
-  return `${capturedAtFormatter.format(new Date(iso))} UTC`;
-}
 
 const FLIP_DURATION_MS = 350;
 
@@ -294,7 +279,7 @@ export function LiveServerView({
           <span className="mx-2 text-zinc-600">&middot;</span>
           Updated{" "}
           <time dateTime={capturedAt} className="text-zinc-200">
-            {formatCapturedAt(capturedAt)}
+            {formatTimeOfDay(capturedAt)}
           </time>
         </p>
         {rotation.current !== null && (
@@ -334,20 +319,8 @@ export function LiveServerView({
                   {faction.score}
                 </span>
               </div>
-              <div
-                className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={FACTION_SCORE_LIMIT}
-                aria-valuenow={Math.min(faction.score, FACTION_SCORE_LIMIT)}
-              >
-                <div
-                  className="h-full rounded-full transition-[width] duration-500"
-                  style={{
-                    backgroundColor: faction.color,
-                    width: `${Math.min(100, Math.max(0, (faction.score / FACTION_SCORE_LIMIT) * 100))}%`,
-                  }}
-                />
+              <div className="mt-2">
+                <FactionScoreBar name={faction.name} color={faction.color} score={faction.score} />
               </div>
             </li>
           ))}

@@ -2,6 +2,7 @@ import { latestSnapshots, servers, type Database } from "@wdza-stats/db";
 import { and, asc, eq } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { serverPath } from "./server-path";
+import { serverLiveOf, type ServerLive } from "./server-live";
 
 export async function getServerByBaseUrl(db: Database, baseUrl: string) {
   const [server] = await db
@@ -81,7 +82,7 @@ export async function resolveApiServer(db: Database, searchParams: URLSearchPara
 /** One enabled Server as the home page's directory shows it. */
 export interface ServerDirectoryEntry extends PublicServer {
   /** From its latest Snapshot; null until the Worker has polled it. */
-  live: { map: string; playerCount: number; maxPlayers: number; capturedAt: string } | null;
+  live: ServerLive | null;
 }
 
 export async function getServerDirectory(db: Database): Promise<ServerDirectoryEntry[]> {
@@ -94,14 +95,6 @@ export async function getServerDirectory(db: Database): Promise<ServerDirectoryE
 
   return rows.map(({ capturedAt, payload, ...server }) => ({
     ...server,
-    live:
-      capturedAt && payload
-        ? {
-            map: payload.map,
-            playerCount: payload.players.length,
-            maxPlayers: payload.playerSlots.max,
-            capturedAt: capturedAt.toISOString(),
-          }
-        : null,
+    live: capturedAt && payload ? serverLiveOf(payload, capturedAt.toISOString()) : null,
   }));
 }

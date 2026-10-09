@@ -1,15 +1,16 @@
-import { createDb, matches, servers, type Database } from "@wdza-stats/db";
+import { createDb, latestSnapshots, matches, servers, type Database } from "@wdza-stats/db";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import HomePage from "@/app/page";
 import LegacyMatchPage from "@/app/matches/[id]/page";
 import LegacyStatsPage from "@/app/stats/page";
-import { getPublicServerBySlug, redirectToDefaultServer, resolveApiServer } from "./server-lookup";
+import { snapshotFixture } from "./live-snapshot-fixture";
+import { getPublicServerBySlug, getServerDirectory, redirectToDefaultServer, resolveApiServer } from "./server-lookup";
 import { parseServerPath, serverPath } from "./server-path";
 
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 afterEach(async () => {
+  await db.delete(latestSnapshots);
   await db.delete(matches);
   await db.delete(servers);
 });
@@ -100,20 +101,40 @@ describe("redirectToDefaultServer", () => {
   });
 });
 
-describe("HomePage", () => {
-  it("lists every enabled Server", async () => {
-    await seedServers();
+describe("getServerDirectory", () => {
+  it("shows each enabled Server's map, rotation and faction scores from its latest Snapshot", async () => {
+    const [first] = await seedServers();
+    await db.insert(latestSnapshots).values({
+      serverId: first.id,
+      capturedAt: new Date("2026-01-01T00:00:00.000Z"),
+      payload: snapshotFixture({
+        map: "Deadcity",
+        lighting: "Night",
+        rotation: { nowIndex: 1, entries: [{ map: "Sandstorm" }, { map: "Deadcity" }, { map: "Kavkazi" }] },
+        factions: [
+          { name: "Lonestar", color: "#ff0000", score: 12 },
+          { name: "Valkyra", color: "#0000ff", score: 37 },
+        ],
+        playerSlots: { current: 2, max: 64 },
+      }),
+    });
 
-    const html = renderToStaticMarkup(await HomePage());
+    const directory = await getServerDirectory(db);
 
-    expect(html).toContain('href="/servers/first"');
-    expect(html).toContain('href="/servers/second"');
-    expect(html).not.toContain("Retired");
-  });
-
-  it("goes straight to the only Server when there is just one", async () => {
-    await db.insert(servers).values({ name: "Only", slug: "only", baseUrl: "http://only.test:9006" });
-
-    expect(await redirectedTo(() => HomePage())).toBe("/servers/only");
+    expect(directory.map((server) => server.slug)).toEqual(["first", "second"]);
+    expect(directory[0].live).toEqual({
+      map: "Deadcity",
+      lighting: "Night",
+      playerCount: 1,
+      maxPlayers: 64,
+      capturedAt: "2026-01-01T00:00:00.000Z",
+      rotation: { current: "Deadcity", next: "Kavkazi" },
+      // Leader first.
+      factions: [
+        { name: "Valkyra", color: "#0000ff", score: 37 },
+        { name: "Lonestar", color: "#ff0000", score: 12 },
+      ],
+    });
+    expect(directory[1].live).toBeNull();
   });
 });

@@ -13,6 +13,9 @@ Every table was already keyed by Server, but a deployment could still track only
 - apps/web still never calls the RCON API (`no-rcon-access.test.ts`). A KickVote's broadcast and kick go out through the Worker's client for that vote's own Server.
 - A disabled Server is neither polled nor shown. Its history is kept, so enabling it again carries on where it left off. The Worker expires the closed-window KickVotes of a Server it isn't polling, since nothing else ever would.
 - The old top-level URLs (`/stats`, `/players/{steamId}`, ...) redirect to the same page on the default Server, which is the oldest enabled one. `/matches/{id}` redirects to that Match's own Server. `/` lists the Servers, or goes straight to the only one.
+
+  > **Amended by [ADR 0012](./0012-unscoped-pages-span-every-server.md):** `/` and `/players/{steamId}` no longer redirect. They are now the pages that span every Server.
+
 - `/api/*` routes keep their paths and take the Server as `?server={slug}`, defaulting to the default Server so existing callers keep working. `/api/servers` lists the slugs.
 - `RCON_BASE_URL`, `RCON_TOKEN` and `SERVER_NAME` are optional on the Worker. When set, they bring a deployment from before this change over: they make sure that Server has a row, and give it the token if it has none. They never overwrite what an admin has set.
 - A Server's kill feed token is issued per Server on the same page. Seasons, bans, Staff, game config and Banners stay shared by every Server.

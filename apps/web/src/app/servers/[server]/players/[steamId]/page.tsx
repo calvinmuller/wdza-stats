@@ -128,6 +128,12 @@ export default async function PlayerPage({
             Verified
           </span>
         )}
+        <Link
+          href={`/players/${encodeURIComponent(steamId)}?${new URLSearchParams({ season: seasonScopeParam(scope) })}`}
+          className="ml-auto text-sm font-normal text-brand-gold-500 hover:underline"
+        >
+          All servers &rarr;
+        </Link>
       </h1>
 
       <div className="rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-3">

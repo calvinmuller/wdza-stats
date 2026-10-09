@@ -58,14 +58,18 @@ export interface WeaponLeaderboard {
 // the game tagged its cause.
 const VEHICLE_KILL_TAGS = ["RoadKill", "VehicleExplosion"];
 
-/**
- * Kills that count towards a weapon on `serverId`: made by someone else,
- * with a named weapon, not by a banned player. Suicides and deaths by the
- * environment are nobody's Kill.
- */
+/** countingWeaponKills on `serverId` alone. */
 function weaponKills(serverId: number, bannedSteamIds: string[]): SQL[] {
+  return [eq(kills.serverId, serverId), ...countingWeaponKills(bannedSteamIds)];
+}
+
+/**
+ * Kills that count towards a weapon, on whichever Server: made by someone
+ * else, with a named weapon, not a roadkill or vehicle explosion, not by a
+ * banned player. Suicides and deaths by the environment are nobody's Kill.
+ */
+export function countingWeaponKills(bannedSteamIds: string[]): SQL[] {
   return [
-    eq(kills.serverId, serverId),
     isNotNull(kills.killerSteamId),
     ne(kills.killerSteamId, kills.victimSteamId),
     not(kills.suicide),

@@ -33,6 +33,14 @@ _Avoid_: Lifetime stats, player profile, PlayerProfile, progression record
 A numbered period of play (Season 1, Season 2, …), optionally also named, shared by every Server. A Season begins when an admin starts it by hand: there is no scheduled start, so the date of a Season is whenever it was actually started. Seasons run back to back: each one ends exactly when the next begins, so there is always exactly one current Season and no gaps. Season 1 is everything before Season 2 began. A Match belongs to the Season that was current when it started, so a Match is never split across Seasons: one still in progress when a new Season begins counts towards the old one in full. A just-started Season can be withdrawn only until its first Match closes. A new Season never resets anything career-long: PlayerCareerStat, level, and Achievements carry straight on across it.
 _Avoid_: Period, split, ladder, reset, wipe (nothing is wiped; career totals continue)
 
+**PlayerOverallStat**:
+A player's totals across every enabled Server: their PlayerSeasonStats for one Season, or their PlayerCareerStats, summed. Shared by every Server rather than scoped to one, and never stored. Its overall level comes from the player's career XP summed across those Servers, on the same level curve every Server uses. That level is never the player's level on any one Server, and it unlocks nothing. A disabled Server's totals are left out, so disabling a Server can lower a player's overall level.
+_Avoid_: Lifetime stats, player profile, network stat, global stat
+
+**Podium**:
+The three players whose PlayerOverallStat for the current Season holds the most XP. It is shared by every Server rather than scoped to one. Ties go to the player with more kills that Season. Banned players are never on it. It always covers the current Season: there is no Career or past-Season Podium.
+_Avoid_: Top 3, hall of fame, global leaderboard (the leaderboards stay per-Server)
+
 **Window**:
 A rolling span of wall-clock time ending now (the last 7 days, the last 30 days) in which Kills are counted by the moment the kill feed delivered them. Unlike a Season it has no fixed start, is not tied to Matches, and shifts every time the page is opened. Only Kills, which carry a delivery time, can be scoped to a Window; Snapshot-derived stats never are.
 _Avoid_: Period (already avoided under **Season**), range, timeframe, "last week" (ambiguous with the calendar week)

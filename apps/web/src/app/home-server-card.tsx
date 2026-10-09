@@ -105,6 +105,27 @@ export function HomeServerCard({ slug, name, initial }: { slug: string; name: st
               ))}
             </ul>
           )}
+          {live.players.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between text-xs uppercase tracking-wide text-zinc-500">
+                <span>Online players</span>
+                <span>K / D</span>
+              </div>
+              <ul className="max-h-56 overflow-y-auto pr-1 text-sm">
+                {live.players.map((player) => (
+                  <li key={player.steamId} className="flex items-center justify-between gap-3 py-0.5">
+                    <span className="flex min-w-0 items-center text-zinc-200">
+                      {player.factionColor && <FactionSwatch color={player.factionColor} />}
+                      <span className="truncate">{player.displayName}</span>
+                    </span>
+                    <span className="shrink-0 tabular-nums text-zinc-400">
+                      {player.kills} / {player.deaths}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <span className="mt-auto text-xs text-zinc-500">
             <UpdatedAt iso={live.capturedAt} />
           </span>

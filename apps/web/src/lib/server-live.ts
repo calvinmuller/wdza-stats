@@ -2,6 +2,16 @@
 // driver, and the home page's server cards apply this in the browser too.
 import { getRotationPreview, type Snapshot, type SnapshotFaction } from "@wdza-stats/db/snapshot";
 
+/** One online player on a Server's card. */
+export interface ServerLivePlayer {
+  steamId: string;
+  displayName: string;
+  /** Their Faction's color, or null if the Snapshot doesn't list that Faction. */
+  factionColor: string | null;
+  kills: number;
+  deaths: number;
+}
+
 /** What a Server's card on the home page says about its latest Snapshot. */
 export interface ServerLive {
   map: string;
@@ -12,6 +22,8 @@ export interface ServerLive {
   rotation: { current: string; next: string } | null;
   /** Leader first. */
   factions: SnapshotFaction[];
+  /** Most kills first, then fewest deaths. */
+  players: ServerLivePlayer[];
 }
 
 /**
@@ -23,6 +35,7 @@ export function serverLiveOf(
   capturedAt: string,
 ): ServerLive {
   const rotation = getRotationPreview(snapshot.rotation);
+  const factionColors = new Map(snapshot.factions.map((faction) => [faction.name, faction.color]));
   return {
     map: snapshot.map,
     lighting: snapshot.lighting,
@@ -33,5 +46,14 @@ export function serverLiveOf(
     factions: [...snapshot.factions]
       .sort((a, b) => b.score - a.score)
       .map(({ name, color, score }) => ({ name, color, score })),
+    players: [...snapshot.players]
+      .sort((a, b) => b.kills - a.kills || a.deaths - b.deaths)
+      .map(({ steamId, displayName, faction, kills, deaths }) => ({
+        steamId,
+        displayName,
+        factionColor: factionColors.get(faction) ?? null,
+        kills,
+        deaths,
+      })),
   };
 }

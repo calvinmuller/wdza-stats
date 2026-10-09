@@ -19,18 +19,20 @@ function isActive(pathname: string, href: string, exact: boolean): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-// The sections of the Server being looked at. Outside /servers/{slug} (admin,
-// the KickVote pages) the links are the old top-level paths, which send a
-// visitor to the default Server.
+// The sections of the Server being looked at. Outside /servers/{slug} (the
+// home page, a player's overview, admin, the KickVote pages) the links are
+// the old top-level paths, which send a visitor to the default Server - all
+// but Live, since "/" is no longer a Server's dashboard (docs/adr/0012).
 export function NavLinks() {
   const pathname = usePathname();
   const serverSlug = useParams<{ server?: string }>()?.server;
   const base = serverSlug ? serverPath(serverSlug) : "";
+  const links = serverSlug ? NAV_LINKS : NAV_LINKS.filter((link) => link.path !== "");
 
   return (
     <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium">
-      {NAV_LINKS.map((link) => {
-        const href = `${base}${link.path}` || "/";
+      {links.map((link) => {
+        const href = `${base}${link.path}`;
         const active = isActive(pathname, href, link.path === "");
         return (
           <Link

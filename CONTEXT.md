@@ -41,6 +41,10 @@ _Avoid_: Lifetime stats, player profile, network stat, global stat
 The three players whose PlayerOverallStat for the current Season holds the most XP. It is shared by every Server rather than scoped to one. Ties go to the player with more kills that Season. Banned players are never on it. It always covers the current Season: there is no Career or past-Season Podium.
 _Avoid_: Top 3, hall of fame, global leaderboard (the leaderboards stay per-Server)
 
+**Runners-up**:
+The five players ranked just below the Podium (4th to 8th), by the same rule. Shown beneath the Podium on the home page, smaller; they are not on the Podium.
+_Avoid_: Top 8, honourable mentions
+
 **Window**:
 A rolling span of wall-clock time ending now (the last 7 days, the last 30 days) in which Kills are counted by the moment the kill feed delivered them. Unlike a Season it has no fixed start, is not tied to Matches, and shifts every time the page is opened. Only Kills, which carry a delivery time, can be scoped to a Window; Snapshot-derived stats never are.
 _Avoid_: Period (already avoided under **Season**), range, timeframe, "last week" (ambiguous with the calendar week)

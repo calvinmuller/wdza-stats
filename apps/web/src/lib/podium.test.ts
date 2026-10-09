@@ -88,6 +88,24 @@ describe("getPodium", () => {
     expect(podium.places[0]).toMatchObject({ displayName: "Bob", kills: 10, deaths: 5, kd: 2, matchesWon: 2 });
   });
 
+  it("puts the next five places after the Podium in its Runners-up", async () => {
+    const alpha = await addServer("alpha");
+    for (let index = 1; index <= 9; index++) {
+      await played(alpha.id, { steamId: String(index), name: `Player ${index}`, xp: 1000 - index * 10 });
+    }
+
+    const podium = await getPodium(db);
+
+    expect(podium.places.map((place) => place.steamId)).toEqual(["1", "2", "3"]);
+    expect(podium.runnersUp.map((place) => [place.place, place.steamId])).toEqual([
+      [4, "4"],
+      [5, "5"],
+      [6, "6"],
+      [7, "7"],
+      [8, "8"],
+    ]);
+  });
+
   it("shows the overall level, from career XP summed across Servers", async () => {
     const alpha = await addServer("alpha");
     const bravo = await addServer("bravo");
@@ -136,6 +154,6 @@ describe("getPodium", () => {
     await db.insert(playerCareerStats).values({ serverId: alpha.id, steamId: "1", displayName: "Alice" });
     await db.insert(playerSeasonStats).values({ seasonId: season.id, serverId: alpha.id, steamId: "1", kills: 3 });
 
-    expect((await getPodium(db)).places).toEqual([]);
+    expect(await getPodium(db)).toMatchObject({ places: [], runnersUp: [] });
   });
 });

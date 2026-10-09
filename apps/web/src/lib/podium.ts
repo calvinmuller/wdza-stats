@@ -6,9 +6,11 @@ import { kdRatio } from "./player-career-stats";
 import { getOverallIdentities } from "./player-overall";
 
 // The Podium (see CONTEXT.md): the three players whose PlayerOverallStat for
-// the current Season holds the most XP, across every enabled Server.
+// the current Season holds the most XP, across every enabled Server - plus the
+// Runners-up, the next few places shown beneath it.
 
 export const PODIUM_SIZE = 3;
+export const RUNNERS_UP_SIZE = 5;
 
 export interface PodiumPlace {
   place: number;
@@ -30,12 +32,14 @@ export interface Podium {
   season: Season;
   /** Up to PODIUM_SIZE places, first place first; fewer early in a Season. */
   places: PodiumPlace[];
+  /** Up to RUNNERS_UP_SIZE places after the Podium, ranked the same way. */
+  runnersUp: PodiumPlace[];
 }
 
 const sum = (column: AnyPgColumn) => sql<number>`sum(${column})`.mapWith(Number);
 
 /**
- * The current Season's Podium. Ties go to more Season kills, then to the
+ * The current Season's Podium and its Runners-up. Ties go to more Season kills, then to the
  * lower steamId, so the order is stable between two page loads. Only players
  * who played a Match this Season on an enabled Server, and aren't banned.
  */
@@ -63,33 +67,36 @@ export async function getPodium(db: Database): Promise<Podium> {
     )
     .groupBy(playerSeasonStats.steamId)
     .orderBy(desc(xp), desc(kills), asc(playerSeasonStats.steamId))
-    .limit(PODIUM_SIZE);
+    .limit(PODIUM_SIZE + RUNNERS_UP_SIZE);
 
   const identities = await getOverallIdentities(
     db,
     rows.map((row) => row.steamId),
   );
 
+  // Every PlayerSeasonStat has a PlayerCareerStat beside it (written in the
+  // same transaction), so no row should go missing here.
+  const ranked: PodiumPlace[] = rows.flatMap((row, index) => {
+    const identity = identities.get(row.steamId);
+    if (!identity) return [];
+    return {
+      place: index + 1,
+      steamId: row.steamId,
+      displayName: identity.displayName,
+      avatarUrl: identity.avatarUrl,
+      countryCode: identity.countryCode,
+      level: identity.level,
+      xp: row.xp,
+      kills: row.kills,
+      deaths: row.deaths,
+      kd: kdRatio(row.kills, row.deaths),
+      matchesWon: row.matchesWon,
+    };
+  });
+
   return {
     season,
-    // Every PlayerSeasonStat has a PlayerCareerStat beside it (written in the
-    // same transaction), so no row should go missing here.
-    places: rows.flatMap((row, index) => {
-      const identity = identities.get(row.steamId);
-      if (!identity) return [];
-      return {
-        place: index + 1,
-        steamId: row.steamId,
-        displayName: identity.displayName,
-        avatarUrl: identity.avatarUrl,
-        countryCode: identity.countryCode,
-        level: identity.level,
-        xp: row.xp,
-        kills: row.kills,
-        deaths: row.deaths,
-        kd: kdRatio(row.kills, row.deaths),
-        matchesWon: row.matchesWon,
-      };
-    }),
+    places: ranked.filter((each) => each.place <= PODIUM_SIZE),
+    runnersUp: ranked.filter((each) => each.place > PODIUM_SIZE),
   };
 }

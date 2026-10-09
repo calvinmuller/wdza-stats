@@ -67,7 +67,36 @@ function EmptyPlinth({ place }: { place: number }) {
   );
 }
 
-/** The current Season's Podium (see CONTEXT.md), across every Server. */
+// A smaller card for the Runners-up: a row on a phone, a column from sm up.
+function RunnerUpCard({ place }: { place: PodiumPlace }) {
+  return (
+    <Link
+      href={`/players/${encodeURIComponent(place.steamId)}`}
+      className="flex h-full items-center gap-3 rounded-lg border border-white/10 bg-zinc-900/60 px-3 py-2 transition-colors hover:bg-zinc-900 sm:flex-col sm:gap-1 sm:p-3 sm:text-center"
+    >
+      <span className="w-5 font-display text-lg text-zinc-500 sm:w-auto">{place.place}</span>
+      {place.avatarUrl ? (
+        <PlayerAvatar avatarUrl={place.avatarUrl} size={40} />
+      ) : (
+        <span
+          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-zinc-500 ring-1 ring-white/10"
+          aria-hidden="true"
+        >
+          {place.displayName.slice(0, 1).toUpperCase()}
+        </span>
+      )}
+      <span className="min-w-0 flex-1 truncate text-zinc-50 sm:max-w-full sm:flex-none">{place.displayName}</span>
+      <span className="text-sm text-zinc-200">
+        {place.xp.toLocaleString("en-US")} <span className="text-xs text-zinc-400">XP</span>
+      </span>
+      <span className="hidden text-xs text-zinc-500 sm:block">
+        Lv {place.level} · K/D {place.kd.toFixed(2)}
+      </span>
+    </Link>
+  );
+}
+
+/** The current Season's Podium and Runners-up (see CONTEXT.md), across every Server. */
 export function HomePodium({ podium }: { podium: Podium }) {
   const places = Array.from({ length: PODIUM_SIZE }, (_, index) => index + 1);
 
@@ -89,6 +118,15 @@ export function HomePodium({ podium }: { podium: Podium }) {
               </li>
             );
           })}
+        </ol>
+      )}
+      {podium.runnersUp.length > 0 && (
+        <ol start={PODIUM_SIZE + 1} className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+          {podium.runnersUp.map((place) => (
+            <li key={place.place}>
+              <RunnerUpCard place={place} />
+            </li>
+          ))}
         </ol>
       )}
     </section>

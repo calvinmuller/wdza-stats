@@ -13,6 +13,7 @@ import MatchDetailPage from "./page";
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = process.env.RCON_BASE_URL!;
+const SLUG = "wdza-test";
 
 afterEach(async () => {
   await db.delete(playerMatchStats);
@@ -26,7 +27,7 @@ afterAll(async () => {
 });
 
 async function renderPage(id: string) {
-  const element = await MatchDetailPage({ params: Promise.resolve({ id }) });
+  const element = await MatchDetailPage({ params: Promise.resolve({ server: SLUG, id }) });
   return renderToStaticMarkup(element);
 }
 
@@ -42,7 +43,7 @@ describe("MatchDetailPage", () => {
   it("renders map, winner, MVP, and per-player stats for a seeded Match", async () => {
     const [server] = await db
       .insert(servers)
-      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
       .returning();
 
     const [match] = await db

@@ -78,6 +78,7 @@ describe("getLiveSnapshot", () => {
     expect(result).toEqual({
       serverId: server.id,
       serverName: "WDZA Test",
+      serverSlug: server.slug,
       capturedAt: capturedAt.toISOString(),
       snapshot: {
         ...snapshot,

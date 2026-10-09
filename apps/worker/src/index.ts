@@ -6,10 +6,10 @@ import {
   WARDOGS_STEAM_APP_ID,
 } from "@wdza-stats/db";
 import { startWarconBanSync } from "./ban-sync";
-import { runHeartbeat } from "./heartbeat";
+import { bootstrapEnvServer } from "./heartbeat";
 import { startKickVoteAnnouncer, startKickVoteResolver } from "./kick-vote-engine";
-import { createRconClient } from "./rcon-client";
-import { startSnapshotPolling, type SteamRefreshConfig } from "./snapshot-poller";
+import { startServerSupervisor } from "./server-supervisor";
+import type { SteamRefreshConfig } from "./snapshot-poller";
 import { createSteamClient } from "./steam-client";
 import { createWarconClient } from "./warcon-client";
 import { startClaimedSteamProfileFetcher } from "./steam-profile-refresh";
@@ -18,15 +18,29 @@ loadRootEnv();
 
 const databaseUrl = requireEnv("DATABASE_URL");
 const db = createDb(databaseUrl);
-const baseUrl = requireEnv("RCON_BASE_URL");
-const token = requireEnv("RCON_TOKEN");
 
 // Bans change rarely and Warcon is a third-party service, so it is read far
 // less often than RCON. A new Warcon ban starts filtering Snapshots within this.
 const WARCON_BAN_SYNC_INTERVAL_MS = 60_000;
 
-const server = await runHeartbeat(db, baseUrl);
-console.log(`[worker] connected to Postgres, tracking "${server.name}"`);
+// The servers table is re-read this often in case a servers_changed
+// notification from /admin/servers was missed.
+const SERVER_RECONCILE_INTERVAL_MS = 60_000;
+
+// Servers are managed in /admin/servers (docs/adr/0011). RCON_BASE_URL and
+// RCON_TOKEN are optional now: when set they carry a deployment from before
+// that over, and never overwrite what an admin has since set.
+const envBaseUrl = process.env.RCON_BASE_URL;
+const envToken = process.env.RCON_TOKEN;
+if (envBaseUrl && envToken) {
+  const envServer = await bootstrapEnvServer(db, {
+    name: process.env.SERVER_NAME || envBaseUrl,
+    baseUrl: envBaseUrl,
+    rconToken: envToken,
+  });
+  console.log(`[worker] env-configured server is "${envServer.name}" (/servers/${envServer.slug})`);
+}
+console.log("[worker] connected to Postgres");
 
 // STEAM_API_KEY is optional - unlike RCON, Steam enrichment is a nice-to-have
 // on top of core snapshot polling, so a deployment without a key yet
@@ -40,19 +54,22 @@ if (!steamConfig) {
   console.log("[worker] STEAM_API_KEY not set - Steam profile enrichment disabled");
 }
 
-const rconClient = createRconClient(baseUrl, token);
-startSnapshotPolling(db, rconClient, server.id, SNAPSHOT_POLL_INTERVAL_MS, steamConfig);
-console.log(
-  `[worker] polling RCON every ${SNAPSHOT_POLL_INTERVAL_MS / 1000}s for "${server.name}"`,
-);
+const supervisor = startServerSupervisor(db, databaseUrl, SERVER_RECONCILE_INTERVAL_MS, {
+  pollIntervalMs: SNAPSHOT_POLL_INTERVAL_MS,
+  steamConfig,
+});
+await supervisor.ready;
+if (supervisor.polledServerIds().length === 0) {
+  console.log("[worker] no enabled server has an RCON token yet - add one in /admin/servers");
+}
 
-const kickVoteAnnouncer = startKickVoteAnnouncer(db, rconClient, databaseUrl);
+const kickVoteAnnouncer = startKickVoteAnnouncer(db, supervisor.clientFor, databaseUrl);
 await kickVoteAnnouncer.ready;
 console.log("[worker] listening for KickVote announcements");
 
 // Sweeps on the poll cadence: a target leaving can only be noticed as often
 // as the Snapshot it's checked against refreshes.
-const kickVoteResolver = startKickVoteResolver(db, rconClient, server.id, databaseUrl, SNAPSHOT_POLL_INTERVAL_MS);
+const kickVoteResolver = startKickVoteResolver(db, supervisor, databaseUrl, SNAPSHOT_POLL_INTERVAL_MS);
 await kickVoteResolver.ready;
 console.log("[worker] resolving KickVotes");
 

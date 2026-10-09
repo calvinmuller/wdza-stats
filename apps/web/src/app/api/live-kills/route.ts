@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
-import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { countKills, getRecentKills, RECENT_KILLS_LIMIT } from "@/lib/recent-kills";
-import { getServerByBaseUrl } from "@/lib/server-lookup";
+import { resolveApiServer } from "@/lib/server-lookup";
 
 // The kill feed's starting point: the page loads this, then opens
 // /api/live-kills/stream from the newest id it received. Oldest first by
@@ -9,11 +8,9 @@ import { getServerByBaseUrl } from "@/lib/server-lookup";
 // back through older Kills, 20 at a time: page 1 is always the latest 20.
 export async function GET(request: Request) {
   try {
-    const server = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
-    if (!server) {
-      return Response.json({ error: "Unknown Server." }, { status: 404 });
-    }
     const params = new URL(request.url).searchParams;
+    const server = await resolveApiServer(db, params);
+    if (server instanceof Response) return server;
     const requestedPage = Number.parseInt(params.get("page") ?? "1", 10);
     const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
 

@@ -14,6 +14,7 @@ import MatchesPage from "./page";
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = process.env.RCON_BASE_URL!;
+const SLUG = "wdza-test";
 
 afterEach(async () => {
   await db.delete(playerMatchStats);
@@ -27,12 +28,13 @@ afterAll(async () => {
 });
 
 async function renderPage(searchParams: { page?: string } = {}) {
-  const element = await MatchesPage({ searchParams: Promise.resolve(searchParams) });
+  const element = await MatchesPage({ params: Promise.resolve({ server: SLUG }), searchParams: Promise.resolve(searchParams) });
   return renderToStaticMarkup(element);
 }
 
 describe("MatchesPage", () => {
   it("renders a message when there are no closed Matches yet", async () => {
+    await db.insert(servers).values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL });
     const html = await renderPage();
 
     expect(html.toLowerCase()).toContain("no matches");
@@ -41,7 +43,7 @@ describe("MatchesPage", () => {
   it("renders map, winner, and MVP for a closed Match", async () => {
     const [server] = await db
       .insert(servers)
-      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
       .returning();
 
     const [match] = await db
@@ -80,13 +82,13 @@ describe("MatchesPage", () => {
     expect(html).toContain("Lonestar");
     expect(html).toContain("Alice");
     expect(html).toContain(`/matches/${match.id}`);
-    expect(html).toContain("/players/1");
+    expect(html).toContain(`/servers/${SLUG}/players/1`);
   });
 
   it("shows pagination controls only when there's more than one page", async () => {
     const [server] = await db
       .insert(servers)
-      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
       .returning();
 
     const single = await renderPage();

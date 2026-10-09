@@ -1,34 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
+import { serverPath } from "@/lib/server-path";
 
 const NAV_LINKS = [
-  { href: "/", label: "Live" },
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/weapons", label: "Weapons" },
-  { href: "/rankings", label: "Rankings" },
-  { href: "/players", label: "Players" },
-  { href: "/matches", label: "Matches" },
-  { href: "/stats", label: "Stats" },
+  { path: "", label: "Live" },
+  { path: "/leaderboard", label: "Leaderboard" },
+  { path: "/weapons", label: "Weapons" },
+  { path: "/rankings", label: "Rankings" },
+  { path: "/players", label: "Players" },
+  { path: "/matches", label: "Matches" },
+  { path: "/stats", label: "Stats" },
 ];
 
-function isActive(pathname: string, href: string): boolean {
-  if (href === "/") return pathname === "/";
+function isActive(pathname: string, href: string, exact: boolean): boolean {
+  if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+// The sections of the Server being looked at. Outside /servers/{slug} (admin,
+// the KickVote pages) the links are the old top-level paths, which send a
+// visitor to the default Server.
 export function NavLinks() {
   const pathname = usePathname();
+  const serverSlug = useParams<{ server?: string }>()?.server;
+  const base = serverSlug ? serverPath(serverSlug) : "";
 
   return (
     <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium">
       {NAV_LINKS.map((link) => {
-        const active = isActive(pathname, link.href);
+        const href = `${base}${link.path}` || "/";
+        const active = isActive(pathname, href, link.path === "");
         return (
           <Link
-            key={link.href}
-            href={link.href}
+            key={link.path}
+            href={href}
             aria-current={active ? "page" : undefined}
             className={
               active

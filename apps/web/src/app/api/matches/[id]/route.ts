@@ -1,9 +1,9 @@
 import { db } from "@/lib/db";
-import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
+import { resolveApiServer } from "@/lib/server-lookup";
 import { getMatchDetail } from "@/lib/match-history";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
@@ -14,7 +14,9 @@ export async function GET(
   }
 
   try {
-    const match = await getMatchDetail(db, CONFIGURED_SERVER_BASE_URL, matchId);
+    const server = await resolveApiServer(db, new URL(request.url).searchParams);
+    if (server instanceof Response) return server;
+    const match = await getMatchDetail(db, server.baseUrl, matchId);
 
     if (!match) {
       return Response.json(

@@ -10,7 +10,14 @@ const HEADERS = ["#", "Player", "Kills", "Headshots"];
  * order that means anything here, so this is a plain table rather than a
  * SortableTable, styled to match one.
  */
-export function WeaponLeaderboardTable({ rows }: { rows: WeaponLeaderboardRow[] }) {
+export function WeaponLeaderboardTable({
+  rows,
+  basePath,
+}: {
+  rows: WeaponLeaderboardRow[];
+  /** The Server's own pages, e.g. "/servers/wdza" - see lib/server-path.ts. */
+  basePath: string;
+}) {
   return (
     <div className="overflow-x-auto rounded-xl border border-white/10">
       <table className="w-full min-w-[420px] border-collapse text-sm">
@@ -29,7 +36,7 @@ export function WeaponLeaderboardTable({ rows }: { rows: WeaponLeaderboardRow[] 
               <td className="px-4 py-2.5 font-display text-base text-zinc-500">{row.rank}</td>
               <td className="px-4 py-2.5">
                 <Link
-                  href={`/players/${row.steamId}`}
+                  href={`${basePath}/players/${row.steamId}`}
                   className="flex items-center gap-2 font-medium text-zinc-100 hover:text-brand-gold-500"
                 >
                   <PlayerAvatar avatarUrl={row.avatarUrl} size={24} />

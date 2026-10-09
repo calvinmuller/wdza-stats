@@ -16,6 +16,7 @@ import LeaderboardPage from "./page";
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = process.env.RCON_BASE_URL!;
+const SLUG = "wdza-test";
 const NOT_FOUND = /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/;
 
 // Season 1 comes from the migration; tests add Seasons above it.
@@ -39,17 +40,20 @@ afterAll(async () => {
 
 async function renderPage(searchParams: { sort?: string; season?: string } = {}) {
   const element = await LeaderboardPage({
+    params: Promise.resolve({ server: SLUG }),
     searchParams: Promise.resolve(searchParams),
   });
   return renderToStaticMarkup(element);
 }
 
 // Links in the markup are HTML-escaped.
-const href = (url: string) => `href="${url.replaceAll("&", "&amp;")}"`;
+// A link to one of the Server's own pages, as the page renders it.
+const href = (path: string) => `href="/servers/${SLUG}${path.replaceAll("&", "&amp;")}"`;
 
 describe("LeaderboardPage", () => {
   describe("Career", () => {
     it("renders a message when there are no PlayerCareerStat rows yet", async () => {
+      await db.insert(servers).values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL });
       const html = await renderPage({ season: "career" });
 
       expect(html.toLowerCase()).toContain("no players");
@@ -58,7 +62,7 @@ describe("LeaderboardPage", () => {
     it("ranks players by kills by default", async () => {
       const [server] = await db
         .insert(servers)
-        .values({ name: "WDZA Test", baseUrl: BASE_URL })
+        .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
         .returning();
 
       await db.insert(playerCareerStats).values([
@@ -85,14 +89,14 @@ describe("LeaderboardPage", () => {
       const html = await renderPage({ season: "career" });
 
       expect(html.indexOf("Bob")).toBeLessThan(html.indexOf("Alice"));
-      expect(html).toContain("/players/1");
-      expect(html).toContain("/players/2");
+      expect(html).toContain(`/servers/${SLUG}/players/1`);
+      expect(html).toContain(`/servers/${SLUG}/players/2`);
     });
 
     it("ranks players by the requested sort", async () => {
       const [server] = await db
         .insert(servers)
-        .values({ name: "WDZA Test", baseUrl: BASE_URL })
+        .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
         .returning();
 
       await db.insert(playerCareerStats).values([
@@ -124,7 +128,7 @@ describe("LeaderboardPage", () => {
     it("ranks players by playtime and formats it as whole hours", async () => {
       const [server] = await db
         .insert(servers)
-        .values({ name: "WDZA Test", baseUrl: BASE_URL })
+        .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
         .returning();
 
       await db.insert(playerCareerStats).values([
@@ -164,7 +168,7 @@ describe("LeaderboardPage", () => {
     async function seedTwoSeasons() {
       const [server] = await db
         .insert(servers)
-        .values({ name: "WDZA Test", baseUrl: BASE_URL })
+        .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
         .returning();
       const past = await currentSeason(db);
       const [current] = await db
@@ -224,7 +228,7 @@ describe("LeaderboardPage", () => {
     it("says so when nobody has played in the Season yet", async () => {
       const [server] = await db
         .insert(servers)
-        .values({ name: "WDZA Test", baseUrl: BASE_URL })
+        .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
         .returning();
       const [current] = await db.insert(seasons).values({ number: baseline + 1 }).returning();
       await db.insert(playerCareerStats).values({ serverId: server.id, steamId: "1", displayName: "Alice", kills: 1 });

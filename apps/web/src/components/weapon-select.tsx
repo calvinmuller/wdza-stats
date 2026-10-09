@@ -11,13 +11,16 @@ export function WeaponSelect({
   weapons,
   selected,
   windowParam,
+  basePath,
 }: {
   weapons: ServerWeapon[];
   selected: string;
   windowParam: string;
+  /** The Server's own pages, e.g. "/servers/wdza" - see lib/server-path.ts. */
+  basePath: string;
 }) {
   return (
-    <form action="/weapons" method="get" className="flex flex-wrap items-center gap-2 text-sm">
+    <form action={`${basePath}/weapons`} method="get" className="flex flex-wrap items-center gap-2 text-sm">
       <input type="hidden" name="window" value={windowParam} />
       <label htmlFor="weapon" className="mr-2 text-zinc-500">
         Weapon

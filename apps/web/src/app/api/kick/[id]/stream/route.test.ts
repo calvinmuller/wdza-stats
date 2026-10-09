@@ -41,7 +41,7 @@ async function seedActiveVote() {
   const started = await startKickVote(db, {
     serverId: server.id,
     targetSteamId: "1",
-    reason: "wallhacks",
+    reason: "Hacker",
     initiatorSteamId: "76561198000000100",
   });
   if (!started.ok) throw new Error("failed to start KickVote in test setup");

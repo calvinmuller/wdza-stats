@@ -15,6 +15,7 @@ import WeaponsPage from "./page";
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = process.env.RCON_BASE_URL!;
+const SLUG = "wdza-test";
 const NOT_FOUND = /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/;
 
 // Season 1 comes from the migration; tests add Seasons above it.
@@ -39,7 +40,7 @@ const ALICE = "76561198000000001";
 const BOB = "76561198000000002";
 
 async function seedServer() {
-  const [server] = await db.insert(servers).values({ name: "WDZA Test", baseUrl: BASE_URL }).returning();
+  const [server] = await db.insert(servers).values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL }).returning();
   return server;
 }
 
@@ -65,12 +66,13 @@ async function seedKill(serverId: number, kill: Partial<typeof kills.$inferInser
 }
 
 async function renderPage(searchParams: { weapon?: string; window?: string } = {}) {
-  const element = await WeaponsPage({ searchParams: Promise.resolve(searchParams) });
+  const element = await WeaponsPage({ params: Promise.resolve({ server: SLUG }), searchParams: Promise.resolve(searchParams) });
   return renderToStaticMarkup(element);
 }
 
 // Links in the markup are HTML-escaped.
-const href = (url: string) => `href="${url.replaceAll("&", "&amp;")}"`;
+// A link to one of the Server's own pages, as the page renders it.
+const href = (path: string) => `href="/servers/${SLUG}${path.replaceAll("&", "&amp;")}"`;
 
 describe("WeaponsPage", () => {
   it("says so when the feed has never delivered a Kill", async () => {

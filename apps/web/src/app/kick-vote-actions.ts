@@ -41,7 +41,7 @@ export async function startKickVoteAction(_previous: ActionFormState, formData: 
   });
 
   if (!result.ok) return result;
-  revalidatePath("/");
+  revalidatePath("/servers/[server]", "page");
   return { ok: true };
 }
 

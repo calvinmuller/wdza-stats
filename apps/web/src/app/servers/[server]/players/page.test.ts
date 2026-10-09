@@ -11,6 +11,7 @@ import PlayerSearchPage from "./page";
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = process.env.RCON_BASE_URL!;
+const SLUG = "wdza-test";
 
 afterEach(async () => {
   await db.delete(playerCareerStats);
@@ -23,6 +24,7 @@ afterAll(async () => {
 
 async function renderPage(searchParams: { q?: string } = {}) {
   const element = await PlayerSearchPage({
+    params: Promise.resolve({ server: SLUG }),
     searchParams: Promise.resolve(searchParams),
   });
   return renderToStaticMarkup(element);
@@ -30,12 +32,14 @@ async function renderPage(searchParams: { q?: string } = {}) {
 
 describe("PlayerSearchPage", () => {
   it("renders no results before any search is made", async () => {
+    await db.insert(servers).values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL });
     const html = await renderPage();
 
     expect(html).not.toContain("No players found");
   });
 
   it("renders a not-found message when the query matches nobody", async () => {
+    await db.insert(servers).values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL });
     const html = await renderPage({ q: "nobody" });
 
     expect(html).toContain("No players found matching &quot;nobody&quot;.");
@@ -44,7 +48,7 @@ describe("PlayerSearchPage", () => {
   it("renders matching players as links to their player page", async () => {
     const [server] = await db
       .insert(servers)
-      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
       .returning();
 
     await db.insert(playerCareerStats).values({
@@ -60,6 +64,6 @@ describe("PlayerSearchPage", () => {
     const html = await renderPage({ q: "ali" });
 
     expect(html).toContain("Alice");
-    expect(html).toContain("/players/1");
+    expect(html).toContain(`/servers/${SLUG}/players/1`);
   });
 });

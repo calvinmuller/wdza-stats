@@ -1,4 +1,4 @@
-import { and, count, eq, lte } from "drizzle-orm";
+import { and, count, eq, lte, notInArray } from "drizzle-orm";
 import {
   KICK_VOTE_STARTED_CHANNEL,
   KICK_VOTE_UPDATED_CHANNEL,
@@ -11,6 +11,7 @@ import {
   type KickVoteStatus,
 } from "@wdza-stats/db";
 import type { RconClient } from "./rcon-client";
+import type { RconClientFor } from "./server-supervisor";
 
 // Player-facing base URL for the /kick/{id} page (ticket 02) - kept here as
 // copy, not env config, since it's what the in-game broadcast tells players
@@ -39,12 +40,22 @@ async function countActiveKickVotes(db: Database): Promise<number> {
   return rows.length;
 }
 
-/** Announces one KickVote by id, if it's still active by the time this runs. */
-export async function announceKickVote(db: Database, client: RconClient, kickVoteId: number): Promise<void> {
+/**
+ * Announces one KickVote by id on its own Server, if it's still active by the
+ * time this runs. A KickVote on a Server this Worker isn't polling (disabled,
+ * or no RCON token) has nowhere to be announced.
+ */
+export async function announceKickVote(db: Database, clientFor: RconClientFor, kickVoteId: number): Promise<void> {
   const [vote] = await db.select().from(kickVotes).where(eq(kickVotes.id, kickVoteId)).limit(1);
   // Already resolved (e.g. the target left before this notification was
   // processed) - nothing left worth announcing.
   if (!vote || vote.status !== "active") return;
+
+  const client = clientFor(vote.serverId);
+  if (!client) {
+    console.warn(`[worker] kick vote ${kickVoteId} is on server ${vote.serverId}, which isn't being polled - not announced`);
+    return;
+  }
 
   const activeVoteCount = await countActiveKickVotes(db);
   await client.broadcast(buildKickVoteBroadcast(vote, activeVoteCount));
@@ -59,13 +70,13 @@ export async function announceKickVote(db: Database, client: RconClient, kickVot
  */
 export function startKickVoteAnnouncer(
   db: Database,
-  client: RconClient,
+  clientFor: RconClientFor,
   connectionString: string,
 ): { ready: Promise<void>; stop: () => Promise<void> } {
   const { ready, stop } = listenTo(connectionString, KICK_VOTE_STARTED_CHANNEL, (payload) => {
     const kickVoteId = Number(payload);
     if (!Number.isInteger(kickVoteId)) return;
-    void announceKickVote(db, client, kickVoteId).catch((error) => {
+    void announceKickVote(db, clientFor, kickVoteId).catch((error) => {
       console.error(`[worker] kick vote announce failed for vote ${kickVoteId}:`, error);
     });
   });
@@ -132,8 +143,8 @@ async function isTargetOnline(db: Database, serverId: number, steamId: string): 
 
 /**
  * Decides and applies one KickVote's outcome, if it has one yet. Only ever
- * touches KickVotes on `serverId` - the Server this Worker's RconClient
- * talks to - so a kick can never be sent to the wrong Server.
+ * touches KickVotes on `serverId` - the Server `client` talks to - so a
+ * kick can never be sent to the wrong Server.
  */
 export async function resolveKickVote(
   db: Database,
@@ -196,27 +207,67 @@ export async function sweepKickVotes(db: Database, client: RconClient, serverId:
 }
 
 /**
- * Resolves this Server's KickVotes as soon as they have an outcome: on every
- * kick_vote_updated notification (each Ballot apps/web casts - the moment a
- * threshold can be crossed) and on a sweep every `intervalMs` (for expiry
- * and the target leaving, which no Ballot signals). `ready` resolves once
- * the LISTEN is active.
+ * Expires the active KickVotes whose window has closed on Servers this Worker
+ * isn't polling (an admin disabled the Server, or took its token away, mid
+ * vote). Nothing else would ever resolve them: there is no Snapshot to see
+ * the target leave and no RCON client to kick with, and an active vote left
+ * standing would hold the /kick short link forever.
+ */
+export async function expireUnpolledKickVotes(db: Database, polledServerIds: number[]): Promise<void> {
+  const stranded = await db
+    .select({ id: kickVotes.id })
+    .from(kickVotes)
+    .where(
+      and(
+        eq(kickVotes.status, "active"),
+        lte(kickVotes.endsAt, new Date()),
+        polledServerIds.length > 0 ? notInArray(kickVotes.serverId, polledServerIds) : undefined,
+      ),
+    );
+  for (const vote of stranded) {
+    await claimResolution(db, vote.id, "expired");
+  }
+}
+
+/**
+ * Resolves KickVotes as soon as they have an outcome, each against its own
+ * Server's RconClient: on every kick_vote_updated notification (each Ballot
+ * apps/web casts - the moment a threshold can be crossed) and on a sweep of
+ * every polled Server every `intervalMs` (for expiry and the target leaving,
+ * which no Ballot signals). `ready` resolves once the LISTEN is active.
  */
 export function startKickVoteResolver(
   db: Database,
-  client: RconClient,
-  serverId: number,
+  polled: { clientFor: RconClientFor; polledServerIds: () => number[] },
   connectionString: string,
   intervalMs: number,
 ): { ready: Promise<void>; stop: () => Promise<void> } {
-  const resolveOne = (kickVoteId: number) =>
-    resolveKickVote(db, client, serverId, kickVoteId).catch((error) => {
+  const resolveOne = async (kickVoteId: number) => {
+    try {
+      const [vote] = await db
+        .select({ serverId: kickVotes.serverId })
+        .from(kickVotes)
+        .where(eq(kickVotes.id, kickVoteId))
+        .limit(1);
+      const client = vote && polled.clientFor(vote.serverId);
+      if (vote && client) await resolveKickVote(db, client, vote.serverId, kickVoteId);
+    } catch (error) {
       console.error(`[worker] kick vote resolution failed for vote ${kickVoteId}:`, error);
+    }
+  };
+  const sweep = async () => {
+    const serverIds = polled.polledServerIds();
+    for (const serverId of serverIds) {
+      const client = polled.clientFor(serverId);
+      if (!client) continue;
+      await sweepKickVotes(db, client, serverId).catch((error) => {
+        console.error(`[worker] kick vote sweep failed for server ${serverId}:`, error);
+      });
+    }
+    await expireUnpolledKickVotes(db, serverIds).catch((error) => {
+      console.error("[worker] expiring kick votes on unpolled servers failed:", error);
     });
-  const sweep = () =>
-    sweepKickVotes(db, client, serverId).catch((error) => {
-      console.error(`[worker] kick vote sweep failed for server ${serverId}:`, error);
-    });
+  };
 
   const { ready, stop } = listenTo(
     connectionString,

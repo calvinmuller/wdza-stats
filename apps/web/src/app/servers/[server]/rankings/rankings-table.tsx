@@ -6,7 +6,7 @@ import { PlayerAvatar } from "@/components/player-avatar";
 import { SortableTable, type SortableColumn } from "@/components/sortable-table";
 import type { RankingMetric, RankingRow } from "@/lib/rankings";
 
-function buildColumns(valueLabel: string): SortableColumn<RankingRow>[] {
+function buildColumns(valueLabel: string, basePath: string): SortableColumn<RankingRow>[] {
   return [
     {
       key: "rank",
@@ -22,7 +22,7 @@ function buildColumns(valueLabel: string): SortableColumn<RankingRow>[] {
       cellClassName: "font-medium text-zinc-100",
       render: (row) => (
         <Link
-          href={`/players/${row.steamId}`}
+          href={`${basePath}/players/${row.steamId}`}
           className="flex items-center gap-2 font-medium text-zinc-100 hover:text-brand-gold-500"
         >
           <PlayerAvatar avatarUrl={row.avatarUrl} size={24} />
@@ -41,13 +41,16 @@ export function RankingsTable({
   metric,
   seasonParam,
   valueLabel,
+  basePath,
 }: {
+  /** The Server's own pages, e.g. "/servers/wdza" - see lib/server-path.ts. */
+  basePath: string;
   rows: RankingRow[];
   metric: RankingMetric;
   seasonParam: string;
   valueLabel: string;
 }) {
-  const columns = buildColumns(valueLabel);
+  const columns = buildColumns(valueLabel, basePath);
 
   return (
     <SortableTable

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
+import { resolveApiServer } from "@/lib/server-lookup";
 import { getRankings, isRankingMetric, parseRankingsPage } from "@/lib/rankings";
 import { apiSeasonScope } from "@/lib/season-scope";
 
@@ -17,12 +17,14 @@ export async function GET(
   }
 
   try {
+    const server = await resolveApiServer(db, new URL(request.url).searchParams);
+    if (server instanceof Response) return server;
     const searchParams = new URL(request.url).searchParams;
     const scope = await apiSeasonScope(db, searchParams);
     if (scope instanceof Response) return scope;
 
     const page = parseRankingsPage(searchParams.get("page"));
-    const result = await getRankings(db, CONFIGURED_SERVER_BASE_URL, metric, page, scope);
+    const result = await getRankings(db, server.baseUrl, metric, page, scope);
 
     return Response.json(result);
   } catch (error) {

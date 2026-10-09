@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { serverPath } from "@/lib/server-path";
 
 // The header's Verified Player sign-in state (see CONTEXT.md). Read from
 // /api/steam/me after load rather than in the root layout, which would
@@ -11,6 +12,8 @@ type State = { status: "loading" } | { status: "signedOut"; failed: boolean } | 
 
 export function PlayerSignIn() {
   const pathname = usePathname();
+  // Outside /servers/{slug}, /players/{steamId} sends them to the default Server.
+  const serverSlug = useParams<{ server?: string }>()?.server;
   const [state, setState] = useState<State>({ status: "loading" });
 
   useEffect(() => {
@@ -31,7 +34,7 @@ export function PlayerSignIn() {
   return (
     <span className="flex items-center gap-2 text-xs">
       <Link
-        href={`/players/${state.steamId}`}
+        href={`${serverSlug ? serverPath(serverSlug) : ""}/players/${state.steamId}`}
         className="rounded-full border border-white/10 px-3 py-1 text-zinc-300 hover:text-zinc-50"
       >
         This is you

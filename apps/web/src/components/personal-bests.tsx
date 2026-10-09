@@ -22,7 +22,7 @@ const ROWS: { label: string; pick: (bests: PersonalBests) => PersonalBest | null
 ];
 
 /** The player's best single-Match performances, each linking to its Match. */
-export function PersonalBestsPanel({ bests }: { bests: PersonalBests }) {
+export function PersonalBestsPanel({ bests, basePath }: { bests: PersonalBests; basePath: string }) {
   const rows = ROWS.flatMap((row) => {
     const best = row.pick(bests);
     return best ? [{ ...row, best }] : [];
@@ -38,7 +38,7 @@ export function PersonalBestsPanel({ bests }: { bests: PersonalBests }) {
             <li key={label} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
               <div className="flex min-w-0 flex-col gap-1.5">
                 <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
-                <Link href={`/matches/${best.matchId}`} className="text-sm text-zinc-400 hover:text-zinc-100 hover:underline">
+                <Link href={`${basePath}/matches/${best.matchId}`} className="text-sm text-zinc-400 hover:text-zinc-100 hover:underline">
                   {best.map}
                   {best.experiences.length > 0 && ` on ${best.experiences.join(", ")}`}, {formatDateTime(best.endedAt)}
                 </Link>

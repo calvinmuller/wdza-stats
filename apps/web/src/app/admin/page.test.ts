@@ -58,7 +58,7 @@ describe("AdminPage", () => {
     expect(html).toContain("moderator@example.test");
     expect(html).toContain("Kick Votes");
     expect(html).not.toContain("Achievements");
-    expect(html).not.toContain("Server Token");
+    expect(html).not.toContain("Servers");
     expect(html).not.toContain("Staff");
   });
 
@@ -80,7 +80,7 @@ describe("AdminPage", () => {
 
     const html = await renderPage();
 
-    for (const label of ["Players", "Kick Votes", "XP &amp; Levels", "Challenges", "Achievements", "Notifications", "Server Token", "Staff"]) {
+    for (const label of ["Players", "Kick Votes", "XP &amp; Levels", "Challenges", "Achievements", "Notifications", "Servers", "Staff"]) {
       expect(html).toContain(label);
     }
     expect(html).toContain("Banned players");

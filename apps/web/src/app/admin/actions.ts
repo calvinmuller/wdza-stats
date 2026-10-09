@@ -13,13 +13,10 @@ import {
   updateNotificationSettingsFromForm,
   updateXpRewardFromForm,
 } from "@/lib/admin-config";
-import { generateFeedToken } from "@/lib/feed-token";
 import { cancelKickVote } from "@/lib/kick-vote";
-import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { db } from "@/lib/db";
 import { requireStaffAction } from "@/lib/require-staff";
 import { formFields, recordStaffAction } from "@/lib/staff-audit";
-import { getServerByBaseUrl } from "@/lib/server-lookup";
 
 // Server Actions have their own POST endpoint, reachable independent of
 // whether the caller ever rendered the gated page (see the Next.js Server
@@ -107,24 +104,4 @@ export async function unbanPlayerAction(steamId: string): Promise<void> {
   await unbanPlayerFromForm(db, steamId);
   await recordStaffAction(db, staff, "unban_player", { target: steamId });
   redirect("/admin");
-}
-
-// What the feed token form shows after a click: the new token (the only time
-// it is ever visible) or why there isn't one.
-export type FeedTokenState = { token: string | null; error: string | null };
-
-export async function generateFeedTokenAction(
-  _previous: FeedTokenState,
-  _formData: FormData,
-): Promise<FeedTokenState> {
-  const staff = await requireStaffAction("admin");
-  const server = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
-  if (!server) {
-    return { token: null, error: "No Server is registered yet - the Worker creates it on its first poll." };
-  }
-  const token = await generateFeedToken(db, server.id);
-  if (!token) return { token: null, error: "The Server could not be found." };
-  // The token itself is never recorded, only that a new one was issued.
-  await recordStaffAction(db, staff, "generate_feed_token", { target: String(server.id) });
-  return { token, error: null };
 }

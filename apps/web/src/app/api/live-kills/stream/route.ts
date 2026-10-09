@@ -1,8 +1,7 @@
 import { db } from "@/lib/db";
 import { subscribeToKills } from "@/lib/kill-notifications";
-import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { getRecentKills, type KillView } from "@/lib/recent-kills";
-import { getServerByBaseUrl } from "@/lib/server-lookup";
+import { resolveApiServer } from "@/lib/server-lookup";
 
 // The kill feed as Server-Sent Events. A first connection names where it
 // starts with ?after=<id> (EventSource cannot send headers); a reconnect sends
@@ -30,10 +29,8 @@ function parseCursor(...candidates: (string | null)[]): number | null {
 }
 
 export async function GET(request: Request) {
-  const server = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
-  if (!server) {
-    return Response.json({ error: "Unknown Server." }, { status: 404 });
-  }
+  const server = await resolveApiServer(db, new URL(request.url).searchParams);
+  if (server instanceof Response) return server;
   const serverId = server.id;
   const cursor = parseCursor(
     request.headers.get("last-event-id"),

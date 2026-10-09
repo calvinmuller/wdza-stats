@@ -15,7 +15,7 @@ const FEED_LENGTH = 20;
  * from the newest of them. A stream that says "reset" has been left too far
  * behind to catch up, so it starts over the same way.
  */
-export function useKillFeed(): KillView[] {
+export function useKillFeed(serverSlug: string): KillView[] {
   const [kills, setKills] = useState<KillView[]>([]);
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export function useKillFeed(): KillView[] {
 
     async function start() {
       try {
-        const response = await fetch("/api/live-kills");
+        const response = await fetch(`/api/live-kills?${new URLSearchParams({ server: serverSlug })}`);
         if (!response.ok || cancelled) return;
         const { kills: recent } = (await response.json()) as {
           kills: KillView[];
@@ -33,7 +33,7 @@ export function useKillFeed(): KillView[] {
         setKills(recent);
 
         source = new EventSource(
-          `/api/live-kills/stream?after=${recent.at(-1)?.id ?? 0}`,
+          `/api/live-kills/stream?${new URLSearchParams({ server: serverSlug, after: String(recent.at(-1)?.id ?? 0) })}`,
         );
         source.addEventListener("kill", (event) => {
           const kill = JSON.parse(
@@ -59,7 +59,7 @@ export function useKillFeed(): KillView[] {
       cancelled = true;
       source?.close();
     };
-  }, []);
+  }, [serverSlug]);
 
   return kills;
 }
@@ -69,8 +69,11 @@ export function KillLine({
   kill,
   factionColors,
   linkableSteamIds,
+  basePath,
 }: {
   kill: KillView;
+  /** The Server's own pages, e.g. "/servers/wdza" - see lib/server-path.ts. */
+  basePath: string;
   /** Faction name to its color, from the current Snapshot. */
   factionColors: Record<string, string>;
   /** Players who have a page, i.e. a career row to show. */
@@ -84,7 +87,7 @@ export function KillLine({
     const style = color ? { color } : undefined;
     return linkableSteamIds.has(party.steamId) ? (
       <Link
-        href={`/players/${party.steamId}`}
+        href={`${basePath}/players/${party.steamId}`}
         prefetch={false}
         className="font-medium hover:underline"
         style={style}

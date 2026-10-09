@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
+import { resolveApiServer } from "@/lib/server-lookup";
 import {
   getPlayerDetails,
   MAX_BULK_STEAM_IDS,
@@ -30,10 +30,12 @@ export async function GET(request: Request) {
   }
 
   try {
+    const server = await resolveApiServer(db, searchParams);
+    if (server instanceof Response) return server;
     const scope = await apiSeasonScope(db, searchParams);
     if (scope instanceof Response) return scope;
 
-    const details = await getPlayerDetails(db, CONFIGURED_SERVER_BASE_URL, steamIds, scope);
+    const details = await getPlayerDetails(db, server.baseUrl, steamIds, scope);
     return Response.json(
       scope.kind === "career" ? details : { season: seasonSummary(scope.season), ...details },
     );

@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
-import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
 import { getLiveSnapshot } from "@/lib/live-snapshot";
-import { getServerByBaseUrl } from "@/lib/server-lookup";
+import { resolveApiServer } from "@/lib/server-lookup";
 import { subscribeToSnapshots } from "@/lib/snapshot-notifications";
 
 // The homepage's live dashboard as Server-Sent Events: the same view
@@ -18,10 +17,8 @@ function frame(data: unknown): Uint8Array {
 }
 
 export async function GET(request: Request) {
-  const server = await getServerByBaseUrl(db, CONFIGURED_SERVER_BASE_URL);
-  if (!server) {
-    return Response.json({ error: "No live Server configured." }, { status: 404 });
-  }
+  const server = await resolveApiServer(db, new URL(request.url).searchParams);
+  if (server instanceof Response) return server;
 
   let cleanup = () => {};
 
@@ -51,7 +48,7 @@ export async function GET(request: Request) {
       const push = () => {
         pending = pending.then(async () => {
           try {
-            const next = await getLiveSnapshot(db, CONFIGURED_SERVER_BASE_URL);
+            const next = await getLiveSnapshot(db, server.baseUrl);
             if (!closed && next) controller.enqueue(frame(next));
           } catch (error) {
             // Keep the stream open; the next Snapshot gets another try.

@@ -1,15 +1,17 @@
 import { db } from "@/lib/db";
-import { CONFIGURED_SERVER_BASE_URL } from "@/lib/live-server-config";
+import { resolveApiServer } from "@/lib/server-lookup";
 import { getPlayerChallengeProgress } from "@/lib/player-progression";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ steamId: string }> },
 ) {
   const { steamId } = await params;
 
   try {
-    const challenges = await getPlayerChallengeProgress(db, CONFIGURED_SERVER_BASE_URL, steamId);
+    const server = await resolveApiServer(db, new URL(request.url).searchParams);
+    if (server instanceof Response) return server;
+    const challenges = await getPlayerChallengeProgress(db, server.baseUrl, steamId);
 
     return Response.json(challenges);
   } catch (error) {

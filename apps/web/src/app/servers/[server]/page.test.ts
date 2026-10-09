@@ -39,6 +39,7 @@ const { default: HomePage } = await import("./page");
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = process.env.RCON_BASE_URL!;
+const SLUG = "wdza-test";
 
 // challengeDefinitions is shared, migration-seeded config (see schema.ts) -
 // other suites rely on those default rows staying in place, so this file's
@@ -73,7 +74,7 @@ describe("HomePage", () => {
   it("renders the configured Server's latest Snapshot", async () => {
     const [server] = await db
       .insert(servers)
-      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
       .returning();
     await db.insert(latestSnapshots).values({
       serverId: server.id,
@@ -98,7 +99,7 @@ describe("HomePage", () => {
       }),
     });
 
-    const element = await HomePage();
+    const element = await HomePage({ params: Promise.resolve({ server: SLUG }) });
     const html = renderToStaticMarkup(element);
 
     expect(html).toContain("WDZA Test");
@@ -118,7 +119,7 @@ describe("HomePage", () => {
   it("renders the current and next map from the Server's rotation state", async () => {
     const [server] = await db
       .insert(servers)
-      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
       .returning();
     await db.insert(latestSnapshots).values({
       serverId: server.id,
@@ -132,7 +133,7 @@ describe("HomePage", () => {
       }),
     });
 
-    const element = await HomePage();
+    const element = await HomePage({ params: Promise.resolve({ server: SLUG }) });
     const html = renderToStaticMarkup(element);
 
     expect(html).toContain("Rotation:");
@@ -141,8 +142,16 @@ describe("HomePage", () => {
     expect(html).toContain("(next)");
   });
 
+  it("is the 404 page for a slug no enabled Server has", async () => {
+    await db.insert(servers).values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL, enabled: false });
+
+    await expect(HomePage({ params: Promise.resolve({ server: SLUG }) })).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+    await expect(HomePage({ params: Promise.resolve({ server: "nope" }) })).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+  });
+
   it("renders a waiting message when no live Snapshot exists yet", async () => {
-    const element = await HomePage();
+    await db.insert(servers).values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL });
+    const element = await HomePage({ params: Promise.resolve({ server: SLUG }) });
     const html = renderToStaticMarkup(element);
 
     expect(html.toLowerCase()).toContain("no live data");
@@ -151,7 +160,7 @@ describe("HomePage", () => {
   it("renders active daily challenges and the recent-events feed alongside the existing live view content", async () => {
     const [server] = await db
       .insert(servers)
-      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
       .returning();
     const capturedAt = new Date("2026-03-05T12:00:00.000Z");
     await db.insert(latestSnapshots).values({
@@ -192,7 +201,7 @@ describe("HomePage", () => {
       timestamp: capturedAt,
     });
 
-    const element = await HomePage();
+    const element = await HomePage({ params: Promise.resolve({ server: SLUG }) });
     const html = renderToStaticMarkup(element);
 
     // Existing live view content is unaffected by the new sections.
@@ -210,7 +219,7 @@ describe("HomePage", () => {
 
 describe("HomePage KickVote panel", () => {
   async function seedTwoOnlinePlayers() {
-    const [server] = await db.insert(servers).values({ name: "WDZA Test", baseUrl: BASE_URL }).returning();
+    const [server] = await db.insert(servers).values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL }).returning();
     await db.insert(latestSnapshots).values({
       serverId: server.id,
       capturedAt: new Date(),
@@ -224,7 +233,7 @@ describe("HomePage KickVote panel", () => {
   }
 
   async function render() {
-    return renderToStaticMarkup(await HomePage());
+    return renderToStaticMarkup(await HomePage({ params: Promise.resolve({ server: SLUG }) }));
   }
 
   it("asks a signed-out visitor to sign in with Steam instead of showing the start form", async () => {
@@ -292,7 +301,7 @@ describe("HomePage KickVote panel", () => {
     const started = await startKickVote(db, {
       serverId: server.id,
       targetSteamId: "76561198000000002",
-      reason: "wallhacks",
+      reason: "Hacker",
       initiatorSteamId: "76561198000000001",
     });
     if (!started.ok) throw new Error(started.error);
@@ -318,17 +327,17 @@ describe("HomePage KickVote panel", () => {
 
 describe("HomePage Steam link banner", () => {
   async function seedServer() {
-    const [server] = await db.insert(servers).values({ name: "WDZA Test", baseUrl: BASE_URL }).returning();
+    const [server] = await db.insert(servers).values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL }).returning();
     await db.insert(latestSnapshots).values({ serverId: server.id, capturedAt: new Date(), payload: snapshotFixture() });
   }
 
   it("asks a visitor who isn't a Verified Player to link their Steam account, above the server heading", async () => {
     await seedServer();
 
-    const html = renderToStaticMarkup(await HomePage());
+    const html = renderToStaticMarkup(await HomePage({ params: Promise.resolve({ server: SLUG }) }));
 
     expect(html).toContain("Link your Steam account to join the Pack");
-    expect(html).toContain('href="/api/steam/sign-in?returnTo=%2F"');
+    expect(html).toContain(`href="/api/steam/sign-in?returnTo=%2Fservers%2F${SLUG}"`);
     expect(html.indexOf("Link your Steam account")).toBeLessThan(html.indexOf("WDZA Test"));
   });
 
@@ -336,7 +345,7 @@ describe("HomePage Steam link banner", () => {
     await seedServer();
     playerCookie = (await signInVerifiedPlayer(db, "76561198000000001")).token;
 
-    const html = renderToStaticMarkup(await HomePage());
+    const html = renderToStaticMarkup(await HomePage({ params: Promise.resolve({ server: SLUG }) }));
 
     expect(html).not.toContain("Link your Steam account");
   });

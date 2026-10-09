@@ -6,6 +6,7 @@ import {
   index,
   integer,
   jsonb,
+  pgSequence,
   pgTable,
   primaryKey,
   real,
@@ -27,10 +28,29 @@ import type { XpReason } from "./xp";
 
 // Domain terms (Server, Match, PlayerMatchStat, PlayerCareerStat, Snapshot) are defined in CONTEXT.md.
 
+// Numbers the default slug of a Server made without one (see servers.slug).
+export const serversSlugSeq = pgSequence("servers_slug_seq");
+
+// Servers are added and edited by admins in /admin/servers (docs/adr/0011).
 export const servers = pgTable("servers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  // Where the Server lives on the public site: /servers/{slug}. An admin
+  // chooses it; the default only covers rows made without one (the Worker's
+  // env bootstrap, tests).
+  slug: text("slug")
+    .notNull()
+    .unique()
+    .default(sql`'server-' || nextval('servers_slug_seq')`),
   baseUrl: text("base_url").notNull().unique(),
+  // The bearer token the Worker sends to this Server's RCON API, in plain
+  // text by decision (docs/adr/0011). Written by the admin form, read only by
+  // the Worker, and never shown again once saved. Null: the Worker can't poll
+  // this Server yet.
+  rconToken: text("rcon_token"),
+  // A disabled Server is neither polled nor shown on the public site; its
+  // history is kept, so enabling it again picks up where it left off.
+  enabled: boolean("enabled").notNull().default(true),
   // SHA-256 of the Server's kill feed token; the plaintext is shown once at
   // generation and never stored. Null: this Server has no feed configured.
   feedTokenHash: text("feed_token_hash").unique(),

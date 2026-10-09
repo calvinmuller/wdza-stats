@@ -1,5 +1,6 @@
 "use client";
 
+import { useParams } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 import { getLightingInfo, type ColorScheme } from "@/lib/lighting";
 import { subscribeToLiveSnapshot } from "@/lib/live-snapshot-stream";
@@ -50,15 +51,19 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setOverrideState(readStoredOverride());
   }, []);
 
+  // The Server being looked at under /servers/{slug}; elsewhere (admin, the
+  // KickVote pages) the default Server.
+  const serverSlug = useParams<{ server?: string }>()?.server ?? null;
+
   // Follows the live Server's lighting as each new Snapshot is pushed.
   useEffect(
     () =>
-      subscribeToLiveSnapshot((data) => {
+      subscribeToLiveSnapshot(serverSlug, (data) => {
         const info = getLightingInfo(data.snapshot.lighting);
         setAutoTheme(info.scheme);
         setFoggy(info.weather === "fog" || info.weather === "grayFog");
       }),
-    [],
+    [serverSlug],
   );
 
   const resolved = override ?? autoTheme;

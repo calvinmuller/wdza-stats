@@ -11,16 +11,16 @@ const HEADERS = [
   { label: "Distance", align: "text-right" },
 ];
 
-function PlayerLink({ steamId, name }: { steamId: string; name: string }) {
+function PlayerLink({ steamId, name, basePath }: { steamId: string; name: string; basePath: string }) {
   return (
-    <Link href={`/players/${steamId}`} className="text-zinc-100 hover:text-brand-gold-500">
+    <Link href={`${basePath}/players/${steamId}`} className="text-zinc-100 hover:text-brand-gold-500">
       {name}
     </Link>
   );
 }
 
 /** The Server's longest Kills, from getLongestKills, longest first. */
-export function LongestKillsPanel({ kills }: { kills: LongestKill[] }) {
+export function LongestKillsPanel({ kills, basePath }: { kills: LongestKill[]; basePath: string }) {
   return (
     <StatPanel title="Longest kills">
       {kills.length === 0 ? (
@@ -42,10 +42,10 @@ export function LongestKillsPanel({ kills }: { kills: LongestKill[] }) {
                 <tr key={kill.id} className="hover:bg-white/5">
                   <td className="px-4 py-2.5 text-zinc-500">{formatDateTime(kill.receivedAt)}</td>
                   <td className="px-4 py-2.5">
-                    <PlayerLink steamId={kill.killerSteamId} name={kill.killerName} />
+                    <PlayerLink steamId={kill.killerSteamId} name={kill.killerName} basePath={basePath} />
                   </td>
                   <td className="px-4 py-2.5">
-                    <PlayerLink steamId={kill.victimSteamId} name={kill.victimName} />
+                    <PlayerLink steamId={kill.victimSteamId} name={kill.victimName} basePath={basePath} />
                   </td>
                   <td className="px-4 py-2.5 text-zinc-300">{kill.weapon ?? "—"}</td>
                   <td className="px-4 py-2.5 whitespace-nowrap text-right text-zinc-100">

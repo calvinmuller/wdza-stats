@@ -4,6 +4,7 @@ import Script from "next/script";
 import { Barlow_Condensed } from "next/font/google";
 import { NavLinks } from "@/components/nav-links";
 import { PlayerSignIn } from "@/components/player-sign-in";
+import { ServerPicker } from "@/components/server-picker";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import "./globals.css";
@@ -47,6 +48,7 @@ export default function RootLayout({
               </Link>
               <NavLinks />
               <div className="ml-auto flex items-center gap-2">
+                <ServerPicker />
                 <PlayerSignIn />
                 <ThemeToggle />
               </div>

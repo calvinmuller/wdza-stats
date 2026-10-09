@@ -46,7 +46,7 @@ export function canStartKickVote(viewer: KickVoteInitiator | null, onlinePlayers
 }
 
 /** Why the Online players table has no KickVote actions, for a viewer who can't start one. */
-export function KickVoteHint({ viewer }: { viewer: KickVoteInitiator | null }) {
+export function KickVoteHint({ viewer, returnTo }: { viewer: KickVoteInitiator | null; returnTo: string }) {
   return (
     <p className="mb-3 text-sm text-zinc-500">
       {viewer ? (
@@ -54,7 +54,7 @@ export function KickVoteHint({ viewer }: { viewer: KickVoteInitiator | null }) {
       ) : (
         <>
           <a
-            href={`/api/steam/sign-in?${new URLSearchParams({ returnTo: "/" })}`}
+            href={`/api/steam/sign-in?${new URLSearchParams({ returnTo })}`}
             className="text-brand-gold-400 underline decoration-dotted hover:text-brand-gold-300"
           >
             Sign in with Steam

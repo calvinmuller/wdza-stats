@@ -27,7 +27,15 @@ function request(url: string) {
 }
 
 describe("GET /api/matches", () => {
-  it("returns an empty first page when nothing is seeded", async () => {
+  it("returns 404 when no Server is tracked", async () => {
+    const response = await GET(request("http://test/api/matches"));
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns an empty first page when the Server has no Matches yet", async () => {
+    await db.insert(servers).values({ name: "WDZA Test", baseUrl: BASE_URL });
+
     const response = await GET(request("http://test/api/matches"));
     const body = await response.json();
 

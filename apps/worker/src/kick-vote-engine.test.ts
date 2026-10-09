@@ -11,7 +11,13 @@ import {
 } from "@wdza-stats/db";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { announceKickVote, buildKickVoteBroadcast, resolveKickVote, sweepKickVotes } from "./kick-vote-engine";
+import {
+  announceKickVote,
+  buildKickVoteBroadcast,
+  expireUnpolledKickVotes,
+  resolveKickVote,
+  sweepKickVotes,
+} from "./kick-vote-engine";
 import type { RconClient } from "./rcon-client";
 import { statusFixture, playersFixture } from "./rcon-fixture";
 
@@ -137,17 +143,35 @@ describe("announceKickVote", () => {
     const vote = await seedActiveVote(server.id);
     const client = fakeRconClient();
 
-    await announceKickVote(db, client, vote.id);
+    await announceKickVote(db, () => client, vote.id);
 
     expect(client.broadcast).toHaveBeenCalledWith(
       "Kick vote started against Cheatermc - reason: wallhacks - vote now: stats.wardogs.co.za/kick",
     );
   });
 
+  it("broadcasts on the KickVote's own Server", async () => {
+    await seedServer();
+    const other = await seedServer();
+    const vote = await seedActiveVote(other.id);
+    const clients = new Map([[other.id, fakeRconClient()]]);
+
+    await announceKickVote(db, (serverId) => clients.get(serverId), vote.id);
+
+    expect(clients.get(other.id)!.broadcast).toHaveBeenCalledOnce();
+  });
+
+  it("does nothing for a KickVote on a Server that isn't being polled", async () => {
+    const server = await seedServer();
+    const vote = await seedActiveVote(server.id);
+
+    await expect(announceKickVote(db, () => undefined, vote.id)).resolves.toBeUndefined();
+  });
+
   it("does nothing for a KickVote that no longer exists", async () => {
     const client = fakeRconClient();
 
-    await announceKickVote(db, client, 999_999);
+    await announceKickVote(db, () => client, 999_999);
 
     expect(client.broadcast).not.toHaveBeenCalled();
   });
@@ -157,7 +181,7 @@ describe("announceKickVote", () => {
     const vote = await seedActiveVote(server.id, { status: "targetLeft", resolvedAt: new Date() });
     const client = fakeRconClient();
 
-    await announceKickVote(db, client, vote.id);
+    await announceKickVote(db, () => client, vote.id);
 
     expect(client.broadcast).not.toHaveBeenCalled();
   });
@@ -301,5 +325,28 @@ describe("sweepKickVotes", () => {
 
     expect(client.kickPlayer).not.toHaveBeenCalled();
     expect(await statusOf(vote.id)).toEqual({ status: "expired", resolvedAt: expect.any(Date) });
+  });
+});
+
+describe("expireUnpolledKickVotes", () => {
+  it("expires a closed-window KickVote on a Server no longer being polled", async () => {
+    const polled = await seedServer();
+    const unpolled = await seedServer();
+    const stranded = await seedActiveVote(unpolled.id, { endsAt: new Date(Date.now() - 1_000) });
+    const onPolled = await seedActiveVote(polled.id, { endsAt: new Date(Date.now() - 1_000) });
+
+    await expireUnpolledKickVotes(db, [polled.id]);
+
+    expect((await statusOf(stranded.id)).status).toBe("expired");
+    expect((await statusOf(onPolled.id)).status).toBe("active");
+  });
+
+  it("leaves a KickVote whose window is still open", async () => {
+    const unpolled = await seedServer();
+    const vote = await seedActiveVote(unpolled.id, { endsAt: new Date(Date.now() + 60_000) });
+
+    await expireUnpolledKickVotes(db, []);
+
+    expect((await statusOf(vote.id)).status).toBe("active");
   });
 });

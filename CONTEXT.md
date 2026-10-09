@@ -1,11 +1,11 @@
 # WDZA Stats
 
-A public stats site that turns a live-only Wardogs RCON feed into historical match and player data for one or more game servers.
+A public stats site that turns live-only Wardogs RCON feeds into historical match and player data for any number of game servers.
 
 ## Language
 
 **Server**:
-A single Wardogs game server instance we track, identified by its RCON endpoint. Every other concept below is scoped to one Server, even before a second Server exists.
+A single Wardogs game server instance we track, identified by its RCON endpoint and, on the public site, by its slug (`/servers/{slug}`). Admins add, edit and disable Servers in the admin area; a disabled Server is neither polled nor shown, but keeps its history. The oldest enabled Server is the default one that old single-server URLs and `/api/*` calls without `?server=` resolve to. Every other concept below is scoped to one Server unless it says it is shared — see [docs/adr/0011](./docs/adr/0011-servers-are-managed-in-admin.md).
 _Avoid_: Instance, node
 
 **Snapshot**:
@@ -86,7 +86,7 @@ A person who signs in to run the site: moderating players and, for admins, tunin
 _Avoid_: User, Account, Admin (that is a Role, not a kind of person)
 
 **Role**:
-What a Staff Member is allowed to do. `moderator` can ban and unban players. `admin` can do everything a moderator can, plus edit game configuration, generate feed tokens, start (and withdraw a just-started) Seasons, and manage Staff Members and their Roles. The last remaining admin can never be removed or demoted.
+What a Staff Member is allowed to do. `moderator` can ban and unban players. `admin` can do everything a moderator can, plus edit game configuration, add and edit Servers and generate their feed tokens, start (and withdraw a just-started) Seasons, and manage Staff Members and their Roles. The last remaining admin can never be removed or demoted.
 _Avoid_: Permission level, group
 
 **Verified Player**:

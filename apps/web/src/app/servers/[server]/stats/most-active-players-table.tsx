@@ -16,7 +16,7 @@ const HEADERS = [
  * The rows already ordered by getMostActivePlayers, most playtime first - a
  * plain table rather than a SortableTable, styled to match one.
  */
-export function MostActivePlayersTable({ rows }: { rows: MostActivePlayerRow[] }) {
+export function MostActivePlayersTable({ rows, basePath }: { rows: MostActivePlayerRow[]; basePath: string }) {
   if (rows.length === 0) {
     return <p className="text-sm text-zinc-500">No one has played yet.</p>;
   }
@@ -39,7 +39,7 @@ export function MostActivePlayersTable({ rows }: { rows: MostActivePlayerRow[] }
               <td className="px-4 py-2.5">
                 <span className="flex items-center gap-2">
                   <Link
-                    href={`/players/${row.steamId}`}
+                    href={`${basePath}/players/${row.steamId}`}
                     className="font-medium text-zinc-100 hover:text-brand-gold-500"
                   >
                     {row.displayName}

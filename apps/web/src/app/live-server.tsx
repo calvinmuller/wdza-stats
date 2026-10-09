@@ -13,6 +13,7 @@ import { LightingBadge } from "@/components/lighting-badge";
 import { getLightingInfo } from "@/lib/lighting";
 import { subscribeToLiveSnapshot } from "@/lib/live-snapshot-stream";
 import { getMapArtUrl } from "@/lib/map-art";
+import { serverPath } from "@/lib/server-path";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { SteamLinkBanner } from "@/components/steam-link-banner";
 import { ActivityFeed } from "./activity-feed";
@@ -86,11 +87,14 @@ function useFlip(keys: string[]) {
 }
 
 export function LiveServerView({
+  serverSlug,
   initial,
   viewer,
   showSteamLink = false,
   sidebarBanner = null,
 }: {
+  /** The Server this dashboard follows, /servers/{serverSlug}. */
+  serverSlug: string;
   initial: LiveSnapshotView | null;
   /** Who may start a KickVote from this browser, or null - for the KickVote panel. */
   viewer: KickVoteInitiator | null;
@@ -107,7 +111,7 @@ export function LiveServerView({
   // that shouldn't wait for the Worker's next Snapshot to show up.
   async function refresh() {
     try {
-      const response = await fetch("/api/live-snapshot");
+      const response = await fetch(`/api/live-snapshot?${new URLSearchParams({ server: serverSlug })}`);
       if (response.ok) {
         setData(await response.json());
       }
@@ -117,7 +121,8 @@ export function LiveServerView({
   }
 
   // Every new Snapshot, pushed as the Worker stores it - no polling.
-  useEffect(() => subscribeToLiveSnapshot(setData), []);
+  useEffect(() => subscribeToLiveSnapshot(serverSlug, setData), [serverSlug]);
+  const basePath = serverPath(serverSlug);
 
   const TOP_PLAYERS_COUNT = 10;
 
@@ -163,7 +168,7 @@ export function LiveServerView({
       cellClassName: "font-medium text-zinc-100",
       render: (player) => (
         <Link
-          href={`/players/${player.steamId}`}
+          href={`${basePath}/players/${player.steamId}`}
           prefetch={false}
           className="flex items-center gap-2 hover:underline"
         >
@@ -230,7 +235,7 @@ export function LiveServerView({
   return (
     <div className="flex flex-col items-start gap-6 lg:flex-row">
       <div className="flex min-w-0 flex-1 flex-col gap-8">
-      {showSteamLink && <SteamLinkBanner returnTo="/" />}
+      {showSteamLink && <SteamLinkBanner returnTo={basePath} />}
       <section className="rounded-xl border border-white/10 bg-zinc-900/60 p-6">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-3xl">{serverName}</h1>
@@ -356,7 +361,7 @@ export function LiveServerView({
             ({playerCount}/{maxPlayers})
           </span>
         </h2>
-        {!activeKickVote && playerCount > 0 && !kickVoteViewer && <KickVoteHint viewer={viewer} />}
+        {!activeKickVote && playerCount > 0 && !kickVoteViewer && <KickVoteHint viewer={viewer} returnTo={basePath} />}
         <SortableTable
           columns={playerColumns}
           rows={visiblePlayers}
@@ -443,6 +448,7 @@ export function LiveServerView({
             </button>
           </div>
           <ActivityFeed
+            serverSlug={serverSlug}
             notifications={recentNotifications}
             factionColors={Object.fromEntries(snapshot.factions.map((faction) => [faction.name, faction.color]))}
             linkableSteamIds={new Set(snapshot.players.filter((player) => player.level !== null).map((player) => player.steamId))}

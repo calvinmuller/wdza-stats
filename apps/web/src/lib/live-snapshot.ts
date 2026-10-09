@@ -34,6 +34,7 @@ export interface LiveKickVoteView {
 export interface LiveSnapshotView {
   serverId: number;
   serverName: string;
+  serverSlug: string;
   capturedAt: string;
   snapshot: Omit<Snapshot, "players"> & { players: LiveSnapshotPlayer[] };
   activeChallenges: ActiveChallengeView[];
@@ -88,6 +89,7 @@ export async function getLiveSnapshot(
     .select({
       serverId: servers.id,
       serverName: servers.name,
+      serverSlug: servers.slug,
       capturedAt: latestSnapshots.capturedAt,
       payload: latestSnapshots.payload,
     })
@@ -115,6 +117,7 @@ export async function getLiveSnapshot(
   return {
     serverId: row.serverId,
     serverName: row.serverName,
+    serverSlug: row.serverSlug,
     capturedAt: row.capturedAt.toISOString(),
     snapshot: {
       ...row.payload,

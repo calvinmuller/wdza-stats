@@ -18,6 +18,7 @@ import StatsPage from "./page";
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = process.env.RCON_BASE_URL!;
+const SLUG = "wdza-test";
 const NOT_FOUND = /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/;
 
 // Season 1 comes from the migration; tests add Seasons above it.
@@ -42,7 +43,7 @@ afterAll(async () => {
 });
 
 async function renderPage(searchParams: { season?: string } = {}) {
-  const element = await StatsPage({ searchParams: Promise.resolve(searchParams) });
+  const element = await StatsPage({ params: Promise.resolve({ server: SLUG }), searchParams: Promise.resolve(searchParams) });
   return renderToStaticMarkup(element);
 }
 
@@ -53,7 +54,7 @@ const tile = (label: string, value: string | number) =>
 async function seedTwoSeasons() {
   const [server] = await db
     .insert(servers)
-    .values({ name: "WDZA Test", baseUrl: BASE_URL })
+    .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
     .returning();
   const past = await currentSeason(db);
   const [current] = await db.insert(seasons).values({ number: baseline + 1, name: "Dust Storm" }).returning();
@@ -107,9 +108,9 @@ describe("StatsPage", () => {
 
     const html = await renderPage();
 
-    expect(html).toContain(`href="/stats?season=${current.number}"`);
-    expect(html).toContain(`href="/stats?season=${past.number}"`);
-    expect(html).toContain('href="/stats?season=career"');
+    expect(html).toContain(`href="/servers/${SLUG}/stats?season=${current.number}"`);
+    expect(html).toContain(`href="/servers/${SLUG}/stats?season=${past.number}"`);
+    expect(html).toContain(`href="/servers/${SLUG}/stats?season=career"`);
     expect(html).toContain(`Season ${current.number} · Dust Storm`);
   });
 
@@ -136,7 +137,7 @@ describe("StatsPage", () => {
     const html = await renderPage();
 
     expect(html).toContain("Most active players");
-    expect(html).toMatch(/href="\/players\/1"[^>]*>Alice</);
+    expect(html).toMatch(new RegExp(`href="/servers/${SLUG}/players/1"[^>]*>Alice<`));
     expect(html).toContain("1.5 h");
   });
 

@@ -28,6 +28,7 @@ import PlayerPage from "./page";
 const db: Database = createDb(process.env.DATABASE_URL!);
 
 const BASE_URL = process.env.RCON_BASE_URL!;
+const SLUG = "wdza-test";
 
 const NOT_FOUND = /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/;
 
@@ -69,7 +70,7 @@ afterAll(async () => {
 // Seasons tests pass their own `season`.
 async function renderPage(steamId: string, searchParams: { season?: string } = { season: "career" }) {
   const element = await PlayerPage({
-    params: Promise.resolve({ steamId }),
+    params: Promise.resolve({ server: SLUG, steamId }),
     searchParams: Promise.resolve(searchParams),
   });
   return renderToStaticMarkup(element);
@@ -82,7 +83,7 @@ const tile = (label: string, value: string | number) =>
 async function seedPlayer(steamId: string, displayName: string) {
   const [server] = await db
     .insert(servers)
-    .values({ name: "WDZA Test", baseUrl: BASE_URL })
+    .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
     .returning();
 
   await db.insert(playerCareerStats).values({
@@ -98,6 +99,7 @@ async function seedPlayer(steamId: string, displayName: string) {
 
 describe("PlayerPage", () => {
   it("renders a not-found message for an unknown steamId", async () => {
+    await db.insert(servers).values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL });
     const html = await renderPage("unknown");
 
     expect(html.toLowerCase()).toContain("no player found");
@@ -106,7 +108,7 @@ describe("PlayerPage", () => {
   it("renders the player's all-time totals", async () => {
     const [server] = await db
       .insert(servers)
-      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
       .returning();
 
     await db.insert(playerCareerStats).values({
@@ -216,7 +218,7 @@ describe("PlayerPage personal bests", () => {
     expect(html).toContain("88 kills");
     expect(html).toContain("K/D 12.00 (72 to 6)");
     expect(html).toContain("289,090 cash");
-    expect(html).toContain(`href="/matches/${killsMatch.id}"`);
+    expect(html).toContain(`href="/servers/${SLUG}/matches/${killsMatch.id}"`);
     expect(html).toContain("Bakurani on Kinetic Diplomacy, ");
   });
 
@@ -367,7 +369,7 @@ describe("PlayerPage gamification", () => {
   it("renders level, XP, unlocked Achievements, and today's challenge progress for a seeded player", async () => {
     const [server] = await db
       .insert(servers)
-      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
       .returning();
     await db.insert(playerCareerStats).values({
       serverId: server.id,
@@ -444,7 +446,7 @@ describe("PlayerPage Seasons", () => {
   async function seedSeasonOnePlayer() {
     const [server] = await db
       .insert(servers)
-      .values({ name: "WDZA Test", baseUrl: BASE_URL })
+      .values({ name: "WDZA Test", slug: SLUG, baseUrl: BASE_URL })
       .returning();
     const past = await currentSeason(db);
     const [current] = await db.insert(seasons).values({ number: baseline + 1, name: "Dust Storm" }).returning();
@@ -475,7 +477,7 @@ describe("PlayerPage Seasons", () => {
 
     const thisSeason = await renderPage("1", {});
     expect(thisSeason).toContain(`No matches yet in Season ${current.number}`);
-    expect(thisSeason).toContain('href="/players/1?season=career"');
+    expect(thisSeason).toContain(`href="/servers/${SLUG}/players/1?season=career"`);
     expect(thisSeason).not.toMatch(tile("Kills", "\\d+"));
 
     const lastSeason = await renderPage("1", { season: String(past.number) });
@@ -505,9 +507,9 @@ describe("PlayerPage Seasons", () => {
 
     const html = await renderPage("1", {});
 
-    expect(html).toContain(`href="/players/1?season=${current.number}"`);
-    expect(html).toContain(`href="/players/1?season=${past.number}"`);
-    expect(html).toContain('href="/players/1?season=career"');
+    expect(html).toContain(`href="/servers/${SLUG}/players/1?season=${current.number}"`);
+    expect(html).toContain(`href="/servers/${SLUG}/players/1?season=${past.number}"`);
+    expect(html).toContain(`href="/servers/${SLUG}/players/1?season=career"`);
     expect(html).toContain(`Season ${current.number} · Dust Storm`);
   });
 

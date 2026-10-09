@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatDateTime } from "@/lib/format-date";
 import type { KillView } from "@/lib/recent-kills";
 import type { RecentNotificationView } from "@/lib/recent-notifications";
+import { serverPath } from "@/lib/server-path";
 import { KillLine, useKillFeed } from "./kill-feed";
 
 const NOTIFICATION_PRIORITY_CLASSNAME: Record<
@@ -48,17 +49,20 @@ type Item =
 // The live page's activity feed: kills as the game reports them and the
 // curated Notifications, in one list, newest first.
 export function ActivityFeed({
+  serverSlug,
   notifications,
   factionColors,
   linkableSteamIds,
 }: {
+  serverSlug: string;
   notifications: RecentNotificationView[];
   /** Faction name to its color, from the current Snapshot. */
   factionColors: Record<string, string>;
   /** Players who have a page, i.e. a career row to show. */
   linkableSteamIds: ReadonlySet<string>;
 }) {
-  const kills = useKillFeed();
+  const kills = useKillFeed(serverSlug);
+  const basePath = serverPath(serverSlug);
   const [filter, setFilter] = useState<Filter>("all");
 
   const items: Item[] = [
@@ -120,6 +124,7 @@ export function ActivityFeed({
                     kill={item.kill}
                     factionColors={factionColors}
                     linkableSteamIds={linkableSteamIds}
+                    basePath={basePath}
                   />
                 </li>
               ) : (
@@ -129,7 +134,7 @@ export function ActivityFeed({
                 >
                   {item.notification.steamId ? (
                     <Link
-                      href={`/players/${item.notification.steamId}`}
+                      href={`${basePath}/players/${item.notification.steamId}`}
                       prefetch={false}
                       className={`text-sm hover:underline ${NOTIFICATION_PRIORITY_CLASSNAME[item.notification.priority]}`}
                     >

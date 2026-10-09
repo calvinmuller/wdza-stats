@@ -10,7 +10,7 @@ import type { LeaderboardRow, LeaderboardSort } from "@/lib/leaderboard";
 
 type RankedRow = { row: LeaderboardRow; rank: number };
 
-function buildColumns(playtimeLabel: string): SortableColumn<RankedRow>[] {
+function buildColumns(playtimeLabel: string, basePath: string): SortableColumn<RankedRow>[] {
   return [
     {
       key: "rank",
@@ -26,7 +26,7 @@ function buildColumns(playtimeLabel: string): SortableColumn<RankedRow>[] {
       cellClassName: "font-medium text-zinc-100",
       render: ({ row }) => (
         <Link
-          href={`/players/${row.steamId}`}
+          href={`${basePath}/players/${row.steamId}`}
           className="flex items-center gap-2 font-medium text-zinc-100 hover:text-brand-gold-500"
         >
           <PlayerAvatar avatarUrl={row.avatarUrl} size={24} />
@@ -70,12 +70,15 @@ export function LeaderboardTable({
   rows,
   sort,
   playtimeLabel,
+  basePath,
 }: {
+  /** The Server's own pages, e.g. "/servers/wdza" - see lib/server-path.ts. */
+  basePath: string;
   rows: LeaderboardRow[];
   sort: LeaderboardSort;
   playtimeLabel: string;
 }) {
-  const columns = useMemo(() => buildColumns(playtimeLabel), [playtimeLabel]);
+  const columns = useMemo(() => buildColumns(playtimeLabel, basePath), [playtimeLabel, basePath]);
   const [search, setSearch] = useState("");
 
   // Rank reflects each player's position in the full, unfiltered

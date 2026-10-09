@@ -1,23 +1,29 @@
 # WDZA Stats
 
-Public stats site for the WDZA Wardogs server. See `CONTEXT.md` for the domain
+Public stats site for the WDZA Wardogs servers. See `CONTEXT.md` for the domain
 glossary and `docs/adr/` for architecture decisions.
 
 ## Structure
 
-- `apps/worker` - long-running process that polls the RCON API and writes history to Postgres
+- `apps/worker` - long-running process that polls each Server's RCON API and writes history to Postgres
 - `apps/web` - Next.js app serving the public site, reading only from Postgres
 - `packages/db` - shared Drizzle schema, migrations, and DB client used by both apps
 
 ## Local development
 
 ```sh
-cp .env.example .env        # fill in RCON_TOKEN
+cp .env.example .env
 docker compose up -d        # local Postgres (dev + test databases)
 npm install
 npm run db:migrate          # apply schema to the dev database
-npm run db:seed             # seed the one configured Server row
 ```
+
+Servers are added at `/admin/servers` (name, URL name, RCON URL and RCON
+token), and the running worker starts polling each one within seconds. Each
+Server's pages live under `/servers/<url-name>/`; `/` lists them. Setting
+`RCON_BASE_URL` and `RCON_TOKEN` in `.env` is an optional shortcut: the worker
+creates that Server on startup if it isn't there yet. See
+`docs/adr/0011-servers-are-managed-in-admin.md`.
 
 Run the worker: `npm run dev --workspace=@wdza-stats/worker`
 Run the web app: `npm run dev --workspace=@wdza-stats/web`
@@ -37,8 +43,9 @@ Safe to re-run - already-cached players are skipped.
 
 The admin area (`/admin`) is for Staff Members, who sign in with an email and
 password (`/admin/sign-in`). A **moderator** can ban and unban players; an
-**admin** can also edit the game's config, issue the kill feed token, and manage
-Staff Members (`/admin/staff`). There is no public sign-up and no email is ever
+**admin** can also edit the game's config, add and edit Servers and issue
+their kill feed tokens (`/admin/servers`), and manage Staff Members
+(`/admin/staff`). There is no public sign-up and no email is ever
 sent, so an admin sets each new Staff Member's first password (they must change
 it at first sign-in) and resets any that is lost. Every admin action is recorded
 in the `staff_audit_log` table. See `docs/adr/0005-staff-login-replaces-the-secret-admin-url.md`.
